@@ -1,4 +1,4 @@
-name = "colmugx/ai-passowrt"
+name = "colmugx/ai-passport"
 
 version = "0.1.0"
 
