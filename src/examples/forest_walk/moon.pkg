@@ -1,0 +1,6 @@
+import {
+  "colmugx/ai-passport/core",
+  "colmugx/ai-passport/input",
+  "colmugx/ai-passport/graphics",
+  "colmugx/ai-passport/music",
+}

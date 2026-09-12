@@ -1,0 +1,26 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "colmugx/ai-passport/graphics"
+
+import {
+  "colmugx/ai-passport/core",
+}
+
+// Values
+
+// Errors
+
+// Types and methods
+pub struct Canvas {
+  // private fields
+}
+pub fn Canvas::clear(Self, color~ : @core.Color) -> Unit
+pub fn Canvas::fill_rect(Self, x~ : Int, y~ : Int, w~ : Int, h~ : Int, color~ : @core.Color) -> Unit
+pub fn Canvas::height(Self) -> Int
+pub fn Canvas::logical() -> Self
+pub fn Canvas::new(width~ : Int, height~ : Int) -> Self
+pub fn Canvas::pixel(Self, x~ : Int, y~ : Int, color~ : @core.Color) -> Unit
+pub fn Canvas::width(Self) -> Int
+
+// Type aliases
+
+// Traits

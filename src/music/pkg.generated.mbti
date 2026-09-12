@@ -1,0 +1,65 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "colmugx/ai-passport/music"
+
+import {
+  "moonbitlang/core/debug",
+}
+
+// Values
+
+// Errors
+pub(all) suberror SongError {
+  TooManyVoices
+}
+pub impl Show for SongError
+
+// Types and methods
+pub(all) struct Instrument {
+  name : String
+  waveform : Waveform
+} derive(@debug.Debug)
+
+pub(all) struct Meter {
+  numerator : Int
+  denominator : Int
+} derive(@debug.Debug)
+pub fn Meter::six_eight() -> Self
+
+pub(all) struct Note {
+  pitch : Pitch?
+  eighths : Int
+} derive(@debug.Debug)
+
+pub(all) struct Pitch {
+  midi : Int
+} derive(@debug.Debug)
+pub fn Pitch::from_midi(midi~ : Int) -> Self?
+
+pub(all) struct Song {
+  meter : Meter
+  tempo : Tempo
+  tracks : Array[Track]
+} derive(@debug.Debug)
+pub fn Song::new(meter~ : Meter, tempo~ : Tempo, tracks~ : Array[Track]) -> Self raise SongError
+
+pub(all) struct Tempo {
+  dotted_quarter_bpm : Int
+} derive(@debug.Debug)
+pub fn Tempo::standard() -> Self
+
+pub(all) struct Track {
+  instrument : Instrument
+  notes : Array[Note]
+} derive(@debug.Debug)
+
+pub(all) enum Waveform {
+  Pulse12
+  Pulse25
+  Pulse50
+  Triangle
+  Noise
+} derive(@debug.Debug)
+
+// Type aliases
+
+// Traits

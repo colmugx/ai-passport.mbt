@@ -1,0 +1,39 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "colmugx/ai-passport/input"
+
+import {
+  "moonbitlang/core/debug",
+}
+
+// Values
+
+// Errors
+
+// Types and methods
+pub(all) enum Button {
+  Up
+  Down
+  Ok
+} derive(Eq, @debug.Debug)
+
+pub(all) enum ButtonEvent {
+  Press
+  Click
+  DoubleClick
+  LongPress
+} derive(Eq, @debug.Debug)
+
+pub struct InputState {
+  // private fields
+} derive(@debug.Debug)
+pub fn InputState::advance(Self) -> Unit
+pub fn InputState::just_pressed(Self, Button) -> Bool
+pub fn InputState::just_released(Self, Button) -> Bool
+pub fn InputState::new() -> Self
+pub fn InputState::press(Self, Button) -> Unit
+pub fn InputState::pressed(Self, Button) -> Bool
+pub fn InputState::release(Self, Button) -> Unit
+
+// Type aliases
+
+// Traits

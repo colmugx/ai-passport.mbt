@@ -1,0 +1,46 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "colmugx/ai-passport/core"
+
+import {
+  "moonbitlang/core/debug",
+}
+
+// Values
+pub const LOGICAL_HEIGHT : Int = 160
+
+pub const LOGICAL_WIDTH : Int = 120
+
+// Errors
+
+// Types and methods
+pub(all) struct Color {
+  r : Int
+  g : Int
+  b : Int
+} derive(Eq, @debug.Debug)
+pub fn Color::rgb(r~ : Int, g~ : Int, b~ : Int) -> Self
+pub fn Color::to_rgb565(Self) -> Int
+
+pub(all) struct Point {
+  x : Int
+  y : Int
+} derive(Eq, @debug.Debug)
+
+pub(all) struct Rect {
+  x : Int
+  y : Int
+  w : Int
+  h : Int
+} derive(Eq, @debug.Debug)
+pub fn Rect::contains(Self, x~ : Int, y~ : Int) -> Bool
+pub fn Rect::intersection(Self, other~ : Self) -> Self?
+pub fn Rect::intersects(Self, other~ : Self) -> Bool
+
+pub(all) struct Size {
+  w : Int
+  h : Int
+} derive(Eq, @debug.Debug)
+
+// Type aliases
+
+// Traits

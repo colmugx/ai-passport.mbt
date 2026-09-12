@@ -1,0 +1,35 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "colmugx/ai-passport/examples/forest_walk"
+
+import {
+  "colmugx/ai-passport/graphics",
+  "colmugx/ai-passport/input",
+  "colmugx/ai-passport/music",
+}
+
+// Values
+
+// Errors
+
+// Types and methods
+pub(all) struct Speed {
+  level : Int
+}
+pub fn Speed::zero() -> Self
+
+pub struct State {
+  // private fields
+}
+pub fn State::draw(Self, canvas~ : @graphics.Canvas) -> Unit
+pub fn State::frame(Self) -> Int
+pub fn State::new() -> Self
+pub fn State::paused(Self) -> Bool
+pub fn State::scroll(Self) -> Int
+pub fn State::song(Self) -> @music.Song
+pub fn State::speed(Self) -> Speed
+pub fn State::update(Self, input~ : @input.InputState) -> Self
+pub fn State::walker_frame(Self) -> Int
+
+// Type aliases
+
+// Traits
