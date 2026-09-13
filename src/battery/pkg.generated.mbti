@@ -1,0 +1,24 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "colmugx/ai-passport/battery"
+
+// Values
+
+// Errors
+
+// Types and methods
+pub struct Battery {
+  // private fields
+}
+pub fn Battery::fixture(percent~ : Int) -> Self
+pub fn Battery::millivolts(Self) -> Int?
+pub fn Battery::new(source~ : &BatterySource) -> Self
+pub fn Battery::percent(Self) -> Int?
+pub fn Battery::refresh(Self) -> Unit
+
+// Type aliases
+
+// Traits
+pub(open) trait BatterySource {
+  fn percent(Self) -> Int?
+  fn millivolts(Self) -> Int?
+}

@@ -30,10 +30,27 @@ pub(all) struct Note {
   eighths : Int
 } derive(@debug.Debug)
 
+pub(all) struct NoteOn {
+  track : Int
+  pitch : Pitch
+  eighths : Int
+  waveform : Waveform
+} derive(@debug.Debug)
+
 pub(all) struct Pitch {
   midi : Int
 } derive(@debug.Debug)
 pub fn Pitch::from_midi(midi~ : Int) -> Self?
+
+pub struct Sequencer {
+  // private fields
+}
+pub fn Sequencer::length(Self) -> Int
+pub fn Sequencer::new(song~ : Song) -> Self
+pub fn Sequencer::new_with_loop(song~ : Song, start~ : Int, end~ : Int) -> Self
+pub fn Sequencer::song(Self) -> Song
+pub fn Sequencer::step(Self) -> Array[NoteOn]
+pub fn Sequencer::tick(Self) -> Int
 
 pub(all) struct Song {
   meter : Meter
@@ -46,6 +63,13 @@ pub(all) struct Tempo {
   dotted_quarter_bpm : Int
 } derive(@debug.Debug)
 pub fn Tempo::standard() -> Self
+
+pub(all) struct TickClock {
+  // private fields
+}
+pub fn TickClock::new(sample_rate~ : Int, dotted_quarter_bpm~ : Int) -> Self
+pub fn TickClock::pump(Self, samples~ : Int) -> Int
+pub fn TickClock::ticks_to_samples(Self, ticks~ : Int) -> Int
 
 pub(all) struct Track {
   instrument : Instrument

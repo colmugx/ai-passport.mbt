@@ -6,6 +6,13 @@ import {
 }
 
 // Values
+pub const CHAR_ADVANCE : Int = 5
+
+pub const LINE_HEIGHT : Int = 6
+
+pub fn text_height(text~ : String) -> Int
+
+pub fn text_width(text~ : String) -> Int
 
 // Errors
 
@@ -16,10 +23,22 @@ pub struct Canvas {
 pub fn Canvas::clear(Self, color~ : @core.Color) -> Unit
 pub fn Canvas::fill_rect(Self, x~ : Int, y~ : Int, w~ : Int, h~ : Int, color~ : @core.Color) -> Unit
 pub fn Canvas::height(Self) -> Int
+pub fn Canvas::line(Self, x0~ : Int, y0~ : Int, x1~ : Int, y1~ : Int, color~ : @core.Color) -> Unit
 pub fn Canvas::logical() -> Self
 pub fn Canvas::new(width~ : Int, height~ : Int) -> Self
 pub fn Canvas::pixel(Self, x~ : Int, y~ : Int, color~ : @core.Color) -> Unit
+pub fn Canvas::rect(Self, x~ : Int, y~ : Int, w~ : Int, h~ : Int, color~ : @core.Color) -> Unit
+pub fn Canvas::sprite(Self, sheet~ : SpriteSheet, frame~ : Int, x~ : Int, y~ : Int) -> Unit
+pub fn Canvas::text(Self, text~ : String, x~ : Int, y~ : Int, color~ : @core.Color) -> Unit
 pub fn Canvas::width(Self) -> Int
+
+pub(all) struct SpriteSheet {
+  // private fields
+}
+pub fn SpriteSheet::frame_count(Self) -> Int
+pub fn SpriteSheet::frame_height(Self) -> Int
+pub fn SpriteSheet::frame_width(Self) -> Int
+pub fn SpriteSheet::from_colors(frame_width~ : Int, frame_height~ : Int, pixels~ : Array[@core.Color?]) -> Self
 
 // Type aliases
 

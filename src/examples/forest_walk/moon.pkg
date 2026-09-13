@@ -3,4 +3,5 @@ import {
   "colmugx/ai-passport/input",
   "colmugx/ai-passport/graphics",
   "colmugx/ai-passport/music",
+  "colmugx/ai-passport/audio",
 }

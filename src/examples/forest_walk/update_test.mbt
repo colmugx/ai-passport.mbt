@@ -44,6 +44,9 @@ test "while paused scroll and walker_frame freeze but the frame keeps counting" 
   let walker = s.walker_frame()
   let frame = s.frame()
   assert_true(scroll > 0)
+  // Ten plus one updates pump one eighth-tick of audio (the first tick lands
+  // on update 8); the pause must freeze that transport position too.
+  assert_eq(s.sequencer().tick(), 1)
   let paused = tap(s, input, @input.Ok)
   assert_eq(paused.frame(), frame + 1)
   let mut frozen = paused
@@ -53,6 +56,9 @@ test "while paused scroll and walker_frame freeze but the frame keeps counting" 
     assert_eq(frozen.walker_frame(), walker)
   }
   assert_eq(frozen.frame(), frame + 7)
+  // Music pause = transport pause: tick and beat are exactly where they were.
+  assert_eq(frozen.sequencer().tick(), 1)
+  assert_eq(frozen.beat(), s.beat())
 }
 
 ///|
@@ -113,32 +119,48 @@ test "speed level drives scroll: +2 per frame at speed 2, frozen at speed 0" {
   assert_eq(s0.scroll(), base + 5)
   let frozen = step(s0, input)
   assert_eq(frozen.scroll(), base + 5)
-  // walker_frame stays 0 while standing still (all frames so far are < 8).
+  // walker_frame stays 0 while standing still even though the music keeps
+  // playing: the pose holds because the level is 0.
   assert_eq(frozen.walker_frame(), 0)
+  // Thirty more standing updates (38 total) pump four eighth-ticks; the
+  // first dotted-quarter beat crossed on update 24. The beat advanced but
+  // the pose and the frozen scroll did not move.
+  let mut standing = frozen
+  for _ in 0..<30 {
+    standing = step(standing, input)
+  }
+  assert_eq(standing.beat(), 1)
+  assert_eq(standing.walker_frame(), 0)
+  assert_eq(standing.scroll(), base + 5)
 }
 
 ///|
-test "walker_frame cycles 0..=3 while walking and wraps at frame 32" {
+test "walker_frame cycles 0..=3 with the dotted-quarter beat while walking" {
   let input = @input.InputState::new()
   let s1 = tap(State::new(), input, @input.Up)
   let mut s = s1
   let observed : Array[Int] = []
-  for _ in 0..<33 {
+  // One large 6/8 beat is three ticks; a tick is 16000*60/(76*3) =
+  // 4210.53 samples, i.e. 7.9 frames of 533 samples, so a beat is ~23.7
+  // frames and four beats ~95 updates. Drive 120 updates to cover a full
+  // pose cycle plus the wrap back to 1. Exact Bresenham carries put the
+  // beat boundaries on updates 24, 48, 72, 95 and 119.
+  for _ in 0..<120 {
     s = step(s, input)
     observed.push(s.walker_frame())
   }
-  // observed[i] is the pose after frame i+2 (the tap itself was frame 1).
-  // The pose is (frame / 8) % 4, so frames 8..15 pose 1, 16..23 pose 2,
-  // 24..31 pose 3 and frame 32 wraps back to 0.
-  assert_eq(observed[5], 0) // frame 7
-  assert_eq(observed[6], 1) // frame 8
-  assert_eq(observed[13], 1) // frame 15
-  assert_eq(observed[14], 2) // frame 16
-  assert_eq(observed[21], 2) // frame 23
-  assert_eq(observed[22], 3) // frame 24
-  assert_eq(observed[29], 3) // frame 31
-  assert_eq(observed[30], 0) // frame 32: wrapped
-  assert_eq(observed[32], 0) // frame 34
+  // observed[i] is the pose after update i+2 (the tap itself was update 1).
+  assert_eq(observed[21], 0) // update 23: beat 0 still holds pose 0
+  assert_eq(observed[22], 1) // update 24: first beat boundary -> pose 1
+  assert_eq(observed[45], 1) // update 47
+  assert_eq(observed[46], 2) // update 48: second beat -> pose 2
+  assert_eq(observed[69], 2) // update 71
+  assert_eq(observed[70], 3) // update 72: third beat -> pose 3
+  assert_eq(observed[92], 3) // update 94
+  assert_eq(observed[93], 0) // update 95: fourth beat wraps pose to 0
+  assert_eq(observed[116], 0) // update 118
+  assert_eq(observed[117], 1) // update 119: fifth beat wraps pose to 1
+  assert_eq(observed[119], 1) // update 121
   for f in observed {
     assert_true(f >= 0 && f <= 3)
   }
@@ -161,4 +183,95 @@ test "update never mutates the receiver" {
   assert_eq(next.speed().level, 1)
   assert_eq(next.paused(), true)
   assert_eq(next.scroll(), 0)
+}
+
+///|
+test "sequencer() exposes one shared transport whose tick advances across updates" {
+  let input = @input.InputState::new()
+  let state = State::new()
+  let seq = state.sequencer()
+  inspect(seq.tick(), content="0")
+  // The showcase song is 6 eighth-ticks long on every track (1+1+1+1+2,
+  // 3+3, 2+4, 3+1+2), so the whole-song loop region is 6 ticks.
+  inspect(seq.length(), content="6")
+  let mut s = state
+  for _ in 0..<10 {
+    s = step(s, input)
+  }
+  // Ten updates pump 10 * 533 = 5330 samples = 1.27 ticks: exactly one
+  // sequencer step has happened (the first tick lands on update 8).
+  inspect(s.sequencer().tick(), content="1")
+  // The getter hands out the one shared transport, not a copy.
+  inspect(seq.tick(), content="1")
+}
+
+///|
+test "sequencer tick wraps at the song length after enough updates" {
+  // Song length: 6 eighth-ticks. One tick is 16000*60/(76*3) = 4210.53
+  // samples = 7.9 frames of 533 samples, so one song loop is 6 * 7.9 =
+  // 47.4 frames -> the 6th step (the wrap) lands on update 48. Driving
+  // 58 updates covers 1.2x the song length.
+  let input = @input.InputState::new()
+  let mut s = State::new()
+  for _ in 0..<47 {
+    s = step(s, input)
+  }
+  assert_eq(s.sequencer().tick(), 5) // one step short of the 6-tick loop
+  s = step(s, input)
+  assert_eq(s.sequencer().tick(), 0) // update 48: the transport wrapped
+  for _ in 0..<9 {
+    s = step(s, input)
+  }
+  assert_eq(s.sequencer().tick(), 1) // 58 updates = 7 steps = 7 mod 6
+}
+
+///|
+test "beat counts dotted-quarter beats and Ok pauses it with the music" {
+  let input = @input.InputState::new()
+  let mut s = tap(State::new(), input, @input.Up)
+  // Three ticks are one large 6/8 beat; the first boundary lands on
+  // update 24, the second (at the loop wrap, tick 6 -> 0) on update 48.
+  for _ in 0..<23 {
+    s = step(s, input)
+  }
+  assert_eq(s.beat(), 1)
+  // Walking at speed 1: the pose is beat-synced, so it shifted with the beat.
+  assert_eq(s.walker_frame(), 1)
+  for _ in 0..<24 {
+    s = step(s, input)
+  }
+  assert_eq(s.beat(), 2)
+  // Ok pauses the transport: neither the beat nor the tick moves any more.
+  let mut paused = tap(s, input, @input.Ok)
+  assert_true(paused.paused())
+  let beat = paused.beat()
+  let tick = paused.sequencer().tick()
+  let pose = paused.walker_frame()
+  for _ in 0..<30 {
+    paused = step(paused, input)
+  }
+  assert_eq(paused.beat(), beat)
+  assert_eq(paused.sequencer().tick(), tick)
+  assert_eq(paused.walker_frame(), pose)
+}
+
+///|
+test "music advances only while unpaused: the tick is frozen across paused updates" {
+  let input = @input.InputState::new()
+  // Paused from the very first frame: nothing pumps, nothing steps.
+  let mut s = tap(State::new(), input, @input.Ok)
+  assert_true(s.paused())
+  for _ in 0..<30 {
+    s = step(s, input)
+  }
+  assert_eq(s.sequencer().tick(), 0)
+  assert_eq(s.beat(), 0)
+  // Resuming starts the transport again: the resume tap plus ten frames are
+  // the only unpaused updates so far (11 * 533 samples = 1.39 ticks).
+  let mut resumed = tap(s, input, @input.Ok)
+  assert_false(resumed.paused())
+  for _ in 0..<10 {
+    resumed = step(resumed, input)
+  }
+  assert_eq(resumed.sequencer().tick(), 1)
 }

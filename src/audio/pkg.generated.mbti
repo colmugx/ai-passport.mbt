@@ -1,0 +1,36 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "colmugx/ai-passport/audio"
+
+import {
+  "colmugx/ai-passport/music",
+}
+
+// Values
+pub const SAMPLE_RATE : Int = 16000
+
+pub const VOICES : Int = 4
+
+// Errors
+
+// Types and methods
+pub struct BufferSink {
+  // private fields
+}
+pub fn BufferSink::chunks(Self) -> Array[FixedArray[Int]]
+pub fn BufferSink::new() -> Self
+pub impl PcmSink for BufferSink
+
+pub struct Synth {
+  // private fields
+}
+pub fn Synth::new() -> Self
+pub fn Synth::release(Self, voice~ : Int) -> Unit
+pub fn Synth::render(Self, out~ : FixedArray[Int]) -> Unit
+pub fn Synth::trigger(Self, voice~ : Int, on~ : @music.NoteOn, gate_samples~ : Int) -> Unit
+
+// Type aliases
+
+// Traits
+pub(open) trait PcmSink {
+  fn write(Self, samples~ : FixedArray[Int]) -> Unit
+}

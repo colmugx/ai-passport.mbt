@@ -1,0 +1,38 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "colmugx/ai-passport/driver"
+
+import {
+  "colmugx/ai-passport/graphics",
+}
+
+// Values
+
+// Errors
+
+// Types and methods
+pub struct SinkProbe {
+  // private fields
+}
+pub fn SinkProbe::calls(Self) -> Int
+pub fn SinkProbe::last_height(Self) -> Int
+pub fn SinkProbe::last_width(Self) -> Int
+pub fn SinkProbe::new() -> Self
+pub impl DisplaySink for SinkProbe
+
+pub struct ZeroClock {
+  // private fields
+}
+pub fn ZeroClock::new() -> Self
+pub impl Clock for ZeroClock
+
+// Type aliases
+
+// Traits
+pub(open) trait Clock {
+  fn monotonic_ms(Self) -> Int
+  fn sleep_ms(Self, ms~ : Int) -> Unit
+}
+
+pub(open) trait DisplaySink {
+  fn present(Self, canvas~ : @graphics.Canvas) -> Unit
+}

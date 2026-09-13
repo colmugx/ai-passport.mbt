@@ -20,15 +20,18 @@ pub fn Speed::zero() -> Self
 pub struct State {
   // private fields
 }
+pub fn State::beat(Self) -> Int
 pub fn State::draw(Self, canvas~ : @graphics.Canvas) -> Unit
 pub fn State::frame(Self) -> Int
 pub fn State::new() -> Self
 pub fn State::paused(Self) -> Bool
 pub fn State::scroll(Self) -> Int
+pub fn State::sequencer(Self) -> @music.Sequencer
 pub fn State::song(Self) -> @music.Song
 pub fn State::speed(Self) -> Speed
 pub fn State::update(Self, input~ : @input.InputState) -> Self
 pub fn State::walker_frame(Self) -> Int
+pub fn State::walker_sheet(Self) -> @graphics.SpriteSheet
 
 // Type aliases
 
