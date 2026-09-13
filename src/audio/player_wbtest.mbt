@@ -51,4 +51,36 @@ test "an empty song's scratch is empty and every arrival is a no-op" {
     }
   }
   inspect(nonzero, content="false")
+  inspect(player.elapsed_ticks, content="0")
+}
+
+///|
+test "a one-tick loop records each real clock boundary and pause freezes it" {
+  let track : @music.Track = {
+    instrument: @music.Instrument::celesta(),
+    notes: [{ pitch: @music.Pitch::from_midi(midi=69), ticks: 1, }],
+  }
+  let song = @music.Song::new(
+    meter=@music.Meter::six_eight(),
+    tempo=@music.Tempo::standard(),
+    tracks=[track],
+  )
+  let player = Player::new(song~)
+  inspect(player.elapsed_ticks, content="0")
+  let before : FixedArray[Int] = FixedArray::make(1052, 0)
+  player.render(out=before)
+  inspect(player.elapsed_ticks, content="0")
+  let boundary : FixedArray[Int] = FixedArray::make(1, 0)
+  player.render(out=boundary)
+  inspect(player.elapsed_ticks, content="1")
+  inspect(player.position_ticks(), content="0")
+  player.pause()
+  player.render(out=before)
+  inspect(player.elapsed_ticks, content="1")
+  player.unpause()
+  player.render(out=before)
+  inspect(player.elapsed_ticks, content="1")
+  player.render(out=boundary)
+  inspect(player.elapsed_ticks, content="2")
+  inspect(player.position_ticks(), content="0")
 }

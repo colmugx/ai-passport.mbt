@@ -55,10 +55,11 @@ priv enum EnvState {
 }
 
 ///|
-/// Envelope with all rates precomputed as Bresenham ramp parameters of the
+/// Envelope with attack and decay rates precomputed as Bresenham ramp parameters of the
 /// 16-bit fixed-point amplitude fraction (0..65536 = 0.0..1.0), so the hot
 /// path never divides and every stage reaches its target amplitude exactly
-/// at its requested sample duration. Built once per trigger from the
+/// at its requested sample duration. Release rates are computed from the
+/// current voice level when release begins. Built once per trigger from the
 /// instrument's millisecond `Envelope` (see `build_preset`).
 ///
 /// A stage that must move `span` units over `n` samples carries:
@@ -85,14 +86,7 @@ priv struct EnvelopePreset {
   decay_samples : Int
   /// Level held after the decay, in amplitude units.
   sustain : Int
-  /// Amplitude units removed per sample while releasing (65536 /
-  /// release_samples, whole part; a release starting below full scale
-  /// finishes proportionally earlier).
-  release_step : Int
-  /// Release remainder units accumulated into the error register.
-  release_rem : Int
-  /// Release stage length in samples from full scale (the error register's
-  /// modulus).
+  /// Release stage length in samples (the error register's modulus).
   release_samples : Int
 }
 
@@ -101,8 +95,8 @@ priv struct EnvelopePreset {
 /// Bresenham ramp parameters (a handful of divisions/divmods, once per
 /// trigger — never per sample):
 ///
-/// - `attack_ms`/`release_ms` of 0 mean instant, expressed as a full-scale
-///   step (the stage finishes inside one sample).
+/// - `attack_ms`/`release_ms` of 0 mean instant (one sample at the stage
+///   boundary).
 /// - `decay_ms` moves the level from full scale down to `sustain`, so the
 ///   decay ramp spans `65536 - sustain` units.
 /// - `sustain` is clamped into 0..=65536.
@@ -138,10 +132,11 @@ fn build_preset(instrument : @music.Instrument) -> EnvelopePreset {
     ENV_FULL - sustain,
     ms_to_samples(env.decay_ms),
   )
-  let (release_step, release_rem, release_samples) = ramp(
-    ENV_FULL,
-    ms_to_samples(env.release_ms),
-  )
+  let release_samples = if env.release_ms <= 0 {
+    1
+  } else {
+    ms_to_samples(env.release_ms)
+  }
   {
     attack_step,
     attack_rem,
@@ -150,8 +145,6 @@ fn build_preset(instrument : @music.Instrument) -> EnvelopePreset {
     decay_rem,
     decay_samples,
     sustain,
-    release_step,
-    release_rem,
     release_samples,
   }
 }
@@ -193,6 +186,10 @@ priv struct Voice {
   /// attack->decay, decay->sustain, release entry) so each stage's ramp is
   /// exact from its own start.
   mut env_err : Int
+  /// Release ramp derived once from `env` at entry, so every positive
+  /// release lasts its configured number of samples from any ADSR stage.
+  mut release_step : Int
+  mut release_rem : Int
   /// Current envelope stage.
   mut state : EnvState
   /// Remaining gate samples; exhaustion switches to Release automatically.
@@ -215,8 +212,6 @@ fn Voice::idle() -> Voice {
       decay_rem: 0,
       decay_samples: 1,
       sustain: 0,
-      release_step: 1,
-      release_rem: 0,
       release_samples: 1,
     },
     peak: 0,
@@ -228,6 +223,8 @@ fn Voice::idle() -> Voice {
     lfsr: LFSR_SEED,
     env: 0,
     env_err: 0,
+    release_step: 0,
+    release_rem: 0,
     state: Sustain,
     gate: 0,
   }
@@ -275,8 +272,8 @@ fn Voice::advance_envelope(self : Voice) -> Unit {
     }
     Sustain => self.count_gate()
     Release => {
-      self.env -= preset.release_step
-      self.env_err += preset.release_rem
+      self.env -= self.release_step
+      self.env_err += self.release_rem
       if self.env_err >= preset.release_samples {
         self.env_err -= preset.release_samples
         self.env -= 1
@@ -290,14 +287,23 @@ fn Voice::advance_envelope(self : Voice) -> Unit {
 }
 
 ///|
-/// Counts one gate sample down; exhaustion switches the voice into Release
-/// automatically ("gate exhaustion enters release"). The release stage's
-/// error register starts clean.
+/// Starts a release ramp from the current level. Division happens only at
+/// this stage transition; the per-sample path uses the stored step and
+/// remainder. A zero-millisecond release uses one step to silence.
+fn Voice::enter_release(self : Voice) -> Unit {
+  let n = self.preset.release_samples
+  self.release_step = self.env / n
+  self.release_rem = self.env % n
+  self.env_err = 0
+  self.state = Release
+}
+
+///|
+/// Counts one gate sample down; exhaustion enters Release automatically.
 fn Voice::count_gate(self : Voice) -> Unit {
   self.gate -= 1
   if self.gate <= 0 {
-    self.env_err = 0
-    self.state = Release
+    self.enter_release()
   }
 }
 

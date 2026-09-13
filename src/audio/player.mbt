@@ -48,8 +48,8 @@ pub struct Player {
   priv sequencer : @music.Sequencer
   priv synth : Synth
   priv beat_ticks : Int // song ticks per musical beat (dotted quarter)
-  /// Song ticks of transport time elapsed since construction, counted
-  /// monotonically across every advancing arrival — including loop wraps —
+  /// Song ticks of transport time elapsed since construction, counted from
+  /// actual TickClock boundaries for a nonempty song — including loop wraps —
   /// and independent of the wrapped position. The single authority for
   /// `beat()`.
   priv mut elapsed_ticks : Int
@@ -125,8 +125,19 @@ pub fn Player::render(self : Player, out~ : FixedArray[Int]) -> Unit {
       return
     }
     self.synth.render_range(out~, offset=pos, len=to_boundary)
-    let _ = self.clock.pump(samples=to_boundary)
+    let elapsed = self.clock.pump(samples=to_boundary)
+    if elapsed != 1 {
+      abort(
+        "Player::render: expected one tick at a clock boundary, got \{elapsed}",
+      )
+    }
     pos += to_boundary
+    // Clock time is the authority for beats. A one-tick loop lands back on
+    // position 0 at every boundary, so position cannot reveal elapsed time.
+    // Empty songs have no musical transport and keep beat() at zero.
+    if self.sequencer.length() > 0 {
+      self.elapsed_ticks += elapsed
+    }
     // Tick boundary: step the transport and trigger the note starts at
     // exactly this sample offset.
     self.fire_arrival()
@@ -137,12 +148,10 @@ pub fn Player::render(self : Player, out~ : FixedArray[Int]) -> Unit {
 /// Steps the sequencer across one arrival (a tick boundary, the initial
 /// tick 0, or a loop wrap) and triggers every reported note-start on the
 /// voice matching its track index, with its exact phase-aware gate. Uses
-/// only the preallocated event slots — no allocation. A beat (dotted
-/// quarter) is counted whenever the arrival moves the transport onto a beat
-/// boundary, including a loop wrap; the initial tick-0 arrival moves
-/// nothing, so it never counts.
+/// only the preallocated event slots — no allocation. The sequencer owns
+/// position and events; elapsed clock ticks are counted in `render` after
+/// pumping a real sample boundary. The initial tick-0 arrival counts zero.
 fn Player::fire_arrival(self : Player) -> Unit {
-  let before = self.sequencer.tick()
   let count = self.sequencer.step_into(self.events)
   for i in 0..<count {
     match self.events[i] {
@@ -154,14 +163,6 @@ fn Player::fire_arrival(self : Player) -> Unit {
         )
       None => () // unreachable: slots below count are always Some
     }
-  }
-  let after = self.sequencer.tick()
-  // Every advancing arrival is exactly one song tick of transport time —
-  // counted monotonically, so a loop whose length is not a beat multiple
-  // cannot fake a beat on its wrap, and beats keep accruing across wraps.
-  // The initial tick-0 arrival moves nothing, so it never counts.
-  if after != before {
-    self.elapsed_ticks += 1
   }
 }
 

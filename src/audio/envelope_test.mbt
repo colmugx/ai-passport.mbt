@@ -285,3 +285,121 @@ test "an 8-second decay completes instead of stalling" {
   inspect(out[128000], content="0")
   inspect(out[139263], content="0")
 }
+
+///|
+/// Checks the complete PCM release curve against the configured duration.
+/// A full-level reference voice supplies the oscillator polarity, while
+/// `start_env - floor(start_env * elapsed / duration)` defines the expected
+/// envelope independently of the incremental renderer.
+fn check_release_curve(
+  label : String,
+  attack_ms : Int,
+  decay_ms : Int,
+  sustain : Int,
+  release_ms : Int,
+  warmup : Int,
+  start_env : Int,
+) -> Unit raise {
+  let instrument : @music.Instrument = {
+    name: label,
+    waveform: @music.Pulse50,
+    envelope: { attack_ms, decay_ms, sustain, release_ms, },
+    volume: 100,
+    vibrato: None,
+  }
+  let reference_instrument : @music.Instrument = {
+    name: "Full Level Reference",
+    waveform: @music.Pulse50,
+    envelope: { attack_ms: 0, decay_ms: 0, sustain: 65536, release_ms: 0, },
+    volume: 100,
+    vibrato: None,
+  }
+  let duration = release_ms * 16
+  let explicit = @audio.Synth::new()
+  let automatic = @audio.Synth::new()
+  let reference = @audio.Synth::new()
+  explicit.trigger(
+    voice=0,
+    on=clamp_note(instrument),
+    gate_samples=warmup + duration + 8,
+  )
+  automatic.trigger(voice=0, on=clamp_note(instrument), gate_samples=warmup)
+  reference.trigger(
+    voice=0,
+    on=clamp_note(reference_instrument),
+    gate_samples=warmup + duration + 8,
+  )
+  let before : FixedArray[Int] = FixedArray::make(warmup, 0)
+  explicit.render(out=before)
+  automatic.render(out=before)
+  reference.render(out=before)
+  explicit.release(voice=0)
+  let observed : FixedArray[Int] = FixedArray::make(duration + 1, 0)
+  let gated : FixedArray[Int] = FixedArray::make(duration + 1, 0)
+  let full : FixedArray[Int] = FixedArray::make(duration + 1, 0)
+  explicit.render(out=observed)
+  automatic.render(out=gated)
+  reference.render(out=full)
+  let mut exact = true
+  let mut matching_entry_paths = true
+  for i in 0..<duration {
+    let removed = (Int64::from_int(start_env) *
+    Int64::from_int(i + 1) /
+    Int64::from_int(duration)).to_int()
+    let expected = (full[i] * (start_env - removed)) >> 16
+    if observed[i] != expected {
+      exact = false
+    }
+    if observed[i] != gated[i] {
+      matching_entry_paths = false
+    }
+  }
+  inspect(exact, content="true")
+  inspect(matching_entry_paths, content="true")
+  inspect(observed[duration], content="0")
+  inspect(gated[duration], content="0")
+}
+
+///|
+test "partial sustain releases for exactly the configured sample count" {
+  check_release_curve("Low Sustain", 0, 0, 4096, 128, 16, 4096)
+  check_release_curve("Half Sustain", 0, 0, 32768, 100, 16, 32768)
+}
+
+///|
+test "attack and decay release from their current levels for full duration" {
+  // 400 of 1600 attack samples: level 16384.
+  check_release_curve("Attack Entry", 100, 0, 32768, 128, 400, 16384)
+  // One instant-attack sample plus 400 of 1600 decay samples: level 57344.
+  check_release_curve("Decay Entry", 0, 100, 32768, 100, 401, 57344)
+}
+
+///|
+test "a long release from low sustain keeps its remainder moving" {
+  check_release_curve("Long Partial Release", 0, 0, 4096, 8000, 16, 4096)
+}
+
+///|
+test "zero millisecond release silences the next release sample" {
+  let instrument : @music.Instrument = {
+    name: "Instant Release",
+    waveform: @music.Pulse50,
+    envelope: { attack_ms: 0, decay_ms: 0, sustain: 32768, release_ms: 0, },
+    volume: 100,
+    vibrato: None,
+  }
+  let explicit = @audio.Synth::new()
+  explicit.trigger(voice=0, on=clamp_note(instrument), gate_samples=64)
+  let before : FixedArray[Int] = FixedArray::make(16, 0)
+  explicit.render(out=before)
+  explicit.release(voice=0)
+  let after : FixedArray[Int] = FixedArray::make(16, 7)
+  explicit.render(out=after)
+  inspect(count_nonzero(after), content="0")
+
+  let automatic = @audio.Synth::new()
+  automatic.trigger(voice=0, on=clamp_note(instrument), gate_samples=16)
+  automatic.render(out=before)
+  automatic.render(out=after)
+  inspect(count_nonzero(after), content="0")
+}

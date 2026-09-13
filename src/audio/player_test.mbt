@@ -125,13 +125,12 @@ test "a note fires exactly at its tick boundary and gates exactly to its end bou
   let b : FixedArray[Int] = FixedArray::make(4210, 0)
   player.render(out=b)
   inspect(b[4209], content="-750")
-  // Release steps 32 envelope units per sample from the sustain level:
-  // env 4064 then 4032 on the negative half-wave (floors of -744.14 and
-  // -738.28).
+  // Celesta release spans 2048 samples and steps 2 envelope units per
+  // sample from sustain: env 4094 then 4092 both render -750 here.
   let c : FixedArray[Int] = FixedArray::make(2, 0)
   player.render(out=c)
-  inspect(c[0], content="-745")
-  inspect(c[1], content="-739")
+  inspect(c[0], content="-750")
+  inspect(c[1], content="-750")
   // Sample 5264 is the arrival past the loop end: the transport wrapped to
   // tick 0 (the tick-0 rest fires nothing).
   inspect(player.position_ticks(), content="0")
@@ -358,6 +357,74 @@ test "a 10-tick looping song counts no beat at its wrap; beat 1 lands after 12 e
   player.render(out=twelve)
   inspect(player.beat(), content="1")
   inspect(player.position_ticks(), content="2")
+}
+
+///|
+test "a one-tick loop counts elapsed beats while its position stays at zero" {
+  let track : @music.Track = {
+    instrument: @music.Instrument::celesta(),
+    notes: [{ pitch: @music.Pitch::from_midi(midi=69), ticks: 1, }],
+  }
+  let song = @music.Song::new(
+    meter=@music.Meter::six_eight(),
+    tempo=@music.Tempo::standard(),
+    tracks=[track],
+  )
+  let player = Player::new(song~)
+  inspect(player.beat(), content="0")
+  inspect(player.position_ticks(), content="0")
+  // The first boundary is sample 1053. One tick has elapsed even though
+  // the one-tick loop has already wrapped to position 0.
+  let first : FixedArray[Int] = FixedArray::make(1053, 0)
+  player.render(out=first)
+  inspect(player.beat(), content="0")
+  inspect(player.position_ticks(), content="0")
+  // The twelfth and twenty-fourth boundaries are samples 12632 and 25264.
+  let to_twelve : FixedArray[Int] = FixedArray::make(12632 - 1053, 0)
+  player.render(out=to_twelve)
+  inspect(player.beat(), content="1")
+  inspect(player.position_ticks(), content="0")
+  player.pause()
+  let silent : FixedArray[Int] = FixedArray::make(12632, 7)
+  player.render(out=silent)
+  inspect(all_zero(silent), content="true")
+  inspect(player.beat(), content="1")
+  inspect(player.position_ticks(), content="0")
+  player.unpause()
+  let to_twenty_four : FixedArray[Int] = FixedArray::make(25264 - 12632, 0)
+  player.render(out=to_twenty_four)
+  inspect(player.beat(), content="2")
+  inspect(player.position_ticks(), content="0")
+}
+
+///|
+test "a one-tick loop has identical PCM in whole and 256-sample chunks" {
+  let track : @music.Track = {
+    instrument: @music.Instrument::celesta(),
+    notes: [{ pitch: @music.Pitch::from_midi(midi=69), ticks: 1, }],
+  }
+  let song = @music.Song::new(
+    meter=@music.Meter::six_eight(),
+    tempo=@music.Tempo::standard(),
+    tracks=[track],
+  )
+  let whole = Player::new(song~)
+  let reference : FixedArray[Int] = FixedArray::make(4096, 0)
+  whole.render(out=reference)
+  let chunked = Player::new(song~)
+  let mut all_match = true
+  for c in 0..<16 {
+    let chunk : FixedArray[Int] = FixedArray::make(256, 0)
+    chunked.render(out=chunk)
+    for i in 0..<256 {
+      if chunk[i] != reference[c * 256 + i] {
+        all_match = false
+      }
+    }
+  }
+  inspect(all_match, content="true")
+  inspect(whole.position_ticks(), content=chunked.position_ticks().to_string())
+  inspect(whole.beat(), content=chunked.beat().to_string())
 }
 
 ///|

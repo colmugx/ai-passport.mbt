@@ -48,10 +48,11 @@ fn build_increment_table() -> FixedArray[Int] {
 ///   upon.
 /// - Envelope and volume come from the triggered `@music.Instrument` (never
 ///   from the waveform): the instrument's millisecond ADSR is converted
-///   once at trigger time into per-sample integer steps of the 16-bit
+///   into per-sample integer steps of the 16-bit
 ///   fixed-point amplitude fraction (0..65536 = 0.0..1.0), and `volume`
-///   (0..=100, clamped) scales the voice peak. Exhausting `gate_samples`
-///   enters release automatically.
+///   (0..=100, clamped) scales the voice peak. Release steps are derived
+///   once from the current level when `gate_samples` expires or `release`
+///   is called.
 /// - Vibrato: light triangle-LFO pitch modulation applied only when the
 ///   instrument carries a `Vibrato` — rate from `rate_millihz`, depth from
 ///   `depth_cents` (linear approximation `depth/1731` of the phase
@@ -184,6 +185,8 @@ pub fn Synth::trigger(
   v.lfsr = LFSR_SEED
   v.env = 0
   v.env_err = 0
+  v.release_step = 0
+  v.release_rem = 0
   v.state = Attack
   v.gate = gate_samples
 }
@@ -223,8 +226,7 @@ pub fn Synth::release(self : Synth, voice~ : Int) -> Unit {
   }
   let v = self.voices[voice]
   if v.active && !(v.state is Release) {
-    v.env_err = 0
-    v.state = Release
+    v.enter_release()
   }
 }
 
