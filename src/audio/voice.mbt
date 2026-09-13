@@ -81,6 +81,10 @@ priv struct EnvelopePreset {
 /// - `decay_ms` moves the level from full scale down to `sustain`, so
 ///   `decay_step = (65536 - sustain) / decay_samples`.
 /// - `sustain` is clamped into 0..=65536.
+/// - A positive stage whose integer division floors to 0 (any duration above
+///   65536 samples, i.e. ~4.1 s at 16000 Hz) is clamped to a 1-unit step, so
+///   quantization can never permanently stall a voice; the stage then simply
+///   lasts 65536 samples.
 fn build_preset(instrument : @music.Instrument) -> EnvelopePreset {
   let env = instrument.envelope
   let sustain = if env.sustain < 0 {
@@ -94,20 +98,20 @@ fn build_preset(instrument : @music.Instrument) -> EnvelopePreset {
   let attack_step = if attack_samples <= 0 {
     ENV_FULL
   } else {
-    ENV_FULL / attack_samples
+    (ENV_FULL / attack_samples).max(1)
   }
   let decay_samples = ms_to_samples(env.decay_ms)
   let decay_span = ENV_FULL - sustain
   let decay_step = if decay_samples <= 0 || decay_span <= 0 {
     ENV_FULL
   } else {
-    decay_span / decay_samples
+    (decay_span / decay_samples).max(1)
   }
   let release_samples = ms_to_samples(env.release_ms)
   let release_step = if release_samples <= 0 {
     ENV_FULL
   } else {
-    ENV_FULL / release_samples
+    (ENV_FULL / release_samples).max(1)
   }
   { attack_step, decay_step, sustain, release_step, }
 }

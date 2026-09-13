@@ -19,7 +19,7 @@
 pub struct FrameView {
   priv width : Int
   priv height : Int
-  priv pixels : FixedArray[Int]
+  priv pixels : FixedArray[UInt16]
 }
 
 ///|
@@ -81,7 +81,7 @@ pub fn FrameView::copy_rgb565_row(
   let n = if out.length() < self.width { out.length() } else { self.width }
   let base = y * self.width
   for i in 0..<n {
-    out[i] = self.pixels[base + i]
+    out[i] = self.pixels[base + i].to_int()
   }
   n
 }

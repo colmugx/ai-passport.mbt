@@ -10,6 +10,14 @@
 /// ticks. One 4096-sample render therefore produces exactly the same PCM as
 /// sixteen 256-sample renders, whatever the tick boundaries.
 ///
+/// The transport starts ON tick 0: the first unpaused render fires the
+/// tick-0 note starts (the sequencer's arrival at tick 0) before rendering
+/// its first sample, so a song that begins with a note is audible from
+/// output sample 0, shaped only by the instrument's own attack envelope —
+/// there is no one-tick pre-roll. Every later tick boundary then fires the
+/// note-starts landing exactly on it, including the loop wrap, which lands
+/// on `loop_start` and re-fires the note-starts that begin there.
+///
 /// Graphics and app code only read `beat()` / `position_ticks()` / `paused()`
 /// to sync animation; nothing else advances the transport. The audio
 /// callback or task of a backend calls `render` with the actual sample count
@@ -30,8 +38,9 @@
 ///   let player = Player::new(song~)
 ///   let out : FixedArray[Int] = FixedArray::make(256, 0)
 ///   player.render(out~)
-///   // Before the first tick boundary the player renders silence.
-///   inspect(out[255], content="0")
+///   // The tick-0 note is audible from the very first sample (the celesta
+///   // plucks at full scale instantly).
+///   inspect(out[0], content="12000")
 /// }
 /// ```
 pub struct Player {
@@ -39,6 +48,11 @@ pub struct Player {
   priv sequencer : @music.Sequencer
   priv synth : Synth
   priv beat_ticks : Int // song ticks per musical beat (dotted quarter)
+  /// Preallocated note-start slots handed to `step_into` on every arrival —
+  /// the realtime path never allocates. One slot per song track (at most
+  /// four).
+  priv events : FixedArray[@music.NoteOn?]
+  priv mut started : Bool // tick-0 arrival not fired yet
   priv mut beats : Int
   priv mut paused : Bool
 }
@@ -46,7 +60,8 @@ pub struct Player {
 ///|
 /// Builds a player for `song` at the 16000 Hz baseline. The transport clock
 /// uses the song's own tempo and tick resolution; the whole song is the
-/// loop region.
+/// loop region. The transport is parked on tick 0 with its note starts
+/// unfired: the first unpaused render fires them at output sample 0.
 pub fn Player::new(song~ : @music.Song) -> Player {
   {
     clock: @music.TickClock::new(
@@ -57,6 +72,8 @@ pub fn Player::new(song~ : @music.Song) -> Player {
     sequencer: @music.Sequencer::new(song~),
     synth: Synth::new(),
     beat_ticks: 3 * song.ticks_per_eighth,
+    events: FixedArray::make(song.tracks.length(), None),
+    started: false,
     beats: 0,
     paused: false,
   }
@@ -66,12 +83,14 @@ pub fn Player::new(song~ : @music.Song) -> Player {
 /// Renders the next `out.length()` samples of 16000 Hz signed PCM16 mono,
 /// mixing up to four voices and clamping into [-32768, 32767]. While
 /// paused, `render` outputs silence and advances nothing — note, loop and
-/// transport state all resume exactly where they were. Length 0 is a no-op.
-/// The per-sample path allocates nothing.
+/// transport state all resume exactly where they were (a pause before the
+/// first unpaused render defers the tick-0 start instead of skipping it).
+/// Length 0 is a no-op. The per-sample path allocates nothing.
 ///
-/// Note starts are triggered with a gate of the note's full length in
-/// samples (floored, at least one sample), on the voice matching the
-/// note's track index.
+/// Note starts are triggered with an exact phase-aware gate
+/// (`TickClock::ticks_to_samples_exact`): a note of `ticks` song ticks
+/// releases exactly on the tick boundary `ticks` ticks after its start,
+/// whatever fractional carry the clock holds.
 pub fn Player::render(self : Player, out~ : FixedArray[Int]) -> Unit {
   let n = out.length()
   if n == 0 {
@@ -82,6 +101,13 @@ pub fn Player::render(self : Player, out~ : FixedArray[Int]) -> Unit {
       out[i] = 0
     }
     return
+  }
+  if !self.started {
+    // The transport starts on tick 0: fire its note-starts before the first
+    // sample so they are audible from output sample 0. The beat counter
+    // stays put — zero beats have elapsed.
+    self.started = true
+    self.fire_arrival()
   }
   let mut pos = 0
   while pos < n {
@@ -99,22 +125,35 @@ pub fn Player::render(self : Player, out~ : FixedArray[Int]) -> Unit {
     pos += to_boundary
     // Tick boundary: step the transport and trigger the note starts at
     // exactly this sample offset.
-    let before = self.sequencer.tick()
-    for ev in self.sequencer.step() {
-      let gate = self.clock.ticks_to_samples(ticks=ev.ticks)
-      self.synth.trigger(
-        voice=ev.track,
-        on=ev,
-        gate_samples=if gate < 1 { 1 } else { gate },
-      )
+    self.fire_arrival()
+  }
+}
+
+///|
+/// Steps the sequencer across one arrival (a tick boundary, the initial
+/// tick 0, or a loop wrap) and triggers every reported note-start on the
+/// voice matching its track index, with its exact phase-aware gate. Uses
+/// only the preallocated event slots — no allocation. A beat (dotted
+/// quarter) is counted whenever the arrival moves the transport onto a beat
+/// boundary, including a loop wrap; the initial tick-0 arrival moves
+/// nothing, so it never counts.
+fn Player::fire_arrival(self : Player) -> Unit {
+  let before = self.sequencer.tick()
+  let count = self.sequencer.step_into(self.events)
+  for i in 0..<count {
+    match self.events[i] {
+      Some(event) =>
+        self.synth.trigger(
+          voice=event.track,
+          on=event,
+          gate_samples=self.clock.ticks_to_samples_exact(ticks=event.ticks),
+        )
+      None => () // unreachable: slots below count are always Some
     }
-    let after = self.sequencer.tick()
-    // A musical beat (dotted quarter) elapses whenever the transport lands
-    // on a beat boundary — including the loop wrap back onto tick 0. An
-    // idle sequencer (empty song) never moves, so it never counts.
-    if after != before && after % self.beat_ticks == 0 {
-      self.beats += 1
-    }
+  }
+  let after = self.sequencer.tick()
+  if after != before && after % self.beat_ticks == 0 {
+    self.beats += 1
   }
 }
 
@@ -147,8 +186,9 @@ pub fn Player::position_ticks(self : Player) -> Int {
 
 ///|
 /// Dotted-quarter beats elapsed since construction — one per
-/// `3 * ticks_per_eighth` song ticks, monotonic across loop wraps. Graphics
-/// reads this to sync animation to the music.
+/// `3 * ticks_per_eighth` song ticks, monotonic across loop wraps. The
+/// initial tick-0 arrival counts nothing (zero beats have elapsed at the
+/// start). Graphics reads this to sync animation to the music.
 pub fn Player::beat(self : Player) -> Int {
   self.beats
 }

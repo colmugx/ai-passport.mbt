@@ -1,15 +1,17 @@
 ///|
 /// Drawing surface. The internal storage is a private implementation detail
 /// (host may keep a full buffer, device may rasterize strip-by-strip) and is
-/// never exposed through the public API.
+/// never exposed through the public API. Pixels are kept as one 16-bit
+/// RGB565 value each (`FixedArray[UInt16]`), which halves the frame memory
+/// against an `Int` array on 32-bit targets; colors cross the API boundary
+/// exclusively as `@core.Color` values.
 ///
 /// All drawing primitives are clip-safe: coordinates outside the canvas are
-/// silently ignored instead of panicking. Colors cross the API boundary
-/// exclusively as `@core.Color` values.
+/// silently ignored instead of panicking.
 pub struct Canvas {
   priv width : Int
   priv height : Int
-  priv pixels : FixedArray[Int]
+  priv pixels : FixedArray[UInt16]
 }
 
 ///|

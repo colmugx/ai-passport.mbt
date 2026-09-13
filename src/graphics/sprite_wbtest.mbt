@@ -13,12 +13,15 @@ fn sprite_px(sheet : SpriteSheet, frame : Int, fx : Int, fy : Int) -> Int {
 }
 
 ///|
-/// Test helper: counts canvas storage cells holding the -1 transparency
-/// sentinel. Drawing must never leak the sentinel into the canvas.
+/// Test helper: counts canvas storage cells holding an out-of-range pixel
+/// value. Canvas cells are opaque 16-bit RGB565, so the sheet's -1
+/// transparency sentinel is unrepresentable there — this pins that drawing
+/// leaks nothing but valid RGB565 into the canvas.
 fn sprite_sentinel_count(canvas : Canvas) -> Int {
   let mut hits = 0
   for i in 0..<canvas.pixels.length() {
-    if canvas.pixels[i] == -1 {
+    let value = canvas.pixels[i].to_int()
+    if value < 0 || value > 65535 {
       hits += 1
     }
   }

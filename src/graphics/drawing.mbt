@@ -9,7 +9,7 @@
 /// }
 /// ```
 pub fn Canvas::clear(self : Canvas, color~ : @core.Color) -> Unit {
-  let value = color.to_rgb565()
+  let value = color.to_rgb565().to_uint16()
   let pixels = self.pixels
   for i in 0..<pixels.length() {
     pixels[i] = value
@@ -38,7 +38,7 @@ pub fn Canvas::pixel(
   color~ : @core.Color,
 ) -> Unit {
   if x >= 0 && x < self.width && y >= 0 && y < self.height {
-    self.pixels[y * self.width + x] = color.to_rgb565()
+    self.pixels[y * self.width + x] = color.to_rgb565().to_uint16()
   }
 }
 
@@ -83,7 +83,7 @@ pub fn Canvas::fill_rect(
   if x0 >= x1 || y0 >= y1 {
     return
   }
-  let value = color.to_rgb565()
+  let value = color.to_rgb565().to_uint16()
   let pixels = self.pixels
   let width = self.width
   for py in y0..<y1 {

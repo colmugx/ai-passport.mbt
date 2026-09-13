@@ -2,6 +2,14 @@
 /// A grid of sprite frames. Internal storage is private; one RGB565 value
 /// per pixel with -1 marking a transparent pixel. Frames are addressed
 /// row-major (frame 0 = top-left).
+///
+/// Storage note: the sheet deliberately keeps `FixedArray[Int]` rather than
+/// the canvas's 16-bit `FixedArray[UInt16]` — RGB565 has no spare code point
+/// for transparency (every 16-bit pattern is a legal color), so the sentinel
+/// needs a value outside `0..=65535`. A magic-color key or a side
+/// transparency bitmap would trade correctness or blit efficiency for two
+/// bytes per sprite pixel; sprite frames are small, so the wider array is
+/// the cheaper trade.
 pub(all) struct SpriteSheet {
   priv frame_width : Int
   priv frame_height : Int
@@ -164,7 +172,7 @@ pub fn Canvas::sprite(
     for px in x0..<x1 {
       let value = sheet_pixels[sheet_row + (px - x)]
       if value != -1 {
-        canvas_pixels[canvas_row + px] = value
+        canvas_pixels[canvas_row + px] = value.to_uint16()
       }
     }
   }

@@ -134,3 +134,105 @@ test "four loud noise voices clamp into PCM16 without panicking" {
   inspect(hi, content="32767")
   inspect(lo, content="-32768")
 }
+
+///|
+/// Builds a NoteOn with a bespoke instrument for envelope-clamp tests.
+fn clamp_note(instrument : @music.Instrument) -> @music.NoteOn {
+  {
+    track: 0,
+    pitch: @music.Pitch::from_midi(midi=69).unwrap(),
+    ticks: 100,
+    instrument,
+  }
+}
+
+///|
+test "a positive attack longer than the envelope scale clamps to a 1-unit step" {
+  // 4224 ms = 67584 samples exceeds the 65536-unit envelope scale, so
+  // 65536 / 67584 floors to 0 — the clamp makes it a 1-unit step and the
+  // attack completes in 65536 samples instead of stalling forever.
+  let instrument : @music.Instrument = {
+    name: "Slow Attack",
+    waveform: @music.Pulse50,
+    envelope: {
+      attack_ms: 4224,
+      decay_ms: 0,
+      sustain: 65536,
+      release_ms: 4224,
+    },
+    volume: 100,
+    vibrato: None,
+  }
+  let synth = @audio.Synth::new()
+  synth.trigger(voice=0, on=clamp_note(instrument), gate_samples=70000)
+  let out : FixedArray[Int] = FixedArray::make(139264, 0)
+  synth.render(out~)
+  // The ramp is exactly one envelope unit per sample: env 1 at sample 0
+  // (below audible resolution), env 32769 at sample 32768, full scale at
+  // sample 65535 — the attack completed instead of stalling.
+  inspect(out[0], content="0")
+  inspect(out[32768], content="6000")
+  inspect(out[65535], content="12000")
+  // The 70000-sample gate exhausts and release runs at one unit per sample:
+  // env 65534 at sample 70001 — a stalled 0-step would still read full
+  // scale there.
+  inspect(out[70001], content="11999")
+  // The fade completes after 65536 release samples and the voice
+  // deactivates instead of leaking a frozen level.
+  inspect(out[135535], content="0")
+  inspect(out[135536], content="0")
+  inspect(out[139263], content="0")
+}
+
+///|
+test "a positive decay longer than the envelope scale clamps to a 1-unit step" {
+  // 8224 ms = 131584 samples: (65536 - 0) / 131584 floors to 0 — clamped to
+  // 1, so the decay reaches the sustain floor after 65536 samples.
+  let instrument : @music.Instrument = {
+    name: "Slow Decay",
+    waveform: @music.Pulse50,
+    envelope: { attack_ms: 0, decay_ms: 8224, sustain: 0, release_ms: 0, },
+    volume: 100,
+    vibrato: None,
+  }
+  let synth = @audio.Synth::new()
+  synth.trigger(voice=0, on=clamp_note(instrument), gate_samples=200000)
+  let out : FixedArray[Int] = FixedArray::make(66000, 0)
+  synth.render(out~)
+  // Instant attack at full scale, then exactly one unit down per sample:
+  // env 32768 at sample 32768, env 25536 at sample 40000 (its floor on the
+  // negative half-wave is -4676 — a stalled 0-step would read full scale).
+  inspect(out[0], content="12000")
+  inspect(out[32768], content="6000")
+  inspect(out[40000], content="-4676")
+  // The ramp hits the sustain floor (silence) at sample 65536.
+  inspect(out[65536], content="0")
+  inspect(out[65999], content="0")
+}
+
+///|
+test "a positive release longer than the envelope scale clamps to a 1-unit step" {
+  // 8224 ms = 131584 samples: 65536 / 131584 floors to 0 — clamped to 1, so
+  // the release fades out over 65536 samples instead of hanging forever.
+  let instrument : @music.Instrument = {
+    name: "Slow Release",
+    waveform: @music.Pulse50,
+    envelope: { attack_ms: 0, decay_ms: 0, sustain: 65536, release_ms: 8224, },
+    volume: 100,
+    vibrato: None,
+  }
+  let synth = @audio.Synth::new()
+  synth.trigger(voice=0, on=clamp_note(instrument), gate_samples=1000)
+  let out : FixedArray[Int] = FixedArray::make(67000, 0)
+  synth.render(out~)
+  // Full scale through the whole gate; release begins exactly at gate end
+  // (env 65535 at sample 1000, env 33536 at sample 33000).
+  inspect(out[999], content="12000")
+  inspect(out[1000], content="11999")
+  inspect(out[33000], content="6140")
+  // The fade completes and the voice goes idle instead of leaking a
+  // frozen nonzero level.
+  inspect(out[66535], content="0")
+  inspect(out[66536], content="0")
+  inspect(out[66999], content="0")
+}

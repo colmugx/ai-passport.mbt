@@ -64,6 +64,7 @@ pub fn Sequencer::new(song~ : Song) -> Self
 pub fn Sequencer::new_with_loop(song~ : Song, start~ : Int, end~ : Int) -> Self
 pub fn Sequencer::song(Self) -> Song
 pub fn Sequencer::step(Self) -> Array[NoteOn]
+pub fn Sequencer::step_into(Self, FixedArray[NoteOn?]) -> Int
 pub fn Sequencer::tick(Self) -> Int
 
 pub(all) struct Song {
@@ -86,6 +87,7 @@ pub fn TickClock::new(sample_rate~ : Int, dotted_quarter_bpm~ : Int, ticks_per_e
 pub fn TickClock::pump(Self, samples~ : Int) -> Int
 pub fn TickClock::samples_to_next_tick(Self) -> Int
 pub fn TickClock::ticks_to_samples(Self, ticks~ : Int) -> Int
+pub fn TickClock::ticks_to_samples_exact(Self, ticks~ : Int) -> Int
 
 pub(all) struct Track {
   instrument : Instrument

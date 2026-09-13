@@ -184,7 +184,7 @@ pub fn Canvas::text(
   y~ : Int,
   color~ : @core.Color,
 ) -> Unit {
-  let value = color.to_rgb565()
+  let value = color.to_rgb565().to_uint16()
   let pixels = self.pixels
   let width = self.width
   let height = self.height

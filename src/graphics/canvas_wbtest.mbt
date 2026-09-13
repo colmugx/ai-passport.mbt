@@ -20,13 +20,13 @@ let black : @core.Color = @core.Color::rgb(r=0, g=0, b=0)
 ///|
 /// Test helper: reads the raw internal storage value at (`x`, `y`).
 fn wb_px(canvas : Canvas, x : Int, y : Int) -> Int {
-  canvas.pixels[y * canvas.width + x]
+  canvas.pixels[y * canvas.width + x].to_int()
 }
 
 ///|
 /// Test helper: counts internal storage cells holding `color`.
 fn wb_count(canvas : Canvas, color : @core.Color) -> Int {
-  let value = color.to_rgb565()
+  let value = color.to_rgb565().to_uint16()
   let pixels = canvas.pixels
   let mut hits = 0
   for i in 0..<pixels.length() {

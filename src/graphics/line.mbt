@@ -27,7 +27,7 @@ pub fn Canvas::line(
   } else {
     (x1, y1, x0, y0)
   }
-  let value = color.to_rgb565()
+  let value = color.to_rgb565().to_uint16()
   let pixels = self.pixels
   let width = self.width
   let height = self.height

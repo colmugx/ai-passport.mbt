@@ -25,16 +25,16 @@ jobs:
           moon update
 
       - name: Check (native)
-        run: moon check --target native
+        run: moon check --target native --output-json
 
       - name: Test (native)
-        run: moon test --target native
+        run: moon test --target native --output-json
 
       - name: Check (js)
-        run: moon check --target js
+        run: moon check --target js --output-json
 
       - name: Test (js)
-        run: moon test --target js
+        run: moon test --target js --output-json
 
       - name: Refresh generated interfaces and formatting
         run: |

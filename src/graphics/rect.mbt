@@ -33,7 +33,7 @@ pub fn Canvas::rect(
   }
   let right = x + w - 1
   let bottom = y + h - 1
-  let value = color.to_rgb565()
+  let value = color.to_rgb565().to_uint16()
   let pixels = self.pixels
   let width = self.width
   let height = self.height

@@ -76,6 +76,15 @@ fn walk_timeline(notes : Array[Note], pos : Int) -> (Int, Int) {
 /// sum of its notes' `ticks`, and a track past its end stays silent until
 /// the loop wraps.
 ///
+/// The transport model is *arrival-based*: `step()` moves the transport onto
+/// the next tick and reports the note-starts whose start boundary is the tick
+/// it lands on. A fresh sequencer sits at tick 0 without having fired it —
+/// its first `step()` is the arrival at tick 0 (`tick()` stays 0), so a note
+/// starting at tick 0 is reported before any transport time has elapsed. An
+/// audio player calls that first step before rendering its first sample and
+/// every later step exactly on its tick boundary, which puts the first
+/// audible sample at output sample 0.
+///
 /// The loop region defaults to the whole song: `length()` is the longest
 /// track's total ticks, and an empty song has length 0, leaving the sequencer
 /// permanently idle.
@@ -91,10 +100,12 @@ fn walk_timeline(notes : Array[Note], pos : Int) -> (Int, Int) {
 ///     track,
 ///   ])
 ///   let seq = Sequencer::new(song~)
+///   // The first step is the arrival at tick 0: the C4 note-start fires
+///   // before any transport time has elapsed.
 ///   let events = seq.step()
 ///   inspect(events.length(), content="1")
 ///   inspect(events[0].pitch.midi, content="60")
-///   inspect(seq.tick(), content="1")
+///   inspect(seq.tick(), content="0")
 /// }
 /// ```
 pub struct Sequencer {
@@ -102,13 +113,14 @@ pub struct Sequencer {
   priv cursor : FixedArray[Int]
   priv offset : FixedArray[Int]
   priv mut tick : Int
+  priv mut arrived : Bool
   priv loop_start : Int
   priv loop_end : Int
 }
 
 ///|
 /// Shared constructor: a fresh sequencer sits at tick 0 with every track
-/// cursor at note 0.
+/// cursor at note 0 and the tick-0 arrival not yet fired.
 fn build_sequencer(song : Song, loop_start : Int, loop_end : Int) -> Sequencer {
   let track_count = song.tracks.length()
   {
@@ -116,6 +128,7 @@ fn build_sequencer(song : Song, loop_start : Int, loop_end : Int) -> Sequencer {
     cursor: FixedArray::make(track_count, 0),
     offset: FixedArray::make(track_count, 0),
     tick: 0,
+    arrived: false,
     loop_start,
     loop_end,
   }
@@ -165,7 +178,8 @@ pub fn Sequencer::song(self : Sequencer) -> Song {
 
 ///|
 /// Current transport position in song ticks, always in `[0, length())`. A
-/// fresh sequencer sits at tick 0.
+/// fresh sequencer sits at tick 0, and its first `step()` is the arrival at
+/// tick 0 (the position only moves on the second step).
 pub fn Sequencer::tick(self : Sequencer) -> Int {
   self.tick
 }
@@ -177,65 +191,119 @@ pub fn Sequencer::length(self : Sequencer) -> Int {
 }
 
 ///|
-/// Advances the transport by one song tick and returns every note-start the
-/// transport crossed on that tick, ordered by track index.
+/// Advances the transport to the next song tick and reports every note-start
+/// whose start boundary is the tick the transport lands on, writing them into
+/// the caller's `events` buffer and returning the count. This is the
+/// realtime-safe step: it allocates nothing, so an audio player can call it
+/// on every tick boundary with a preallocated buffer.
+///
+/// The contract is loud, not lossy: `events` must hold at least one slot per
+/// song track (at most four per AGENTS.md rule 7 — each monophonic track
+/// starts at most one note per tick), and a smaller buffer aborts. Every slot
+/// is overwritten on each call — slots at indices `count..` are reset to
+/// `None`, so stale events can never leak into a later step. Events are
+/// ordered by track index.
 ///
 /// Note `k` of a track starts at the cumulative tick of notes `0..k-1`; its
 /// `NoteOn` is reported by the step after which `tick()` equals that start
-/// boundary plus one — in particular note 0, which starts at tick 0, is
-/// reported by the first `step()` call. Rests never trigger. When the
-/// transport would move onto tick `loop_end`, it wraps to `loop_start` and
-/// every track's cursor is recomputed to `loop_start` by walking the
-/// cumulative sums; note-starts at `loop_start` are triggered again on the
-/// first step of the wrapped cycle, and starts before `loop_start` never
-/// repeat. Notes crossing the loop end finish playing with the gate length
-/// they were triggered with. On an empty song (length 0) `step()` is a no-op
-/// returning `[]`.
-pub fn Sequencer::step(self : Sequencer) -> Array[NoteOn] {
-  if self.loop_end == 0 {
-    return []
+/// boundary. In particular the first `step_into` on a fresh sequencer is the
+/// arrival at tick 0 (`tick()` stays 0), where note 0 fires — a player calls
+/// it before rendering its first sample so tick-0 notes sound from sample 0.
+/// Rests never trigger. When the transport would move onto tick `loop_end`,
+/// it wraps to `loop_start` and every track's cursor is recomputed to
+/// `loop_start` by walking the cumulative sums; the wrapped arrival reports
+/// note-starts exactly at `loop_start` again, starts before `loop_start`
+/// never repeat, and notes crossing the loop end finish playing with the
+/// gate length they were triggered with. On an empty song (length 0)
+/// `step_into` is a no-op returning 0.
+pub fn Sequencer::step_into(
+  self : Sequencer,
+  events : FixedArray[NoteOn?],
+) -> Int {
+  if events.length() < self.song.tracks.length() {
+    abort(
+      "Sequencer::step_into: the event buffer holds \{events.length()} slots but the song has \{self.song.tracks.length()} tracks; provide at least one slot per track (at most four)",
+    )
   }
-  let events : Array[NoteOn] = []
-  for t, track in self.song.tracks {
-    let notes = track.notes
-    if self.cursor[t] >= notes.length() {
-      continue // past the end: silent until the loop wraps
+  for i in 0..<events.length() {
+    events[i] = None
+  }
+  if self.loop_end == 0 {
+    return 0
+  }
+  if !self.arrived {
+    // First step: the transport arrives at tick 0. The cursors already sit
+    // at (note 0, 0 ticks consumed) from construction, so the shared arrival
+    // rule below reports exactly the tick-0 note-starts, and tick() stays 0.
+    self.arrived = true
+  } else {
+    for t, track in self.song.tracks {
+      let notes = track.notes
+      if self.cursor[t] >= notes.length() {
+        continue // past the end: silent until the loop wraps
+      }
+      self.offset[t] += 1
+      // Consume notes the transport finished on this tick. Durations are
+      // enforced positive at construction, so at most one boundary is crossed.
+      while self.cursor[t] < notes.length() &&
+            self.offset[t] >= notes[self.cursor[t]].ticks {
+        self.offset[t] -= notes[self.cursor[t]].ticks
+        self.cursor[t] += 1
+      }
     }
-    self.offset[t] += 1
-    let note = notes[self.cursor[t]]
-    if self.offset[t] == 1 {
-      // The transport crossed this note's start boundary one tick ago and the
-      // note is now sounding its first tick.
+    self.tick = self.tick + 1
+    if self.tick >= self.loop_end {
+      // Transition onto loop_end: wrap the transport and recompute every
+      // track's cursor to loop_start by walking the cumulative sums. The
+      // wrapped arrival re-reports note-starts exactly at loop_start through
+      // the same offset rule as everywhere else.
+      self.tick = self.loop_start
+      for t, track in self.song.tracks {
+        let (index, consumed) = walk_timeline(track.notes, self.loop_start)
+        self.cursor[t] = index
+        self.offset[t] = consumed
+      }
+    }
+  }
+  // Arrival: a track fires its current note exactly when the transport lands
+  // on the note's start boundary (0 ticks consumed of it). A mid-note landing
+  // (loop_start inside a long note) has consumed > 0 and stays silent.
+  let mut count = 0
+  for t, track in self.song.tracks {
+    if self.cursor[t] < track.notes.length() && self.offset[t] == 0 {
+      let note = track.notes[self.cursor[t]]
       match note.pitch {
-        Some(pitch) =>
-          events.push({
+        Some(pitch) => {
+          events[count] = Some({
             track: t,
             pitch,
             ticks: note.ticks,
             instrument: track.instrument,
           })
+          count += 1
+        }
         None => () // rests never trigger
       }
     }
-    // Consume notes the transport finished on this tick. Durations are
-    // enforced positive at construction, so at most one boundary is crossed.
-    while self.cursor[t] < notes.length() &&
-          self.offset[t] >= notes[self.cursor[t]].ticks {
-      self.offset[t] -= notes[self.cursor[t]].ticks
-      self.cursor[t] += 1
-    }
   }
-  self.tick = self.tick + 1
-  if self.tick >= self.loop_end {
-    // Transition onto loop_end: wrap the transport and recompute every
-    // track's cursor to loop_start by walking the cumulative sums. Note-starts
-    // at loop_start retrigger on the next step — the first of the new cycle —
-    // through the same offset rule as everywhere else.
-    self.tick = self.loop_start
-    for t, track in self.song.tracks {
-      let (index, consumed) = walk_timeline(track.notes, self.loop_start)
-      self.cursor[t] = index
-      self.offset[t] = consumed
+  count
+}
+
+///|
+/// Convenience variant of `step_into` that returns a fresh `Array[NoteOn]`.
+/// Allocates on every call — fine for tests, tools and offline timing math,
+/// but realtime audio paths must use `step_into` with a preallocated buffer.
+pub fn Sequencer::step(self : Sequencer) -> Array[NoteOn] {
+  let buffer : FixedArray[NoteOn?] = FixedArray::make(
+    self.song.tracks.length(),
+    None,
+  )
+  let count = self.step_into(buffer)
+  let events : Array[NoteOn] = []
+  for i in 0..<count {
+    match buffer[i] {
+      Some(event) => events.push(event)
+      None => () // unreachable: slots below count are always Some
     }
   }
   events
