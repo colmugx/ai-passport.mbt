@@ -177,17 +177,22 @@ pub fn Sequencer::song(self : Sequencer) -> Song {
 }
 
 ///|
-/// Current transport position in song ticks, always in `[0, length())`. A
-/// fresh sequencer sits at tick 0, and its first `step()` is the arrival at
-/// tick 0 (the position only moves on the second step).
+/// Current transport position in song ticks, always inside the loop region
+/// `[loop_start, loop_end)` — which equals `0..<length()` only when the
+/// loop starts at tick 0. A fresh sequencer sits at tick 0, and its first
+/// `step()` is the arrival at tick 0 (the position only moves on the second
+/// step).
 pub fn Sequencer::tick(self : Sequencer) -> Int {
   self.tick
 }
 
 ///|
-/// Loop length in song ticks. 0 means an empty song.
+/// Loop length in song ticks: `loop_end - loop_start`, the number of ticks
+/// one full cycle plays. 0 means an empty song. The transport position is
+/// NOT an index into `0..<length()` when the loop starts after tick 0 — it
+/// ranges over `[loop_start, loop_end)`.
 pub fn Sequencer::length(self : Sequencer) -> Int {
-  self.loop_end
+  self.loop_end - self.loop_start
 }
 
 ///|

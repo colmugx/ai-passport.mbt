@@ -67,13 +67,14 @@ pub fn Sequencer::step(Self) -> Array[NoteOn]
 pub fn Sequencer::step_into(Self, FixedArray[NoteOn?]) -> Int
 pub fn Sequencer::tick(Self) -> Int
 
-pub(all) struct Song {
-  meter : Meter
-  tempo : Tempo
-  ticks_per_eighth : Int
-  tracks : Array[Track]
+pub struct Song {
+  // private fields
 } derive(@debug.Debug)
+pub fn Song::meter(Self) -> Meter
 pub fn Song::new(meter~ : Meter, tempo~ : Tempo, tracks~ : Array[Track], ticks_per_eighth? : Int) -> Self raise SongError
+pub fn Song::tempo(Self) -> Tempo
+pub fn Song::ticks_per_eighth(Self) -> Int
+pub fn Song::track_count(Self) -> Int
 
 pub(all) struct Tempo {
   dotted_quarter_bpm : Int

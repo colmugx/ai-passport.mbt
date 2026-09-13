@@ -32,8 +32,8 @@ test "Song::new accepts exactly four tracks" {
     tempo=@music.Tempo::standard(),
     tracks~,
   )
-  debug_inspect(song.tracks.length(), content="4")
-  debug_inspect(song.ticks_per_eighth, content="4")
+  debug_inspect(song.track_count(), content="4")
+  debug_inspect(song.ticks_per_eighth(), content="4")
 }
 
 ///|
@@ -65,7 +65,7 @@ test "Song::new allows zero tracks" {
     tempo=@music.Tempo::standard(),
     tracks=[],
   )
-  debug_inspect(song.tracks.length(), content="0")
+  debug_inspect(song.track_count(), content="0")
 }
 
 ///|
@@ -76,14 +76,14 @@ test "Song::new defaults to 4 ticks per eighth and accepts overrides" {
     tempo=@music.Tempo::standard(),
     tracks=[track],
   )
-  debug_inspect(default.ticks_per_eighth, content="4")
+  debug_inspect(default.ticks_per_eighth(), content="4")
   let fine = @music.Song::new(
     meter=@music.Meter::six_eight(),
     tempo=@music.Tempo::standard(),
     tracks=[track],
     ticks_per_eighth=8,
   )
-  debug_inspect(fine.ticks_per_eighth, content="8")
+  debug_inspect(fine.ticks_per_eighth(), content="8")
 }
 
 ///|

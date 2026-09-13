@@ -186,6 +186,7 @@ test "pause outputs silence and freezes the transport; resume is exact" {
     b.render(out=chunk)
   }
   let before = b.position_ticks()
+  let beat_before = b.beat()
   b.pause()
   inspect(b.paused(), content="true")
   for _ in 0..<3 {
@@ -194,7 +195,9 @@ test "pause outputs silence and freezes the transport; resume is exact" {
     // Paused renders are pure silence, whatever the buffer held before.
     inspect(all_zero(chunk), content="true")
   }
+  // Pause freezes the elapsed tick AND beat state.
   inspect(b.position_ticks(), content=before.to_string())
+  inspect(b.beat(), content=beat_before.to_string())
   b.unpause()
   inspect(b.paused(), content="false")
   // Resumed chunks continue the stream exactly where the pause froze it:
@@ -292,6 +295,120 @@ test "four simultaneous voices clamp into PCM16" {
   }
   inspect(hi, content="32767")
   inspect(lo, content="-32768")
+}
+
+///|
+test "beats accrue monotonically: 12 elapsed ticks => beat 1, 24 => beat 2" {
+  // One beat = 12 song ticks of ELAPSED transport time. The song is one
+  // 24-tick note, so the whole song is one loop and the transport cannot
+  // wrap early: the 12th boundary sits at ceil(12 * 960000 / 912) = 12632,
+  // the 24th (the wrap) at 25264.
+  let track : @music.Track = {
+    instrument: @music.Instrument::celesta(),
+    notes: [{ pitch: @music.Pitch::from_midi(midi=69), ticks: 24, }],
+  }
+  let song = @music.Song::new(
+    meter=@music.Meter::six_eight(),
+    tempo=@music.Tempo::standard(),
+    tracks=[track],
+  )
+  let player = Player::new(song~)
+  inspect(player.beat(), content="0")
+  let pre : FixedArray[Int] = FixedArray::make(12631, 0)
+  player.render(out=pre)
+  inspect(player.beat(), content="0")
+  let one : FixedArray[Int] = FixedArray::make(1, 0)
+  player.render(out=one)
+  inspect(player.beat(), content="1")
+  inspect(player.position_ticks(), content="12")
+  // Render up to the 24th boundary (the loop wrap): the second beat is
+  // counted from elapsed ticks, not from landing on a beat-aligned position.
+  let more : FixedArray[Int] = FixedArray::make(25264 - 12632, 0)
+  player.render(out=more)
+  inspect(player.beat(), content="2")
+  inspect(player.position_ticks(), content="0")
+}
+
+///|
+test "a 10-tick looping song counts no beat at its wrap; beat 1 lands after 12 elapsed ticks" {
+  // Loop length 10 is not a multiple of the 12-tick beat: the wrap lands on
+  // position 0 but only 10 ticks have elapsed, so it must NOT count a beat.
+  let track : @music.Track = {
+    instrument: @music.Instrument::celesta(),
+    notes: [{ pitch: @music.Pitch::from_midi(midi=69), ticks: 10, }],
+  }
+  let song = @music.Song::new(
+    meter=@music.Meter::six_eight(),
+    tempo=@music.Tempo::standard(),
+    tracks=[track],
+  )
+  let player = Player::new(song~)
+  // Boundary 10 (the wrap) sits at ceil(10 * 960000 / 912) = 10527.
+  let wrap : FixedArray[Int] = FixedArray::make(10527, 0)
+  player.render(out=wrap)
+  inspect(player.beat(), content="0")
+  inspect(player.position_ticks(), content="0")
+  // Boundaries 11 and 12: after 12 total elapsed ticks across the wrap the
+  // beat counter reaches 1 (at sample 12632, position 2).
+  let eleven : FixedArray[Int] = FixedArray::make(11579 - 10527, 0)
+  player.render(out=eleven)
+  inspect(player.beat(), content="0")
+  inspect(player.position_ticks(), content="1")
+  let twelve : FixedArray[Int] = FixedArray::make(12632 - 11579, 0)
+  player.render(out=twelve)
+  inspect(player.beat(), content="1")
+  inspect(player.position_ticks(), content="2")
+}
+
+///|
+test "a player stays deterministic when the caller mutates its authoring arrays" {
+  // Song::new snapshots the authoring data, so mutating the arrays after
+  // construction can neither change the notes the transport plays nor
+  // invalidate the event scratch sized from the snapshot.
+  let build : () -> @music.Song = fn() {
+    let notes : Array[@music.Note] = [
+      { pitch: @music.Pitch::from_midi(midi=69), ticks: 4, },
+    ]
+    let tracks : Array[@music.Track] = [
+      { instrument: @music.Instrument::celesta(), notes, },
+    ]
+    @music.Song::new(
+      meter=@music.Meter::six_eight(),
+      tempo=@music.Tempo::standard(),
+      tracks~,
+    ) catch {
+      err => abort("test song violates four-voice cap: \{err}")
+    }
+  }
+  let notes : Array[@music.Note] = [
+    { pitch: @music.Pitch::from_midi(midi=69), ticks: 4, },
+  ]
+  let tracks : Array[@music.Track] = [
+    { instrument: @music.Instrument::celesta(), notes, },
+  ]
+  let song = @music.Song::new(
+    meter=@music.Meter::six_eight(),
+    tempo=@music.Tempo::standard(),
+    tracks~,
+  ) catch {
+    err => abort("test song violates four-voice cap: \{err}")
+  }
+  let player = Player::new(song~)
+  // Mutate everything the caller still holds: more notes, a second track.
+  notes.push({ pitch: None, ticks: 4, })
+  notes.push({ pitch: @music.Pitch::from_midi(midi=72), ticks: 4, })
+  tracks.push({
+    instrument: @music.Instrument::woodwind(),
+    notes: [{ pitch: @music.Pitch::from_midi(midi=64), ticks: 4, }],
+  })
+  let a : FixedArray[Int] = FixedArray::make(4300, 0)
+  player.render(out=a)
+  // A fresh player over a pristine, identical authoring snapshot must
+  // produce the identical stream (4300 samples cross the 4-tick loop wrap).
+  let pristine = Player::new(song=build())
+  let b : FixedArray[Int] = FixedArray::make(4300, 0)
+  pristine.render(out=b)
+  inspect(buffers_equal(a, b), content="true")
 }
 
 ///|

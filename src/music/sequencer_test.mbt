@@ -53,7 +53,7 @@ fn summarize(events : Array[@music.NoteOn]) -> String {
 /// the song's track count — and summarizes what landed in it.
 fn step_summary(seq : @music.Sequencer) -> String {
   let buf : FixedArray[@music.NoteOn?] = FixedArray::make(
-    seq.song().tracks.length(),
+    seq.song().track_count(),
     None,
   )
   let count = seq.step_into(buf)
@@ -243,7 +243,7 @@ test "loop region retriggers at the start and never repeats earlier events" {
     tracks=[woodwind],
   )
   let seq = @music.Sequencer::new_with_loop(song~, start=2, end=4)
-  inspect(seq.length(), content="4")
+  inspect(seq.length(), content="2") // loop [2, 4): length is end - start, not end
   // First pass plays the pre-loop region once: A4 starts at tick 0.
   inspect(step_summary(seq), content="[t0 m69 k2 Pulse25]")
   inspect(seq.tick(), content="0")
@@ -277,7 +277,7 @@ test "a mid-note loop start never retriggers the note it lands inside" {
   )
   // The loop starts two ticks into the four-tick C4.
   let seq = @music.Sequencer::new_with_loop(song~, start=2, end=6)
-  inspect(seq.length(), content="6")
+  inspect(seq.length(), content="4") // loop [2, 6): end - start
   inspect(step_summary(seq), content="[t0 m60 k4 Pulse50]")
   inspect(seq.tick(), content="0")
   inspect(step_summary(seq), content="[]")
@@ -363,7 +363,7 @@ test "track index, gate length and instrument propagate from the track" {
     tracks=[bass, strings],
   )
   let seq = @music.Sequencer::new(song~)
-  inspect(seq.song().tracks.length(), content="2")
+  inspect(seq.song().track_count(), content="2")
   let events = seq.step()
   inspect(summarize(events), content="[t0 m48 k1 Triangle, t1 m55 k2 Pulse50]")
   // The NoteOn carries the track's whole instrument, envelope included.

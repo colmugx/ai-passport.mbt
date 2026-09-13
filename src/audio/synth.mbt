@@ -183,6 +183,7 @@ pub fn Synth::trigger(
   v.lfo_phase = 0
   v.lfsr = LFSR_SEED
   v.env = 0
+  v.env_err = 0
   v.state = Attack
   v.gate = gate_samples
 }
@@ -222,6 +223,7 @@ pub fn Synth::release(self : Synth, voice~ : Int) -> Unit {
   }
   let v = self.voices[voice]
   if v.active && !(v.state is Release) {
+    v.env_err = 0
     v.state = Release
   }
 }

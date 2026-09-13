@@ -48,12 +48,16 @@ pub struct Player {
   priv sequencer : @music.Sequencer
   priv synth : Synth
   priv beat_ticks : Int // song ticks per musical beat (dotted quarter)
+  /// Song ticks of transport time elapsed since construction, counted
+  /// monotonically across every advancing arrival — including loop wraps —
+  /// and independent of the wrapped position. The single authority for
+  /// `beat()`.
+  priv mut elapsed_ticks : Int
   /// Preallocated note-start slots handed to `step_into` on every arrival —
   /// the realtime path never allocates. One slot per song track (at most
   /// four).
   priv events : FixedArray[@music.NoteOn?]
   priv mut started : Bool // tick-0 arrival not fired yet
-  priv mut beats : Int
   priv mut paused : Bool
 }
 
@@ -66,15 +70,15 @@ pub fn Player::new(song~ : @music.Song) -> Player {
   {
     clock: @music.TickClock::new(
       sample_rate=SAMPLE_RATE,
-      dotted_quarter_bpm=song.tempo.dotted_quarter_bpm,
-      ticks_per_eighth=song.ticks_per_eighth,
+      dotted_quarter_bpm=song.tempo().dotted_quarter_bpm,
+      ticks_per_eighth=song.ticks_per_eighth(),
     ),
     sequencer: @music.Sequencer::new(song~),
     synth: Synth::new(),
-    beat_ticks: 3 * song.ticks_per_eighth,
-    events: FixedArray::make(song.tracks.length(), None),
+    beat_ticks: 3 * song.ticks_per_eighth(),
+    events: FixedArray::make(song.track_count(), None),
     started: false,
-    beats: 0,
+    elapsed_ticks: 0,
     paused: false,
   }
 }
@@ -152,8 +156,12 @@ fn Player::fire_arrival(self : Player) -> Unit {
     }
   }
   let after = self.sequencer.tick()
-  if after != before && after % self.beat_ticks == 0 {
-    self.beats += 1
+  // Every advancing arrival is exactly one song tick of transport time —
+  // counted monotonically, so a loop whose length is not a beat multiple
+  // cannot fake a beat on its wrap, and beats keep accruing across wraps.
+  // The initial tick-0 arrival moves nothing, so it never counts.
+  if after != before {
+    self.elapsed_ticks += 1
   }
 }
 
@@ -186,9 +194,13 @@ pub fn Player::position_ticks(self : Player) -> Int {
 
 ///|
 /// Dotted-quarter beats elapsed since construction — one per
-/// `3 * ticks_per_eighth` song ticks, monotonic across loop wraps. The
-/// initial tick-0 arrival counts nothing (zero beats have elapsed at the
-/// start). Graphics reads this to sync animation to the music.
+/// `3 * ticks_per_eighth` monotonically elapsed transport ticks, independent
+/// of the loop position: a loop whose length is not a beat multiple counts
+/// no beat at its wrap, and beats keep accruing across wraps (12 elapsed
+/// ticks => beat 1, 24 => beat 2, whatever the loop length). The initial
+/// tick-0 arrival counts nothing (zero beats have elapsed at the start), and
+/// pausing freezes the count with everything else. Graphics reads this to
+/// sync animation to the music.
 pub fn Player::beat(self : Player) -> Int {
-  self.beats
+  self.elapsed_ticks / self.beat_ticks
 }

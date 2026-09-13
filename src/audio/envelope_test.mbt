@@ -147,92 +147,141 @@ fn clamp_note(instrument : @music.Instrument) -> @music.NoteOn {
 }
 
 ///|
-test "a positive attack longer than the envelope scale clamps to a 1-unit step" {
-  // 4224 ms = 67584 samples exceeds the 65536-unit envelope scale, so
-  // 65536 / 67584 floors to 0 — the clamp makes it a 1-unit step and the
-  // attack completes in 65536 samples instead of stalling forever.
+test "a 100 ms attack reaches full scale exactly at 1600 samples" {
+  // 100 ms = 1600 samples; 65536 / 1600 = 40 remainder 1536, so the
+  // Bresenham ramp adds 40 units every sample plus one extra unit 1536
+  // times, landing on the full scale at exactly sample 1600.
   let instrument : @music.Instrument = {
-    name: "Slow Attack",
+    name: "Ramp Attack",
+    waveform: @music.Pulse50,
+    envelope: { attack_ms: 100, decay_ms: 0, sustain: 65536, release_ms: 8224, },
+    volume: 100,
+    vibrato: None,
+  }
+  let synth = @audio.Synth::new()
+  synth.trigger(voice=0, on=clamp_note(instrument), gate_samples=4000)
+  let out : FixedArray[Int] = FixedArray::make(4000, 0)
+  synth.render(out~)
+  inspect(out[0], content="7")
+  inspect(out[1598], content="-11993")
+  inspect(out[1599], content="-12000")
+  // After reaching the target the attack does not overshoot: the level is
+  // held (decay is instant to the full-scale sustain).
+  inspect(out[3000], content="12000")
+}
+
+///|
+test "an 8-second attack lasts 8 seconds, not the old 4.096 s clamp" {
+  // 8000 ms = 128000 samples with a 65536-unit span: the whole step floors
+  // to 0, so the ramp advances purely through the carried remainder and
+  // must still reach full scale exactly at sample 128000 (the previous
+  // max(1) clamp finished around 4.096 s; a zero step would stall forever).
+  let instrument : @music.Instrument = {
+    name: "Eight Second Attack",
     waveform: @music.Pulse50,
     envelope: {
-      attack_ms: 4224,
+      attack_ms: 8000,
       decay_ms: 0,
       sustain: 65536,
-      release_ms: 4224,
+      release_ms: 8224,
     },
     volume: 100,
     vibrato: None,
   }
   let synth = @audio.Synth::new()
-  synth.trigger(voice=0, on=clamp_note(instrument), gate_samples=70000)
+  synth.trigger(voice=0, on=clamp_note(instrument), gate_samples=200000)
   let out : FixedArray[Int] = FixedArray::make(139264, 0)
   synth.render(out~)
-  // The ramp is exactly one envelope unit per sample: env 1 at sample 0
-  // (below audible resolution), env 32769 at sample 32768, full scale at
-  // sample 65535 — the attack completed instead of stalling.
-  inspect(out[0], content="0")
-  inspect(out[32768], content="6000")
-  inspect(out[65535], content="12000")
-  // The 70000-sample gate exhausts and release runs at one unit per sample:
-  // env 65534 at sample 70001 — a stalled 0-step would still read full
-  // scale there.
-  inspect(out[70001], content="11999")
-  // The fade completes after 65536 release samples and the voice
-  // deactivates instead of leaking a frozen level.
-  inspect(out[135535], content="0")
-  inspect(out[135536], content="0")
-  inspect(out[139263], content="0")
+  // Halfway through, the level is only about half scale — the old max(1)
+  // clamp would already read full scale here.
+  inspect(out[65535], content="6143")
+  inspect(out[65536], content="6143")
+  // The ramp's final units land within the last two samples (their floors
+  // read as full scale on the negative half-wave) and the level is held
+  // afterwards: no stall, no 4.096 s shortcut.
+  inspect(out[127998], content="-12000")
+  inspect(out[127999], content="-12000")
+  inspect(out[135000], content="12000")
 }
 
 ///|
-test "a positive decay longer than the envelope scale clamps to a 1-unit step" {
-  // 8224 ms = 131584 samples: (65536 - 0) / 131584 floors to 0 — clamped to
-  // 1, so the decay reaches the sustain floor after 65536 samples.
+test "a small-span decay still lasts the requested ms" {
+  // Sustain sits 40 units below full scale and decay_ms 100 = 1600 samples:
+  // span 40 < 1600, so the whole step floors to 0. The carried remainder
+  // removes one unit every 40 samples — the decay lands on the sustain
+  // level exactly at sample 1600 instead of jumping there in 40 samples.
   let instrument : @music.Instrument = {
-    name: "Slow Decay",
+    name: "Small Span Decay",
     waveform: @music.Pulse50,
-    envelope: { attack_ms: 0, decay_ms: 8224, sustain: 0, release_ms: 0, },
+    envelope: { attack_ms: 0, decay_ms: 100, sustain: 65496, release_ms: 0, },
+    volume: 100,
+    vibrato: None,
+  }
+  let synth = @audio.Synth::new()
+  synth.trigger(voice=0, on=clamp_note(instrument), gate_samples=4000)
+  let out : FixedArray[Int] = FixedArray::make(4000, 0)
+  synth.render(out~)
+  // One unit is removed exactly every 40 samples (1600 / 40): the level is
+  // still full at sample 39, takes its first unit at 40, is 20 units down
+  // at the halfway mark, and lands on the sustain level at sample 1600,
+  // holding it afterwards — the old max(1) clamp would have finished the
+  // whole 40-unit decay within 40 samples.
+  inspect(out[39], content="12000")
+  inspect(out[40], content="11999")
+  inspect(out[800], content="-11997")
+  inspect(out[1599], content="-11993")
+  inspect(out[1600], content="-11993")
+  inspect(out[3000], content="11992")
+}
+
+///|
+test "a long release reaches zero at the requested duration" {
+  // 8000 ms = 128000 samples of release from full scale: the level halves
+  // exactly at half the duration and hits zero at the full duration, where
+  // the voice deactivates — no stall, no 4.096 s shortcut.
+  let instrument : @music.Instrument = {
+    name: "Eight Second Release",
+    waveform: @music.Pulse50,
+    envelope: { attack_ms: 0, decay_ms: 0, sustain: 65536, release_ms: 8000, },
+    volume: 100,
+    vibrato: None,
+  }
+  let synth = @audio.Synth::new()
+  synth.trigger(voice=0, on=clamp_note(instrument), gate_samples=16)
+  let out : FixedArray[Int] = FixedArray::make(129000, 0)
+  synth.render(out~)
+  // Release begins at gate end: sample 15 still reads full scale and the
+  // first release advance happens at sample 16 (its first unit lands two
+  // samples in, since 65536 x 2 crosses the 128000-sample modulus).
+  inspect(out[15], content="12000")
+  inspect(out[16], content="12000")
+  // Exact halfway and quarter points: env 32768 and 49152.
+  inspect(out[64016], content="6000")
+  inspect(out[32016], content="9000")
+  // The tail keeps descending to silence at sample 16 + 128000, where the
+  // voice deactivates.
+  inspect(out[70000], content="-5439")
+  inspect(out[128015], content="0")
+  inspect(out[128016], content="0")
+  inspect(out[128999], content="0")
+}
+
+///|
+test "an 8-second decay completes instead of stalling" {
+  // The decay must reach the sustain floor exactly at the requested
+  // duration — a stalled stage would hold full scale forever.
+  let instrument : @music.Instrument = {
+    name: "Eight Second Decay",
+    waveform: @music.Pulse50,
+    envelope: { attack_ms: 0, decay_ms: 8000, sustain: 0, release_ms: 0, },
     volume: 100,
     vibrato: None,
   }
   let synth = @audio.Synth::new()
   synth.trigger(voice=0, on=clamp_note(instrument), gate_samples=200000)
-  let out : FixedArray[Int] = FixedArray::make(66000, 0)
+  let out : FixedArray[Int] = FixedArray::make(139264, 0)
   synth.render(out~)
-  // Instant attack at full scale, then exactly one unit down per sample:
-  // env 32768 at sample 32768, env 25536 at sample 40000 (its floor on the
-  // negative half-wave is -4676 — a stalled 0-step would read full scale).
-  inspect(out[0], content="12000")
-  inspect(out[32768], content="6000")
-  inspect(out[40000], content="-4676")
-  // The ramp hits the sustain floor (silence) at sample 65536.
-  inspect(out[65536], content="0")
-  inspect(out[65999], content="0")
-}
-
-///|
-test "a positive release longer than the envelope scale clamps to a 1-unit step" {
-  // 8224 ms = 131584 samples: 65536 / 131584 floors to 0 — clamped to 1, so
-  // the release fades out over 65536 samples instead of hanging forever.
-  let instrument : @music.Instrument = {
-    name: "Slow Release",
-    waveform: @music.Pulse50,
-    envelope: { attack_ms: 0, decay_ms: 0, sustain: 65536, release_ms: 8224, },
-    volume: 100,
-    vibrato: None,
-  }
-  let synth = @audio.Synth::new()
-  synth.trigger(voice=0, on=clamp_note(instrument), gate_samples=1000)
-  let out : FixedArray[Int] = FixedArray::make(67000, 0)
-  synth.render(out~)
-  // Full scale through the whole gate; release begins exactly at gate end
-  // (env 65535 at sample 1000, env 33536 at sample 33000).
-  inspect(out[999], content="12000")
-  inspect(out[1000], content="11999")
-  inspect(out[33000], content="6140")
-  // The fade completes and the voice goes idle instead of leaking a
-  // frozen nonzero level.
-  inspect(out[66535], content="0")
-  inspect(out[66536], content="0")
-  inspect(out[66999], content="0")
+  inspect(out[65535], content="5856")
+  inspect(out[128000], content="0")
+  inspect(out[139263], content="0")
 }
