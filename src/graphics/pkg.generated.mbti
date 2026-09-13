@@ -22,6 +22,7 @@ pub struct Canvas {
 }
 pub fn Canvas::clear(Self, color~ : @core.Color) -> Unit
 pub fn Canvas::fill_rect(Self, x~ : Int, y~ : Int, w~ : Int, h~ : Int, color~ : @core.Color) -> Unit
+pub fn Canvas::frame_view(Self) -> FrameView
 pub fn Canvas::height(Self) -> Int
 pub fn Canvas::line(Self, x0~ : Int, y0~ : Int, x1~ : Int, y1~ : Int, color~ : @core.Color) -> Unit
 pub fn Canvas::logical() -> Self
@@ -31,6 +32,13 @@ pub fn Canvas::rect(Self, x~ : Int, y~ : Int, w~ : Int, h~ : Int, color~ : @core
 pub fn Canvas::sprite(Self, sheet~ : SpriteSheet, frame~ : Int, x~ : Int, y~ : Int) -> Unit
 pub fn Canvas::text(Self, text~ : String, x~ : Int, y~ : Int, color~ : @core.Color) -> Unit
 pub fn Canvas::width(Self) -> Int
+
+pub struct FrameView {
+  // private fields
+}
+pub fn FrameView::copy_rgb565_row(Self, y~ : Int, out~ : FixedArray[Int]) -> Int
+pub fn FrameView::height(Self) -> Int
+pub fn FrameView::width(Self) -> Int
 
 pub(all) struct SpriteSheet {
   // private fields

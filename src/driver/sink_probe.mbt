@@ -1,18 +1,18 @@
 ///|
 /// Test double for `DisplaySink`, also a reference for backend tests in the
 /// template repo: records how many times `present` was called and the
-/// dimensions of the last canvas, read at `present` time.
+/// dimensions of the last frame, read at `present` time.
 ///
-/// It deliberately does NOT retain canvas references — canvases are mutable
-/// and backends may reuse them across frames, so only the width/height
-/// observed at flush time are recorded.
+/// It deliberately does NOT retain frame views — a view is valid only until
+/// the source canvas is mutated again, so only the width/height observed at
+/// flush time are recorded.
 ///
 /// # Example
 /// ```mbt check
 /// test {
 ///   let probe = SinkProbe::new()
 ///   let sink : &DisplaySink = probe
-///   sink.present(canvas=@graphics.Canvas::new(width=64, height=80))
+///   sink.present(frame=@graphics.Canvas::new(width=64, height=80).frame_view())
 ///   inspect(probe.calls(), content="1")
 ///   inspect(probe.last_width(), content="64")
 ///   inspect(probe.last_height(), content="80")
@@ -38,14 +38,14 @@ pub fn SinkProbe::calls(self : SinkProbe) -> Int {
 }
 
 ///|
-/// Width of the most recently presented canvas, or `0` before the first
+/// Width of the most recently presented frame, or `0` before the first
 /// call.
 pub fn SinkProbe::last_width(self : SinkProbe) -> Int {
   self.last_width
 }
 
 ///|
-/// Height of the most recently presented canvas, or `0` before the first
+/// Height of the most recently presented frame, or `0` before the first
 /// call.
 pub fn SinkProbe::last_height(self : SinkProbe) -> Int {
   self.last_height
@@ -53,13 +53,13 @@ pub fn SinkProbe::last_height(self : SinkProbe) -> Int {
 
 ///|
 /// Records one presentation: bumps the call counter and snapshots the
-/// canvas dimensions at flush time. The canvas itself is neither mutated nor
-/// retained.
+/// frame dimensions at flush time. The view is neither retained nor used
+/// after `present` returns.
 pub impl DisplaySink for SinkProbe with fn present(
   self,
-  canvas~ : @graphics.Canvas,
+  frame~ : @graphics.FrameView,
 ) -> Unit {
   self.calls += 1
-  self.last_width = canvas.width()
-  self.last_height = canvas.height()
+  self.last_width = frame.width()
+  self.last_height = frame.height()
 }

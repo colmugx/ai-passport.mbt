@@ -1,5 +1,6 @@
 // Envelope, release and mixing behavior — all assertions derived from the
-// documented per-waveform presets (see `envelope_preset` in voice.mbt).
+// documented instrument presets (see `Instrument::celesta()` and friends in
+// @music, converted to per-sample steps by `build_preset` in voice.mbt).
 
 ///|
 fn slice_max(buf : FixedArray[Int]) -> Int {
@@ -14,7 +15,7 @@ fn slice_max(buf : FixedArray[Int]) -> Int {
 
 ///|
 test "envelope decays across slices and returns to silence after the gate" {
-  // Pulse12 (celesta): attack 4 samples, decay 16/sample to 6%, gate 2400
+  // Celesta (Pulse12): instant attack, decay 16/sample to 6%, gate 2400
   // then release 32/sample — audible silence by ~sample 3250.
   let synth = @audio.Synth::new()
   synth.trigger(voice=0, on=note(69, @music.Pulse12), gate_samples=2400)
@@ -29,10 +30,10 @@ test "envelope decays across slices and returns to silence after the gate" {
   let peak3 = slice_max(s3)
   // The decay stage must make each later slice strictly quieter.
   inspect(peak1 > peak2 && peak2 > peak3, content="true")
-  // Pulse12's 4-sample attack reaches full scale inside the first slice.
+  // The instant attack reaches full scale inside the first slice.
   inspect(peak1, content="12000")
   // The third slice tops out on the decaying envelope (~74% of peak1).
-  inspect(peak3, content="8917")
+  inspect(peak3, content="8909")
   // Render well past gate exhaustion + release: the voice is silent again.
   let drain : FixedArray[Int] = FixedArray::make(3072, 0)
   synth.render(out=drain) // samples 1536..4608

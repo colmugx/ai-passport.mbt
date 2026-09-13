@@ -3,10 +3,27 @@
 // each trigger), so identical operations produce identical buffers.
 
 ///|
-/// Builds a note-start event like the ones the `@music.Sequencer` emits.
+/// Builds a note-start event like the ones the `@music.Sequencer` emits:
+/// eight song ticks (two eighth notes) on the instrument preset matching
+/// the requested waveform (the noise role has no preset and is built
+/// inline, mirroring the documented generic percussive envelope).
 fn note(midi : Int, waveform : @music.Waveform) -> @music.NoteOn {
   let pitch = @music.Pitch::from_midi(midi~).unwrap()
-  { track: 0, pitch, eighths: 2, waveform, }
+  let instrument = match waveform {
+    @music.Pulse12 => @music.Instrument::celesta()
+    @music.Pulse25 => @music.Instrument::woodwind()
+    @music.Pulse50 => @music.Instrument::strings()
+    @music.Triangle => @music.Instrument::low_strings()
+    @music.Noise =>
+      {
+        name: "Noise",
+        waveform: @music.Noise,
+        envelope: { attack_ms: 0, decay_ms: 30, sustain: 4096, release_ms: 32, },
+        volume: 100,
+        vibrato: None,
+      }
+  }
+  { track: 0, pitch, ticks: 8, instrument, }
 }
 
 ///|

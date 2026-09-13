@@ -26,23 +26,37 @@ pub(all) struct Track {
 } derive(Debug)
 
 ///|
-/// A piece of music: a meter, a tempo, and up to four tracks.
+/// A piece of music: a meter, a tempo, a tick resolution, and up to four
+/// tracks.
+///
+/// `ticks_per_eighth` is the timing resolution: one eighth note lasts that
+/// many song ticks, so `Note.ticks` and the sequencer/loop bounds are all
+/// expressed in song ticks. The v0.1 default is 4 (sixteenth = 2 ticks,
+/// thirty-second = 1 tick).
 pub(all) struct Song {
   meter : Meter
   tempo : Tempo
+  ticks_per_eighth : Int
   tracks : Array[Track]
 } derive(Debug)
 
 ///|
 /// Validated constructor. Raises SongError::TooManyVoices iff more than four
-/// tracks. Zero tracks is allowed. Data model only — no DSP, no scheduling.
+/// tracks; aborts on a non-positive `ticks_per_eighth` (a resolution of 0
+/// would divide time by zero — a programmer error, not a runtime condition).
+/// Zero tracks is allowed. `ticks_per_eighth` defaults to 4. Data model only
+/// — no DSP, no scheduling.
 pub fn Song::new(
   meter~ : Meter,
   tempo~ : Tempo,
   tracks~ : Array[Track],
+  ticks_per_eighth? : Int = 4,
 ) -> Song raise SongError {
   if tracks.length() > 4 {
     raise SongError::TooManyVoices
   }
-  { meter, tempo, tracks, }
+  if ticks_per_eighth <= 0 {
+    abort("Song::new: ticks_per_eighth must be > 0, got \{ticks_per_eighth}")
+  }
+  { meter, tempo, ticks_per_eighth, tracks, }
 }

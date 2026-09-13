@@ -2,29 +2,29 @@
 /// One note-start event delivered by the sequencer on its trigger tick.
 ///
 /// `track` is the 0-based track index (at most four per AGENTS.md rule 7),
-/// `pitch` is the sounding note (rests never trigger), `eighths` is the gate
-/// length in eighth-ticks (from `Note.eighths`), and `waveform` comes from the
-/// track's instrument.
+/// `pitch` is the sounding note (rests never trigger), `ticks` is the gate
+/// length in song ticks (from `Note.ticks`), and `instrument` is the track's
+/// instrument — the synth derives envelope, volume and vibrato from it.
 pub(all) struct NoteOn {
   track : Int
   pitch : Pitch
-  eighths : Int
-  waveform : Waveform
+  ticks : Int
+  instrument : Instrument
 } derive(Debug)
 
 ///|
-/// Sums a track's `eighths` into its total timeline length in ticks.
+/// Sums a track's `ticks` into its total timeline length in song ticks.
 fn track_length_ticks(notes : Array[Note]) -> Int {
   let mut total = 0
   for note in notes {
-    total += note.eighths
+    total += note.ticks
   }
   total
 }
 
 ///|
-/// Song length in ticks: the longest track's cumulative sum (0 when the song
-/// has no tracks or no notes).
+/// Song length in song ticks: the longest track's cumulative sum (0 when the
+/// song has no tracks or no notes).
 fn song_length_ticks(song : Song) -> Int {
   let mut longest = 0
   for track in song.tracks {
@@ -43,9 +43,9 @@ fn song_length_ticks(song : Song) -> Int {
 fn validate_durations(song : Song) -> Unit {
   for t, track in song.tracks {
     for k, note in track.notes {
-      if note.eighths <= 0 {
+      if note.ticks <= 0 {
         abort(
-          "Sequencer: track \{t} note \{k} has non-positive duration \{note.eighths}; durations must be positive eighth-ticks",
+          "Sequencer: track \{t} note \{k} has non-positive duration \{note.ticks}; durations must be positive song ticks",
         )
       }
     }
@@ -61,8 +61,8 @@ fn validate_durations(song : Song) -> Unit {
 fn walk_timeline(notes : Array[Note], pos : Int) -> (Int, Int) {
   let mut boundary = 0
   let mut index = 0
-  while index < notes.length() && boundary + notes[index].eighths <= pos {
-    boundary += notes[index].eighths
+  while index < notes.length() && boundary + notes[index].ticks <= pos {
+    boundary += notes[index].ticks
     index += 1
   }
   (index, pos - boundary)
@@ -70,9 +70,11 @@ fn walk_timeline(notes : Array[Note], pos : Int) -> (Int, Int) {
 
 ///|
 /// Deterministic 6/8 transport (AGENTS.md rule 7: at most four monophonic
-/// voices). A tick is one 1/8 note. Each track is a monophonic melody line:
-/// its timeline is the cumulative sum of its notes' `eighths`, and a track
-/// past its end stays silent until the loop wraps.
+/// voices). A tick is one song tick — `1/ticks_per_eighth` of an eighth note
+/// (`Song.ticks_per_eighth`; a 1/32 note at the default resolution of 4).
+/// Each track is a monophonic melody line: its timeline is the cumulative
+/// sum of its notes' `ticks`, and a track past its end stays silent until
+/// the loop wraps.
 ///
 /// The loop region defaults to the whole song: `length()` is the longest
 /// track's total ticks, and an empty song has length 0, leaving the sequencer
@@ -82,8 +84,8 @@ fn walk_timeline(notes : Array[Note], pos : Int) -> (Int, Int) {
 /// ```mbt check
 /// test {
 ///   let track : Track = {
-///     instrument: { name: "Celesta", waveform: Pulse12, },
-///     notes: [{ pitch: Pitch::from_midi(midi=60), eighths: 2, }],
+///     instrument: Instrument::celesta(),
+///     notes: [{ pitch: Pitch::from_midi(midi=60), ticks: 8, }],
 ///   }
 ///   let song = Song::new(meter=Meter::six_eight(), tempo=Tempo::standard(), tracks=[
 ///     track,
@@ -124,7 +126,7 @@ fn build_sequencer(song : Song, loop_start : Int, loop_end : Int) -> Sequencer {
 /// longest track's total ticks (0 for an empty song, which stays idle
 /// forever).
 ///
-/// Aborts if any note has a non-positive `eighths` duration — `Note` leaves
+/// Aborts if any note has a non-positive `ticks` duration — `Note` leaves
 /// duration enforcement to the sequencer.
 pub fn Sequencer::new(song~ : Song) -> Sequencer {
   validate_durations(song)
@@ -133,7 +135,7 @@ pub fn Sequencer::new(song~ : Song) -> Sequencer {
 
 ///|
 /// Builds a sequencer with an explicit loop region `[start, end)` in
-/// eighth-ticks.
+/// song ticks.
 ///
 /// Aborts unless `0 <= start < end <= ` the song length in ticks: an `end`
 /// beyond the song is rejected rather than clamped, keeping caller bugs loud.
@@ -162,20 +164,20 @@ pub fn Sequencer::song(self : Sequencer) -> Song {
 }
 
 ///|
-/// Current transport position, always in `[0, length())`. A fresh sequencer
-/// sits at tick 0.
+/// Current transport position in song ticks, always in `[0, length())`. A
+/// fresh sequencer sits at tick 0.
 pub fn Sequencer::tick(self : Sequencer) -> Int {
   self.tick
 }
 
 ///|
-/// Loop length in eighth-ticks. 0 means an empty song.
+/// Loop length in song ticks. 0 means an empty song.
 pub fn Sequencer::length(self : Sequencer) -> Int {
   self.loop_end
 }
 
 ///|
-/// Advances the transport by one eighth-tick and returns every note-start the
+/// Advances the transport by one song tick and returns every note-start the
 /// transport crossed on that tick, ordered by track index.
 ///
 /// Note `k` of a track starts at the cumulative tick of notes `0..k-1`; its
@@ -209,8 +211,8 @@ pub fn Sequencer::step(self : Sequencer) -> Array[NoteOn] {
           events.push({
             track: t,
             pitch,
-            eighths: note.eighths,
-            waveform: track.instrument.waveform,
+            ticks: note.ticks,
+            instrument: track.instrument,
           })
         None => () // rests never trigger
       }
@@ -218,8 +220,8 @@ pub fn Sequencer::step(self : Sequencer) -> Array[NoteOn] {
     // Consume notes the transport finished on this tick. Durations are
     // enforced positive at construction, so at most one boundary is crossed.
     while self.cursor[t] < notes.length() &&
-          self.offset[t] >= notes[self.cursor[t]].eighths {
-      self.offset[t] -= notes[self.cursor[t]].eighths
+          self.offset[t] >= notes[self.cursor[t]].ticks {
+      self.offset[t] -= notes[self.cursor[t]].ticks
       self.cursor[t] += 1
     }
   }

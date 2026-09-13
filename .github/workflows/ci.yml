@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Set up MoonBit
+        run: |
+          curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash
+          echo "$HOME/.moon/bin" >> $GITHUB_PATH
+
+      - name: MoonBit version and dependency update
+        run: |
+          moon version --all
+          moon update
+
+      - name: Check (native)
+        run: moon check --target native
+
+      - name: Test (native)
+        run: moon test --target native
+
+      - name: Check (js)
+        run: moon check --target js
+
+      - name: Test (js)
+        run: moon test --target js
+
+      - name: Refresh generated interfaces and formatting
+        run: |
+          moon info
+          moon fmt
+
+      - name: Fail on uncommitted generator/formatter diff
+        run: git diff --exit-code

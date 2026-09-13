@@ -10,15 +10,16 @@ const FRAME_SAMPLES : Int = 533
 /// Reads the polled `@input.InputState` snapshot; `update` itself NEVER calls
 /// `@input.InputState::advance` — the host loop owns frame boundaries. The
 /// scene fields are recomputed into a new `State`; the music transport
-/// (`clock`/`sequencer`) is one long-lived shared object that this call
-/// advances in place while unpaused (read it via `State::sequencer()`).
+/// (`player`) is one long-lived shared object that this call feeds one frame
+/// of audio to while unpaused (read it via `State::player()`).
 ///
 /// Controls: `Ok` toggles pause on a `just_pressed` edge only; `Up` raises
 /// the speed one level and `Down` lowers it, both clamped to 0..=3 and both
 /// working whether paused or not. While unpaused the world scrolls
-/// `speed.level` pixels this frame, the transport pumps `FRAME_SAMPLES` of
-/// audio into the clock and steps the sequencer once per elapsed eighth-tick,
-/// and the walker pose shifts one weight per large 6/8 beat (`beat % 4`,
+/// `speed.level` pixels this frame, the transport renders `FRAME_SAMPLES`
+/// of audio through the SDK player (whose beat counter advances exactly one
+/// beat per dotted quarter), and the walker pose shifts one weight per
+/// large 6/8 beat (`beat % 4`,
 /// docs/SHOWCASE.md) while the speed is above zero. A paused scene freezes
 /// scroll, walker pose and the whole transport (music pause = transport
 /// pause) while the frame counter keeps counting.
@@ -33,23 +34,19 @@ pub fn State::update(self : State, input~ : @input.InputState) -> State {
   let up = if input.just_pressed(@input.Up) { 1 } else { 0 }
   let down = if input.just_pressed(@input.Down) { 1 } else { 0 }
   let level = (self.speed.level + up - down).clamp(min=0, max=3)
-  let mut beat = self.beat
   let (scroll, walker_frame) = if paused {
     (self.scroll, self.walker_frame)
   } else {
-    // Transport advance: convert this frame's audio samples into eighth-note
-    // ticks and step the sequencer once per elapsed tick. The app never
-    // consumes the NoteOn events (no synth lives in app code; the future
-    // host audio backend reads the transport through State::sequencer()),
-    // so each step's event list is explicitly discarded.
-    let ticks = self.clock.pump(samples=FRAME_SAMPLES)
-    for _ in 0..<ticks {
-      let _ = self.sequencer.step()
-      // A dotted-quarter boundary: one large 6/8 beat every three ticks.
-      if self.sequencer.tick() % 3 == 0 {
-        beat = beat + 1
-      }
-    }
+    // Transport advance: render this frame's audio through the SDK player.
+    // The player owns the authoritative music clock (sample-accurate note
+    // scheduling), so app code never pumps a clock or steps a sequencer; it
+    // only feeds the frame's sample count and reads beat/paused back. On
+    // device, the audio callback would call player.render instead and the
+    // frame loop would only read the transport position. The scratch buffer
+    // is one frame of PCM reused every update; the app itself has no audio
+    // sink to send it to.
+    self.player.render(out=self.scratch)
+    let beat = self.player.beat()
     (
       self.scroll + level,
       // One weight shift per large 6/8 beat; standing still holds the pose
@@ -69,9 +66,8 @@ pub fn State::update(self : State, input~ : @input.InputState) -> State {
     speed: { level, },
     walker_frame,
     paused,
-    beat,
-    clock: self.clock,
-    sequencer: self.sequencer,
+    player: self.player,
+    scratch: self.scratch,
     song: self.song,
     walker_sheet: self.walker_sheet,
     tree_sheets: self.tree_sheets,

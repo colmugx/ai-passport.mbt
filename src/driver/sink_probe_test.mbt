@@ -7,18 +7,18 @@ test "SinkProbe starts empty" {
 }
 
 ///|
-test "SinkProbe records count and last canvas dimensions at present time" {
+test "SinkProbe records count and last frame dimensions at present time" {
   let probe = SinkProbe::new()
   let sink : &DisplaySink = probe
 
-  // First present: the standard 120x160 logical canvas (docs/DRIVER.md).
-  sink.present(canvas=@graphics.Canvas::logical())
+  // First present: the standard 120x160 logical frame (docs/DRIVER.md).
+  sink.present(frame=@graphics.Canvas::logical().frame_view())
   inspect(probe.calls(), content="1")
   inspect(probe.last_width(), content="120")
   inspect(probe.last_height(), content="160")
 
-  // Second present: a custom 64x80 canvas overwrites the dimensions.
-  sink.present(canvas=@graphics.Canvas::new(width=64, height=80))
+  // Second present: a custom 64x80 frame overwrites the dimensions.
+  sink.present(frame=@graphics.Canvas::new(width=64, height=80).frame_view())
   inspect(probe.calls(), content="2")
   inspect(probe.last_width(), content="64")
   inspect(probe.last_height(), content="80")

@@ -2,6 +2,7 @@
 package "colmugx/ai-passport/examples/forest_walk"
 
 import {
+  "colmugx/ai-passport/audio",
   "colmugx/ai-passport/graphics",
   "colmugx/ai-passport/input",
   "colmugx/ai-passport/music",
@@ -25,8 +26,8 @@ pub fn State::draw(Self, canvas~ : @graphics.Canvas) -> Unit
 pub fn State::frame(Self) -> Int
 pub fn State::new() -> Self
 pub fn State::paused(Self) -> Bool
+pub fn State::player(Self) -> @audio.Player
 pub fn State::scroll(Self) -> Int
-pub fn State::sequencer(Self) -> @music.Sequencer
 pub fn State::song(Self) -> @music.Song
 pub fn State::speed(Self) -> Speed
 pub fn State::update(Self, input~ : @input.InputState) -> Self

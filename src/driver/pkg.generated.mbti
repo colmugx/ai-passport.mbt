@@ -34,5 +34,5 @@ pub(open) trait Clock {
 }
 
 pub(open) trait DisplaySink {
-  fn present(Self, canvas~ : @graphics.Canvas) -> Unit
+  fn present(Self, frame~ : @graphics.FrameView) -> Unit
 }

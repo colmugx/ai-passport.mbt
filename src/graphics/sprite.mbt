@@ -43,7 +43,9 @@ pub fn SpriteSheet::from_colors(
     )
   }
   let frame_area = frame_width * frame_height
-  if frame_area <= 0 || pixels.length() % frame_area != 0 {
+  if pixels.length() == 0 ||
+    frame_area <= 0 ||
+    pixels.length() % frame_area != 0 {
     abort(
       "SpriteSheet::from_colors: pixels length must be a nonzero multiple of frame_width * frame_height, got length=\{pixels.length()} frame_width=\{frame_width} frame_height=\{frame_height}",
     )

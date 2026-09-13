@@ -46,20 +46,22 @@ fn build_increment_table() -> FixedArray[Int] {
 /// - Each voice runs a fixed-point phase accumulator over [0, 2^31) with an
 ///   explicit wrap after every addition — Int overflow is never relied
 ///   upon.
-/// - Envelope: 16-bit fixed-point amplitude fraction (0..65536 =
-///   0.0..1.0) with a preset per waveform (documented constants on
-///   `envelope_preset`; musical roles per docs/MUSIC.md — Pulse12 short
-///   celesta decay, Pulse50/Triangle slower strings/bass, Pulse25 lyrical
-///   woodwind, Noise fast). Exhausting `gate_samples` enters release
-///   automatically.
-/// - Vibrato: light ~5 Hz triangle-LFO pitch modulation (~13 cents peak) on
-///   Pulse25 only.
+/// - Envelope and volume come from the triggered `@music.Instrument` (never
+///   from the waveform): the instrument's millisecond ADSR is converted
+///   once at trigger time into per-sample integer steps of the 16-bit
+///   fixed-point amplitude fraction (0..65536 = 0.0..1.0), and `volume`
+///   (0..=100, clamped) scales the voice peak. Exhausting `gate_samples`
+///   enters release automatically.
+/// - Vibrato: light triangle-LFO pitch modulation applied only when the
+///   instrument carries a `Vibrato` — rate from `rate_millihz`, depth from
+///   `depth_cents` (linear approximation `depth/1731` of the phase
+///   increment).
 /// - Noise: 16-bit LFSR advanced once per sample from a fixed seed —
 ///   deterministic, so identical trigger+render sequences give identical
 ///   buffers.
-/// - Per-voice peak is 12000: a four-voice mix stays inside PCM16 unless
-///   loud presets stack, in which case `render` clamps into
-///   [-32768, 32767] — the documented behavior.
+/// - Per-voice peak is 12000 at volume 100: a four-voice mix stays inside
+///   PCM16 unless loud instruments stack, in which case `render` clamps
+///   into [-32768, 32767] — the documented behavior.
 ///
 /// # Example
 /// ```mbt check
@@ -68,7 +70,7 @@ fn build_increment_table() -> FixedArray[Int] {
 ///   let pitch = @music.Pitch::from_midi(midi=69).unwrap()
 ///   synth.trigger(
 ///     voice=0,
-///     on={ track: 0, pitch, eighths: 2, waveform: @music.Pulse12, },
+///     on={ track: 0, pitch, ticks: 8, instrument: @music.Instrument::celesta(), },
 ///     gate_samples=256,
 ///   )
 ///   let out : FixedArray[Int] = FixedArray::make(256, 0)
@@ -105,11 +107,12 @@ pub fn Synth::new() -> Synth {
 /// error. Retriggering an active voice restarts its phase and envelope from
 /// the top, so repeated triggers on one voice stay deterministic.
 ///
-/// `on` is a sequencer note-start event; its midi pitch selects the
+/// `on` is a sequencer note-start event. Its midi pitch selects the
 /// precomputed phase increment (out-of-range midi is clamped into the table
-/// defensively — `@music.Pitch` normally already enforces 0..=127), and its
-/// waveform selects the documented envelope preset. The voice then sounds
-/// for `gate_samples` rendered samples before its release stage runs
+/// defensively — `@music.Pitch` normally already enforces 0..=127); its
+/// instrument supplies the oscillator waveform, the ADSR envelope, the
+/// volume (clamped to 0..=100) and the optional vibrato. The voice then
+/// sounds for `gate_samples` rendered samples before its release stage runs
 /// automatically.
 ///
 /// # Example
@@ -119,7 +122,7 @@ pub fn Synth::new() -> Synth {
 ///   let pitch = @music.Pitch::from_midi(midi=69).unwrap()
 ///   synth.trigger(
 ///     voice=0,
-///     on={ track: 0, pitch, eighths: 2, waveform: @music.Pulse50, },
+///     on={ track: 0, pitch, ticks: 8, instrument: @music.Instrument::strings(), },
 ///     gate_samples=2000,
 ///   )
 ///   let out : FixedArray[Int] = FixedArray::make(4, 0)
@@ -144,13 +147,39 @@ pub fn Synth::trigger(
   let v = self.voices[voice]
   let midi = on.pitch.midi
   let clamped = if midi < 0 { 0 } else if midi > 127 { 127 } else { midi }
+  let inst = on.instrument
+  let volume = if inst.volume < 0 {
+    0
+  } else if inst.volume > 100 {
+    100
+  } else {
+    inst.volume
+  }
   v.active = true
-  v.waveform = on.waveform
-  v.preset = envelope_preset(on.waveform)
+  v.waveform = inst.waveform
+  v.preset = build_preset(inst)
+  v.peak = VOICE_PEAK * volume / 100
   // A retrigger restarts the phase accumulator, vibrato LFO, noise LFSR and
   // envelope so the voice always sounds identical for identical notes.
   v.phase = 0
   v.inc = increment_table[clamped]
+  // Vibrato: rate -> integer LFO increment (round-half of
+  // 2^31 * rate_millihz / (1000 * SAMPLE_RATE) via Int64); depth -> detune
+  // span proportional to this note's phase increment.
+  match inst.vibrato {
+    Some(vib) if vib.rate_millihz > 0 && vib.depth_cents > 0 => {
+      let num = 2147483648L * Int64::from_int(vib.rate_millihz)
+      let den = 1000L * Int64::from_int(SAMPLE_RATE)
+      v.lfo_inc = ((num + den / 2L) / den).to_int().reinterpret_as_uint()
+      v.vib_span = (Int64::from_int(v.inc) *
+      Int64::from_int(vib.depth_cents) /
+      1731L).to_int()
+    }
+    _ => {
+      v.lfo_inc = 0
+      v.vib_span = 0
+    }
+  }
   v.lfo_phase = 0
   v.lfsr = LFSR_SEED
   v.env = 0
@@ -159,7 +188,7 @@ pub fn Synth::trigger(
 }
 
 ///|
-/// Releases one voice early: it fades through its preset release stage
+/// Releases one voice early: it fades through its instrument's release stage
 /// instead of waiting for `gate_samples` to run out. An idle voice is a
 /// no-op. `voice` must be in `0..<VOICES` — anything else aborts as a
 /// programmer error. Releasing before the first rendered sample silences
@@ -172,7 +201,7 @@ pub fn Synth::trigger(
 ///   let pitch = @music.Pitch::from_midi(midi=69).unwrap()
 ///   synth.trigger(
 ///     voice=0,
-///     on={ track: 0, pitch, eighths: 2, waveform: @music.Pulse50, },
+///     on={ track: 0, pitch, ticks: 8, instrument: @music.Instrument::strings(), },
 ///     gate_samples=8000,
 ///   )
 ///   synth.release(voice=0)
@@ -221,11 +250,32 @@ pub fn Synth::release(self : Synth, voice~ : Int) -> Unit {
 /// }
 /// ```
 pub fn Synth::render(self : Synth, out~ : FixedArray[Int]) -> Unit {
-  let n = out.length()
-  if n == 0 {
+  self.render_range(out~, offset=0, len=out.length())
+}
+
+///|
+/// Range variant of `render`: writes `len` samples starting at
+/// `out[offset]`, leaving the rest of `out` untouched. Renders exactly
+/// `len` new samples of voice state — slicing a buffer this way produces
+/// bit-identical output to rendering the whole span at once. Aborts when
+/// `offset + len` exceeds the buffer (a caller bug); `len <= 0` is a no-op.
+/// This is the primitive sample-accurate schedulers (the `Player`) use to
+/// render up to an event boundary inside one buffer without copying.
+pub fn Synth::render_range(
+  self : Synth,
+  out~ : FixedArray[Int],
+  offset~ : Int,
+  len~ : Int,
+) -> Unit {
+  if len <= 0 {
     return
   }
-  for i in 0..<n {
+  if offset < 0 || offset + len > out.length() {
+    abort(
+      "Synth::render_range: [offset, offset + len) must fit the buffer, got offset=\{offset} len=\{len} buffer=\{out.length()}",
+    )
+  }
+  for i in 0..<len {
     let mut total = 0
     for k in 0..<VOICES {
       let v = self.voices[k]
@@ -233,7 +283,7 @@ pub fn Synth::render(self : Synth, out~ : FixedArray[Int]) -> Unit {
         total += v.next_sample()
       }
     }
-    out[i] = if total > PCM16_MAX {
+    out[offset + i] = if total > PCM16_MAX {
       PCM16_MAX
     } else if total < PCM16_MIN {
       PCM16_MIN

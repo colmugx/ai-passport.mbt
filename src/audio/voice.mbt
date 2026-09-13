@@ -5,9 +5,11 @@
 const ENV_FULL : Int = 65536
 
 ///|
-/// Per-voice waveform peak amplitude. Chosen so four simultaneous full-level
-/// voices sum to 48000 and clip into PCM16 only when loud presets stack —
-/// clamping is then the documented behavior (see `Synth::render`).
+/// Per-voice peak amplitude at volume 100. Chosen so four simultaneous
+/// full-level voices sum to 48000 and clip into PCM16 only when loud
+/// instruments stack — clamping is then the documented behavior (see
+/// `Synth::render`). The instrument's `volume` percentage scales this down
+/// at trigger time.
 const VOICE_PEAK : Int = 12000
 
 ///|
@@ -18,9 +20,16 @@ const VOICE_PEAK : Int = 12000
 const PHASE_PERIOD : UInt = 2147483648
 
 ///|
-/// Vibrato LFO phase increment: ~5.0 Hz triangle LFO at 16000 Hz
-/// (2147483648 * 5.0 / 16000, rounded). Applied to Pulse25 only.
-const LFO_INC : UInt = 671089
+/// Milliseconds to samples at the 16000 Hz baseline: one millisecond is
+/// `SAMPLE_RATE / 1000` samples (exactly 16 at 16000 Hz). Sub-millisecond
+/// envelope times therefore quantize; `ms <= 0` yields 0 samples (instant).
+fn ms_to_samples(ms : Int) -> Int {
+  if ms <= 0 {
+    0
+  } else {
+    ms * (SAMPLE_RATE / 1000)
+  }
+}
 
 ///|
 /// Seed of the 16-bit noise LFSR (taps 16/14/13/11, maximal length 65535).
@@ -46,10 +55,11 @@ priv enum EnvState {
 }
 
 ///|
-/// Envelope preset with all rates precomputed as per-sample integer steps of
-/// the 16-bit fixed-point amplitude fraction (0..65536 = 0.0..1.0), so the
-/// hot path never divides. Times below are at SAMPLE_RATE = 16000 Hz and
-/// follow the musical roles in docs/MUSIC.md.
+/// Envelope with all rates precomputed as per-sample integer steps of the
+/// 16-bit fixed-point amplitude fraction (0..65536 = 0.0..1.0), so the hot
+/// path never divides. Built once per trigger from the instrument's
+/// millisecond `Envelope` (see `build_preset`); times below are per-sample
+/// steps at SAMPLE_RATE = 16000 Hz.
 priv struct EnvelopePreset {
   /// Amplitude units added per sample while attacking
   /// (65536 / attack_samples).
@@ -60,67 +70,46 @@ priv struct EnvelopePreset {
   sustain : Int
   /// Amplitude units removed per sample while releasing.
   release_step : Int
-  /// Triangle-LFO pitch vibrato — Pulse25 (woodwind lead) only.
-  vibrato : Bool
 }
 
 ///|
-/// Preset table per waveform. Documented constants (attack/decay/release in
-/// samples at 16000 Hz, sustain as % of full scale):
+/// Converts an instrument's millisecond envelope into per-sample integer
+/// steps (one division each, once per trigger — never per sample):
 ///
-/// - Pulse12 — celesta/harp, short plucked decay (MUSIC.md voice 1):
-///   attack 4 samples, decay ~0.24 s to 6%, release 0.13 s.
-/// - Pulse25 — woodwind lead, lyrical with light vibrato (voice 2):
-///   attack 16 samples, decay 0.06 s to 88%, release 0.26 s.
-/// - Pulse50 — lyrical strings, slower attack/release (voice 3):
-///   attack 64 ms, decay 0.13 s to 88%, release 0.51 s.
-/// - Triangle — low strings/bass foundation (voice 4):
-///   attack 16 ms, decay 0.13 s to 75%, release 0.34 s.
-/// - Noise — generic fast percussive voice:
-///   attack instant, decay 30 ms to 6%, release 32 ms.
-fn envelope_preset(waveform : @music.Waveform) -> EnvelopePreset {
-  match waveform {
-    @music.Pulse12 =>
-      {
-        attack_step: 16384,
-        decay_step: 16,
-        sustain: 4096,
-        release_step: 32,
-        vibrato: false,
-      }
-    @music.Pulse25 =>
-      {
-        attack_step: 4096,
-        decay_step: 8,
-        sustain: 57344,
-        release_step: 16,
-        vibrato: true,
-      }
-    @music.Pulse50 =>
-      {
-        attack_step: 64,
-        decay_step: 4,
-        sustain: 57344,
-        release_step: 8,
-        vibrato: false,
-      }
-    @music.Triangle =>
-      {
-        attack_step: 256,
-        decay_step: 8,
-        sustain: 49152,
-        release_step: 12,
-        vibrato: false,
-      }
-    @music.Noise =>
-      {
-        attack_step: 65536,
-        decay_step: 128,
-        sustain: 4096,
-        release_step: 128,
-        vibrato: false,
-      }
+/// - `attack_ms`/`release_ms` of 0 mean instant, expressed as a full-scale
+///   step (the stage finishes inside one sample).
+/// - `decay_ms` moves the level from full scale down to `sustain`, so
+///   `decay_step = (65536 - sustain) / decay_samples`.
+/// - `sustain` is clamped into 0..=65536.
+fn build_preset(instrument : @music.Instrument) -> EnvelopePreset {
+  let env = instrument.envelope
+  let sustain = if env.sustain < 0 {
+    0
+  } else if env.sustain > ENV_FULL {
+    ENV_FULL
+  } else {
+    env.sustain
   }
+  let attack_samples = ms_to_samples(env.attack_ms)
+  let attack_step = if attack_samples <= 0 {
+    ENV_FULL
+  } else {
+    ENV_FULL / attack_samples
+  }
+  let decay_samples = ms_to_samples(env.decay_ms)
+  let decay_span = ENV_FULL - sustain
+  let decay_step = if decay_samples <= 0 || decay_span <= 0 {
+    ENV_FULL
+  } else {
+    decay_span / decay_samples
+  }
+  let release_samples = ms_to_samples(env.release_ms)
+  let release_step = if release_samples <= 0 {
+    ENV_FULL
+  } else {
+    ENV_FULL / release_samples
+  }
+  { attack_step, decay_step, sustain, release_step, }
 }
 
 ///|
@@ -130,16 +119,25 @@ priv struct Voice {
   /// Active voices are mixed by `Synth::render`; released-to-silence voices
   /// flip this off and are skipped.
   mut active : Bool
-  /// Waveform chosen at trigger time.
+  /// Waveform (oscillator shape) chosen at trigger time from the
+  /// instrument.
   mut waveform : @music.Waveform
-  /// Envelope preset captured at trigger time.
+  /// Envelope preset captured at trigger time from the instrument.
   mut preset : EnvelopePreset
+  /// Peak amplitude for this voice: VOICE_PEAK scaled by the instrument
+  /// volume percentage.
+  mut peak : Int
   /// Fixed-point phase accumulator in [0, PHASE_PERIOD), explicit wrap.
   mut phase : UInt
   /// Base phase increment from the midi table (positive, < 2^31).
   mut inc : Int
-  /// Vibrato LFO phase in [0, PHASE_PERIOD), advanced only when
-  /// `preset.vibrato` is set.
+  /// Vibrato detune span: the maximum phase-increment delta, proportional
+  /// to `inc` (0 = vibrato off).
+  mut vib_span : Int
+  /// Vibrato LFO phase increment per sample (0 = vibrato off).
+  mut lfo_inc : UInt
+  /// Vibrato LFO phase in [0, PHASE_PERIOD), advanced only when vibrato
+  /// is on.
   mut lfo_phase : UInt
   /// 16-bit noise LFSR state, kept masked to the low 16 bits.
   mut lfsr : Int
@@ -152,16 +150,19 @@ priv struct Voice {
 }
 
 ///|
-/// Builds an idle voice. Its preset placeholder is never read while the
-/// voice is idle (`Synth::render` skips inactive voices); `Synth::trigger`
-/// overwrites every field before the voice is heard.
+/// Builds an idle voice. Its placeholder preset/peak are never read while
+/// the voice is idle (`Synth::render` skips inactive voices);
+/// `Synth::trigger` overwrites every field before the voice is heard.
 fn Voice::idle() -> Voice {
   {
     active: false,
     waveform: @music.Pulse50,
-    preset: envelope_preset(@music.Pulse50),
+    preset: { attack_step: 1, decay_step: 1, sustain: 0, release_step: 1, },
+    peak: 0,
     phase: 0,
     inc: 0,
+    vib_span: 0,
+    lfo_inc: 0,
     lfo_phase: 0,
     lfsr: LFSR_SEED,
     env: 0,
@@ -226,38 +227,38 @@ fn Voice::next_sample(self : Voice) -> Int {
   if !self.active {
     return 0
   }
-  let preset = self.preset
   // Top 16 bits of the phase are the position inside one cycle, 0..65535.
   let cycle = (self.phase >> 15).reinterpret_as_int()
+  let peak = self.peak
   let value : Int = match self.waveform {
-    @music.Pulse12 => if cycle < 8192 { VOICE_PEAK } else { -VOICE_PEAK }
-    @music.Pulse25 => if cycle < 16384 { VOICE_PEAK } else { -VOICE_PEAK }
-    @music.Pulse50 => if cycle < 32768 { VOICE_PEAK } else { -VOICE_PEAK }
+    @music.Pulse12 => if cycle < 8192 { peak } else { -peak }
+    @music.Pulse25 => if cycle < 16384 { peak } else { -peak }
+    @music.Pulse50 => if cycle < 32768 { peak } else { -peak }
     @music.Triangle =>
       if cycle < 32768 {
-        -VOICE_PEAK + cycle * 2 * VOICE_PEAK / 32768
+        -peak + cycle * 2 * peak / 32768
       } else {
-        VOICE_PEAK - (cycle - 32768) * 2 * VOICE_PEAK / 32768
+        peak - (cycle - 32768) * 2 * peak / 32768
       }
     @music.Noise =>
       // Read the current LFSR top bit; the register advances below.
       if ((self.lfsr >> 15) & 1) == 1 {
-        VOICE_PEAK
+        peak
       } else {
-        -VOICE_PEAK
+        -peak
       }
   }
   // 16-bit fixed-point envelope: amplitude = value * env / 65536.
   let amplified = (value * self.env) >> 16
-  // Pulse25 vibrato: light triangle-LFO detune of the phase increment
-  // (~5 Hz LFO, ~13 cents peak — see LFO_INC; the intermediates cannot
-  // overflow 2^31).
-  let inc_now = if preset.vibrato {
+  // Vibrato (only when the instrument carries one): light triangle-LFO
+  // detune of the phase increment. The LFO fraction lfo is centered in
+  // [-16384, 16384]; each side is shifted right by 7 so the product stays
+  // inside Int while the maximum delta still reaches the configured span.
+  let inc_now = if self.vib_span > 0 {
     let tri = (self.lfo_phase >> 15).reinterpret_as_int()
     let folded = if tri < 32768 { tri } else { 65536 - tri }
-    let lfo = (folded - 16384) >> 5 // [-512, 512]
-    let delta = ((self.inc >> 9) * lfo) >> 7
-    self.inc + delta
+    let lfo = folded - 16384
+    self.inc + (self.vib_span >> 7) * (lfo >> 7)
   } else {
     self.inc
   }
@@ -266,8 +267,8 @@ fn Voice::next_sample(self : Voice) -> Int {
   // restores [0, 2^31). No overflow is relied upon on either side.
   let next = self.phase + inc_now.reinterpret_as_uint()
   self.phase = if next >= PHASE_PERIOD { next - PHASE_PERIOD } else { next }
-  if preset.vibrato {
-    let lfo_next = self.lfo_phase + LFO_INC
+  if self.vib_span > 0 {
+    let lfo_next = self.lfo_phase + self.lfo_inc
     self.lfo_phase = if lfo_next >= PHASE_PERIOD {
       lfo_next - PHASE_PERIOD
     } else {
