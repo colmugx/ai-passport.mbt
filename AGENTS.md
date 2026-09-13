@@ -1,53 +1,36 @@
-# Project Agents.md Guide
+# AGENTS.md
 
-This is a [MoonBit](https://docs.moonbitlang.com) project.
+## Repository scope
 
-You can browse and install extra skills here:
-<https://github.com/moonbitlang/skills>
+This repository is only the reusable Mooncakes SDK for AI Passport. It contains MoonBit packages, pure runtime logic, public API contracts, graphics, input, music, audio and battery abstractions, tests, and replaceable platform driver interfaces.
 
-## Project Structure
+Do not add a permanent Forest Walk starter or demo application, a GitHub Template, Web Canvas or WebAudio preview, raylib preview, ESP-IDF firmware project, FoloToy BSP copy, flashing or monitor tooling, provisioning, project scaffolding, or device GPIO numbers in public APIs. Forest Walk was removed from this SDK; it must be recovered from git history and migrated into the separate `ai-passport-template` repository. Do not recreate it here or claim that migration is already complete.
 
-- MoonBit packages are organized per directory; each directory contains a
-  `moon.pkg` file listing its dependencies. Each package has its files and
-  blackbox test files (ending in `_test.mbt`) and whitebox test files (ending in
-  `_wbtest.mbt`).
+## Architectural rules
 
-- In the toplevel directory, there is a `moon.mod` file listing module
-  metadata.
+1. This repository contains the reusable Mooncakes SDK only.
+2. Do not implement the GitHub Template in this repository.
+3. Host and device backends implement the same SDK semantics.
+4. The v0.1 logical display is 120×160 pixels.
+5. Buttons are semantic `Up`, `Down`, and `Ok` values.
+6. Graphics public APIs do not expose framebuffer, strip-rendering, or device-controller details.
+7. Music supports at most four monophonic voices.
+8. Prefer reusable pure MoonBit logic.
+9. Keep backend glue thin and replaceable.
+10. Do not add QEMU or a hardware emulator to this repository.
 
-## Coding convention
+Public app code must not import ESP-IDF, raylib, GPIO, ADC, SPI, I2S, I2C, ST7789, ES8311, or CW2017 APIs. Scope changes require updating `docs/PLAN.md`.
 
-- MoonBit code is organized in block style, each block is separated by `///|`,
-  the order of each block is irrelevant. In some refactorings, you can process
-  block by block independently.
+## MoonBit layout and tooling
 
-- Try to keep deprecated blocks in file called `deprecated.mbt` in each
-  directory.
+`moon.mod` declares the module; each package directory has a `moon.pkg`. Source files in one package share a namespace. Keep related declarations together and separate MoonBit blocks with `///|`. Put deprecated declarations in `deprecated.mbt` when they must remain. `*_test.mbt` files are black-box tests; `*_wbtest.mbt` files are white-box tests.
 
-## Tooling
+Use `moon ide` (`peek-def`, `outline`, `find-references`) for code navigation. `moon info` regenerates `pkg.generated.mbti` public interfaces; do not edit those files directly. Review interface diffs after public API work. Use `moon fmt` for formatting and `moon test` for tests; update snapshots only for intended behavior changes. Prefer assertions for stable results and `debug_inspect` with `Debug` for structured diagnostic snapshots. `moon coverage analyze` can identify untested code.
 
-- `moon fmt` is used to format your code properly.
+## Quality gates
 
-- `moon ide` provides project navigation helpers like `peek-def`, `outline`, and
-  `find-references`. See $moonbit-agent-guide for details.
-
-- `moon info` is used to update the generated interface of the package, each
-  package has a generated interface file `.mbti`, it is a brief formal
-  description of the package. If nothing in `.mbti` changes, this means your
-  change does not bring the visible changes to the external package users, it is
-  typically a safe refactoring.
-
-- In the last step, run `moon info && moon fmt` to update the interface and
-  format the code. Check the diffs of `.mbti` file to see if the changes are
-  expected.
-
-- Run `moon test` to check tests pass. MoonBit supports snapshot testing; when
-  changes affect outputs, run `moon test --update` to refresh snapshots.
-
-- Prefer `assert_eq` or `assert_true(pattern is Pattern(...))` for results that
-  are stable or very unlikely to change. For snapshot tests that record
-  structured debugging output, derive `Debug` and use `debug_inspect`, rather
-  than deriving `Show` for debugging. For solid, well-defined results (e.g.
-  scientific computations), prefer assertion tests. You can use
-  `moon coverage analyze > uncovered.log` to see which parts of your code are
-  not covered by tests.
+- `moon check --output-json` succeeds on native and JS.
+- `moon test --output-json` succeeds on native and JS.
+- `moon info` produces only intended public interface changes.
+- `moon fmt` leaves the tree clean.
+- Boundary conditions are tested and public API changes are documented.
