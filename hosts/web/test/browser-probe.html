@@ -15,10 +15,11 @@
     <canvas id="probe-canvas" width="120" height="160"></canvas>
     <pre id="probe-result">booting</pre>
     <script type="module">
-      // Browser probe for the W4 integration suite (suite d). Served by the
+      // Browser probe for the W4 integration suite (suite 9). Served by the
       // throwaway node http server in run-tests.mjs:
-      //   /passport-host.js  -> web-host/passport-host.js
+      //   /passport-host.js  -> hosts/web/passport-host.js
       //   /bundle/app.wasm   -> make-bundle output (release fixture wasm)
+      //   /pcm-worklet.js    -> hosts/web/pcm-worklet.js (worklet module)
       // This page drives the SAME deterministic frame/input sequence as
       // computeBrowserExpectation() on the node side, then reports:
       //   - boot status, frameCount, lastNowUs, volume
@@ -26,8 +27,15 @@
       //     presented frame (getImageData of the real 2D canvas)
       //   - FNV-1a of host.getFramebufferView()'s RGB565 LE bytes for the
       //     same frame
-      // The node side recomputes both checksums from its own wasm instance
-      // and asserts equality (exact RGB565 output reaches the HTML canvas).
+      //   - the normalized-PCM audio facts: pcmStats (wasm -> host_pcm_write),
+      //     samples handed to the audio transport, consumption reports from
+      //     the render side, and audioProof "full" | "ingest-only"
+      // The node side recomputes the checksums from its own wasm instance and
+      // asserts equality (exact RGB565 output reaches the HTML canvas) and
+      // gates the audio facts. The probe logic must stay LOGICALLY IDENTICAL
+      // to the self-contained data: variant built by
+      // buildSelfContainedProbeUrl() in run-tests.mjs — only the loading path
+      // (http imports vs blob/inline bytes) differs.
       // No rAF loop is started: the page stays quiescent after reporting.
       import { createHost } from "/passport-host.js";
 
@@ -43,6 +51,76 @@
         return (h >>> 0).toString(16).padStart(8, "0");
       }
 
+      // Observe the host's audio transport WITHOUT changing its behavior.
+      // Worklet: wrap node.port.postMessage (main-thread handoff count — the
+      // "filled toward the transport" fact, provable even if the render thread
+      // never runs) and add a SECOND port listener (onmessage stays the
+      // host's) that records the worklet's consumption reports.
+      // ScriptProcessor: no port; the host's pull IS the handoff, so wrap
+      // onaudioprocess and read the position snapshot right after each pull
+      // (ctx.currentTime has not advanced inside the same task, so
+      // pos_us / 62.5 recovers the cumulative consumed-sample count).
+      function installAudioObservers(host) {
+        const obs = { kind: host.audio.kind, posted: 0, reports: 0, consumed: 0, filled: 0, underruns: 0, dropped: 0 };
+        if (obs.kind === "worklet" && host.audio.node && host.audio.node.port) {
+          const port = host.audio.node.port;
+          const origPost = port.postMessage.bind(port);
+          port.postMessage = (msg, ...rest) => {
+            if (msg && msg.type === "pcm" && msg.data instanceof Float32Array) obs.posted += msg.data.length;
+            return origPost(msg, ...rest);
+          };
+          port.addEventListener("message", (ev) => {
+            const r = ev.data;
+            if (!r || typeof r !== "object") return;
+            obs.reports += 1;
+            if (typeof r.consumed === "number") obs.consumed = Math.max(obs.consumed, r.consumed);
+            if (typeof r.filled === "number") obs.filled = Math.max(obs.filled, r.filled);
+            if (typeof r.underruns === "number") obs.underruns = r.underruns;
+            if (typeof r.dropped === "number") obs.dropped = r.dropped;
+          });
+        } else if (obs.kind === "script" && host.audio.node) {
+          const sp = host.audio.node;
+          const origPull = sp.onaudioprocess;
+          sp.onaudioprocess = (event) => {
+            origPull(event);
+            obs.reports += 1;
+            const total = Math.round(Number(host.playbackPosUs()) / 62.5);
+            if (Number.isFinite(total) && total > obs.consumed) obs.consumed = total;
+            obs.filled = obs.consumed; // SP handoff is atomic with consumption
+          };
+        }
+        return obs;
+      }
+
+      // Bounded in-page wait until the audio facts are observable. Exits on
+      // the FIRST of: consumption observed; 3 s advanced on the AudioContext's
+      // own clock (the audio device clock runs in REAL time — immune to the
+      // launcher's --virtual-time-budget — so this bounds the wait in real
+      // time on every launcher); 10 s of wall time; or audio.kind "none"
+      // (nothing will ever arrive — fail fast in the node-side gate).
+      // resumeAudio() is the documented host seam; it is a no-op once the
+      // context runs and unlocks a suspended one.
+      async function waitForAudioProof(host, obs) {
+        const startedMs = Date.now();
+        const startAudioTime = host.audio.ctx ? host.audio.ctx.currentTime : 0;
+        await new Promise((resolve) => {
+          const timer = setInterval(() => {
+            host.resumeAudio();
+            const audioElapsedS = host.audio.ctx ? host.audio.ctx.currentTime - startAudioTime : 0;
+            if (
+              obs.consumed > 0 ||
+              host.audio.kind === "none" ||
+              audioElapsedS >= 3.0 ||
+              Date.now() - startedMs >= 10000
+            ) {
+              clearInterval(timer);
+              resolve();
+            }
+          }, 50);
+        });
+        return Date.now() - startedMs;
+      }
+
       // No top-level await: pending TLA would block the window load event and
       // starve --virtual-time-budget of its "load fired" starting point. An
       // async IIFE keeps module evaluation synchronous so load fires
@@ -51,18 +129,20 @@
         try {
           const canvas = document.getElementById("probe-canvas");
           let n = 0;
+          // REAL audio on purpose: no audioContextFactory override, so
+          // createHost constructs the real AudioContext at 16000 Hz and (when
+          // available) the AudioWorklet transport against /pcm-worklet.js.
+          // The suite launches every browser with
+          // --autoplay-policy=no-user-gesture-required so the context starts
+          // running without a user gesture.
           const host = await createHost({
             canvas,
             wasmUrl: "/bundle/app.wasm",
+            workletUrl: "/pcm-worklet.js",
             nowUs: () => BigInt(n) * 16667n,
-            // Deterministic probe: no real WebAudio machinery (headless audio
-            // state is orthogonal to the asserted display contract). The
-            // factory throwing is a documented createHost path: audio is
-            // recorded as unavailable and everything else boots normally.
-            audioContextFactory: () => {
-              throw new Error("audio disabled for deterministic probe");
-            },
           });
+          host.resumeAudio(); // resume seam: no-op when already running
+          const obs = installAudioObservers(host);
         for (; n < 5; n++) {
           const r = host.tick(BigInt(n) * 16667n); // frames N=0..4, sel=0
           if (!r || !r.presented) throw new Error("tick not presented at N=" + n);
@@ -76,6 +156,11 @@
         const canvasCrc = fnv1a(img.data);
         const fb = host.getFramebufferView();
         const fbBytes = new Uint8Array(fb.buffer, fb.byteOffset, fb.byteLength);
+
+        // Bounded wait until the render side has (or has provably not)
+        // consumed the handed-off samples.
+        const audioWaitMs = await waitForAudioProof(host, obs);
+        const stats = host.pcmStats;
         resultEl.textContent = JSON.stringify({
           status: "ok",
           frameCount: host.frameCount,
@@ -87,6 +172,13 @@
           fbCrc: fnv1a(fbBytes),
           audioKind: host.audio.kind,
           audioReason: host.audio.reason,
+          audioWorkletError: host.audio.workletError,
+          pcmCalls: stats.calls,
+          pcmBytes: stats.bytesReceived,
+          audioFilled: host.audio.kind === "worklet" ? obs.posted : obs.filled,
+          audioConsumed: obs.consumed,
+          audioWaitMs,
+          audioProof: obs.consumed > 0 ? "full" : "ingest-only",
         });
         } catch (err) {
           resultEl.textContent = JSON.stringify({

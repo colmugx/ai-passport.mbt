@@ -15,8 +15,10 @@
 /// closures to the inline-WAT `store_u16` helper and the `"passport"`
 /// externs. On native and js, tests inject fakes. Because all bridge logic is
 /// pure integer math over those closures, the whole package compiles and is
-/// unit-testable off-wasm; no MoonBit object address ever crosses the
-/// boundary (AGENTS.md rule 6, work log ruling 3).
+/// unit-testable off-wasm. The boundary stays primitive-only by design: the
+/// host and the app exchange nothing but integer addresses, lengths, and raw
+/// 16-bit patterns — no MoonBit object address ever crosses it (AGENTS.md
+/// rule 6).
 ///
 /// Dirty-flag state machine: `DisplaySink::present` marks the frame dirty;
 /// `consume` clears it. The host blits the framebuffer between the two.
@@ -29,6 +31,7 @@ pub struct HostBridge {
   priv store_u16 : (Int, Int) -> Unit
   priv pcm_write : (Int, Int) -> Unit
   priv battery_percent : () -> Int
+  priv scratch_row : FixedArray[Int]
   priv mut dirty : Bool
   priv mut now_us : Int64
 }
@@ -41,13 +44,24 @@ pub struct HostBridge {
 /// never exceeding `PCM_STAGE_CAPACITY_SAMPLES`; `battery_percent` returns
 /// the raw wire value (`-1` = unavailable).
 ///
+/// The bridge also allocates its one row-decode scratch buffer here: a
+/// `LOGICAL_WIDTH`-pixel `FixedArray` reused by `present` for every frame,
+/// so presenting a frame allocates nothing in steady state.
+///
 /// The bridge starts clean and at `monotonic_ms == 0`.
 pub fn HostBridge::new(
   store_u16~ : (Int, Int) -> Unit,
   pcm_write~ : (Int, Int) -> Unit,
   battery_percent~ : () -> Int,
 ) -> HostBridge {
-  { store_u16, pcm_write, battery_percent, dirty: false, now_us: 0L, }
+  {
+    store_u16,
+    pcm_write,
+    battery_percent,
+    scratch_row: FixedArray::make(@core.LOGICAL_WIDTH, 0),
+    dirty: false,
+    now_us: 0L,
+  }
 }
 
 ///|
@@ -81,6 +95,12 @@ pub fn HostBridge::advance(self : HostBridge, now_us : Int64) -> Unit {
 /// (the only sanctioned read path — no framebuffer layout leaks into public
 /// APIs, AGENTS.md rule 6), then marks the frame dirty.
 ///
+/// Rows decode into `self.scratch_row`, allocated once in `new` and reused
+/// for every frame, so steady-state presents allocate nothing. Reuse is safe
+/// because `copy_rgb565_row` overwrites the first `n` entries of the scratch
+/// row and the loop below reads only `0..<n` — pixels left over from an
+/// earlier (possibly wider) frame are never observed.
+///
 /// Pixel `(x, y)` lands at byte address
 /// `FRAMEBUFFER_PTR + (y * LOGICAL_WIDTH + x) * 2`, so the region always
 /// holds the 120x160 logical frame with the ABI's fixed stride, regardless of
@@ -95,7 +115,7 @@ pub impl @driver.DisplaySink for HostBridge with fn present(
   } else {
     @core.LOGICAL_HEIGHT
   }
-  let row : FixedArray[Int] = FixedArray::make(@core.LOGICAL_WIDTH, 0)
+  let row = self.scratch_row
   for y in 0..<height {
     let n = frame.copy_rgb565_row(y~, out=row)
     for i in 0..<n {

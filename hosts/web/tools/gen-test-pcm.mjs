@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 /**
- * gen-test-pcm.mjs — generate web-host/assets/test.pcm.
+ * gen-test-pcm.mjs — generate hosts/web/assets/test.pcm.
  *
  * The asset is the FIRST 4000 SAMPLES (0.25 s) of the frozen integer square
- * wave (docs/R1_TRACKING.md, "Fixture contract"):
+ * wave (frozen fixture contract, mirrors src/fixture/frame.mbt):
  *
  *     sample(n) = ((n >> 4) & 1) == 1 ? -4000 : 4000
  *

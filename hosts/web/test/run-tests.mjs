@@ -5,10 +5,10 @@
  * exits non-zero on any suite failure, printing one PASS/FAIL line per
  * suite.
  *
- *   node web-host/test/run-tests.mjs [--skip-browser]
+ *   node hosts/web/test/run-tests.mjs [--skip-browser]
  *
  * Suites:
- *   1. pcm-asset          web-host/assets/test.pcm == frozen square wave
+ *   1. pcm-asset          hosts/web/assets/test.pcm == frozen square wave
  *   2. abi-golden:release fixture wasm vs the FROZEN ABI v0 + fixture contract
  *   3. abi-golden:debug   import/export surface parity of the debug artifact
  *   4. host-module: createHost under node (lifecycle, canvas blit, input)
@@ -16,17 +16,22 @@
  *   6. host-module: canvas-less run and dispose
  *   7. host-module: memory-growth view invalidation
  *   8. bundle             make-bundle assembly + refusal path
- *   9. browser            exact RGB565 output reaches a real HTML canvas
- *                         (playwright if available, else the cached
+ *   9. browser            exact RGB565 output reaches a real HTML canvas AND
+ *                         the normalized-PCM host path runs end to end in a
+ *                         real browser: wasm host_pcm_write -> decode ->
+ *                         audio transport handoff -> consumption reports
+ *                         (playwright if available — the CI mechanism, full
+ *                         proof required — else the cached
  *                         chrome-headless-shell; --skip-browser to skip)
  *
  * Prerequisites (checked, with the exact commands printed when missing):
  *   moon build --target wasm --release    # _build/wasm/release/build/fixture/fixture.wasm
  *   moon build --target wasm              # _build/wasm/debug/build/fixture/fixture.wasm
- *   node web-host/tools/gen-test-pcm.mjs  # (auto-run once if the asset is missing)
+ *   node hosts/web/tools/gen-test-pcm.mjs  # (auto-run once if the asset is missing)
  *
  * Everything here is deterministic test tooling: no application state
- * machine beyond driving the frozen fixture contract (docs/R1_TRACKING.md).
+ * machine beyond driving the frozen fixture contract (frozen ABI v0: fb ptr
+ * 4096 / fb len 38400, PCM staging ptr 42496, 266 samples/frame at 16000 Hz).
  */
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
@@ -40,8 +45,8 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 // ---------------------------------------------------------------------------
 
 const testDir = path.dirname(fileURLToPath(import.meta.url));
-const webHostDir = path.resolve(testDir, "..");
-const repoRoot = path.resolve(webHostDir, "..");
+const webHostDir = path.resolve(testDir, ".."); // hosts/web
+const repoRoot = path.resolve(webHostDir, "..", ".."); // repository root
 const RELEASE_WASM = path.join(repoRoot, "_build", "wasm", "release", "build", "fixture", "fixture.wasm");
 const DEBUG_WASM = path.join(repoRoot, "_build", "wasm", "debug", "build", "fixture", "fixture.wasm");
 const PCM_ASSET = path.join(webHostDir, "assets", "test.pcm");
@@ -53,8 +58,9 @@ const SKIP_BROWSER =
   process.argv.includes("--skip-browser") || process.env.PASSPORT_SKIP_BROWSER === "1";
 
 // ---------------------------------------------------------------------------
-// Frozen contract constants (docs/R1_TRACKING.md; mirrors src/hostabi and
-// web-host/passport-host.js — duplicated here ON PURPOSE: the tests pin the
+// Frozen contract constants (frozen ABI v0: fb ptr 4096, fb len 38400, PCM
+// staging ptr 42496, 266 samples/frame at 16000 Hz; mirrors src/hostabi and
+// hosts/web/passport-host.js — duplicated here ON PURPOSE: the tests pin the
 // frozen numbers, they must not drift with the code under test).
 // ---------------------------------------------------------------------------
 
@@ -301,7 +307,7 @@ const suite = (name, fn) => suites.push({ name, fn });
 
 // --- Suite 1: PCM asset -----------------------------------------------------
 
-suite("pcm-asset: frozen square wave (web-host/assets/test.pcm)", () => {
+suite("pcm-asset: frozen square wave (hosts/web/assets/test.pcm)", () => {
   const buf = fs.readFileSync(PCM_ASSET);
   eq(buf.length, 8000, "test.pcm byte length (4000 samples * 2 bytes)");
   for (let n = 0; n < 4000; n++) {
@@ -557,7 +563,7 @@ suite("host-module: lifecycle, canvas blit, queued input (createHost under node)
   eq(host.lastNowUs, 5000000n, "tick(number) normalizes to BigInt microseconds");
 
   // Playback position seam (kind "none" path): report + mutating currentTime.
-  // Formula (web-host/README.md):
+  // Formula (hosts/web/README.md):
   //   position_us = round((consumedSamples + max(0, now - snapshotTime) * 16000) * 1e6 / 16000)
   eq(host.playbackPosUs(), 0n, "position is 0n before any consumption report");
   host.onAudioReport({ consumed: 1000 }); // snapshot at currentTime = 1.0
@@ -750,8 +756,25 @@ suite("bundle: make-bundle assembly, default outdir, refusal", () => {
 
 // --- Suite 9: browser ---------------------------------------------------------
 
+/** Candidate npm cache roots for npx-installed packages. npm's default cache
+ *  is `~/.npm` on darwin/linux (so npx installs land in `~/.npm/_npx/<hash>/
+ *  node_modules/...`) and `%LocalAppData%\npm-cache` on win32; npm_config_cache
+ *  (set by npm itself, e.g. in CI) wins when present. The per-entry layout
+ *  under `_npx` is identical on every platform. */
+function npxCacheRoots() {
+  const roots = [];
+  if (process.env.npm_config_cache) roots.push(process.env.npm_config_cache);
+  if (process.platform === "win32") {
+    roots.push(path.join(process.env.LOCALAPPDATA || path.join(os.homedir(), "AppData", "Local"), "npm-cache"));
+  } else {
+    roots.push(path.join(os.homedir(), ".npm"));
+  }
+  return [...new Set(roots)];
+}
+
 /** Resolve playwright without any committed dependency: bare import first
- *  (NODE_PATH-style setups), then the npx cache. Returns null if absent. */
+ *  (NODE_PATH-style setups), then the platform's npx cache. Returns null if
+ *  absent. */
 async function loadPlaywright() {
   try {
     const m = await import("playwright");
@@ -759,29 +782,55 @@ async function loadPlaywright() {
   } catch {
     // fall through to the npx cache
   }
-  const npxCache = path.join(os.homedir(), ".npm", "_npx");
-  let entries = [];
-  try {
-    entries = fs.readdirSync(npxCache);
-  } catch {
-    return null;
-  }
-  for (const entry of entries) {
-    const candidate = path.join(npxCache, entry, "node_modules", "playwright", "index.js");
-    if (!fs.existsSync(candidate)) continue;
+  for (const cacheRoot of npxCacheRoots()) {
+    const npxCache = path.join(cacheRoot, "_npx");
+    let entries = [];
     try {
-      const m = await import(pathToFileURL(candidate));
-      return m.default ?? m;
+      entries = fs.readdirSync(npxCache);
     } catch {
-      // try the next cache entry
+      continue;
+    }
+    for (const entry of entries) {
+      const candidate = path.join(npxCache, entry, "node_modules", "playwright", "index.js");
+      if (!fs.existsSync(candidate)) continue;
+      try {
+        const m = await import(pathToFileURL(candidate));
+        return m.default ?? m;
+      } catch {
+        // try the next cache entry
+      }
     }
   }
   return null;
 }
 
+/** Playwright's browser registry dir (also where `playwright install` puts
+ *  the browsers): PLAYWRIGHT_BROWSERS_PATH wins unless it is "0" (playwright
+ *  semantics: package-local browsers), else the per-OS default cache. */
+function playwrightBrowsersDir() {
+  const env = process.env.PLAYWRIGHT_BROWSERS_PATH;
+  if (env !== undefined && env !== "" && env !== "0") return env;
+  switch (process.platform) {
+    case "darwin":
+      return path.join(os.homedir(), "Library", "Caches", "ms-playwright");
+    case "win32":
+      return path.join(process.env.LOCALAPPDATA || path.join(os.homedir(), "AppData", "Local"), "ms-playwright");
+    default: // linux and everything else (CI: ~/.cache/ms-playwright)
+      return path.join(os.homedir(), ".cache", "ms-playwright");
+  }
+}
+
 /** Locate the cached chrome-headless-shell binary (playwright cache layout). */
 function findHeadlessShell() {
-  const base = process.env.PLAYWRIGHT_BROWSERS_PATH || path.join(os.homedir(), "Library", "Caches", "ms-playwright");
+  const base = playwrightBrowsersDir();
+  const binName = process.platform === "win32" ? "chrome-headless-shell.exe" : "chrome-headless-shell";
+  // Known per-OS download dir names (fast path; the generic scan below covers
+  // any other layout).
+  const knownDir = {
+    darwin: "chrome-headless-shell-mac-arm64",
+    win32: "chrome-headless-shell-win64",
+    linux: "chrome-headless-shell-linux64",
+  }[process.platform];
   let dirs = [];
   try {
     dirs = fs.readdirSync(base);
@@ -791,11 +840,13 @@ function findHeadlessShell() {
   for (const dir of dirs) {
     if (!dir.startsWith("chromium_headless_shell")) continue;
     const root = path.join(base, dir);
-    const direct = path.join(root, "chrome-headless-shell-mac-arm64", "chrome-headless-shell");
-    if (fs.existsSync(direct)) return direct;
+    if (knownDir) {
+      const direct = path.join(root, knownDir, binName);
+      if (fs.existsSync(direct)) return direct;
+    }
     try {
       for (const sub of fs.readdirSync(root)) {
-        const candidate = path.join(root, sub, "chrome-headless-shell");
+        const candidate = path.join(root, sub, binName);
         if (fs.existsSync(candidate)) return candidate;
       }
     } catch {
@@ -806,7 +857,7 @@ function findHeadlessShell() {
 }
 
 /** Node-side golden for the browser probe: an independent wasm instance
- *  drives the EXACT same frame/input sequence as web-host/test/
+ *  drives the EXACT same frame/input sequence as hosts/web/test/
  *  browser-probe.html and derives the expected FNV-1a checksums. */
 async function computeBrowserExpectation() {
   const host = await hostModule.createHost({ wasmBytes: fs.readFileSync(RELEASE_WASM) });
@@ -864,11 +915,20 @@ function startProbeServer(bundleDir) {
   });
 }
 
+/** Chrome flags for BOTH launchers: the probe's AudioContext must start
+ *  running without a user gesture (autoplay policy), sandboxing/GPU are off
+ *  for hermetic headless runs (same flags as the headless-shell invocation). */
+const BROWSER_LAUNCH_FLAGS = [
+  "--autoplay-policy=no-user-gesture-required",
+  "--no-sandbox",
+  "--disable-gpu",
+];
+
 async function runProbeInPlaywright(url) {
   const pw = await loadPlaywright();
-  if (!pw) return { path: null, payload: null };
-  if (!pw.chromium || typeof pw.chromium.launch !== "function") return { path: null, payload: null };
-  const browser = await pw.chromium.launch({ headless: true });
+  if (!pw) return { path: null, mechanism: null, payload: null };
+  if (!pw.chromium || typeof pw.chromium.launch !== "function") return { path: null, mechanism: null, payload: null };
+  const browser = await pw.chromium.launch({ headless: true, args: BROWSER_LAUNCH_FLAGS });
   try {
     const page = await browser.newPage();
     await page.goto(url, { waitUntil: "load", timeout: 30_000 });
@@ -880,7 +940,11 @@ async function runProbeInPlaywright(url) {
       null,
       { timeout: 45_000 },
     );
-    return { path: "playwright (cached chromium)", payload: JSON.parse(await page.textContent("#probe-result")) };
+    return {
+      path: "playwright (cached chromium)",
+      mechanism: "playwright", // the CI mechanism: full audio proof REQUIRED
+      payload: JSON.parse(await page.textContent("#probe-result")),
+    };
   } finally {
     await browser.close().catch(() => {});
   }
@@ -896,14 +960,21 @@ const DATA_PROBE_ATTEMPTS = 3;
 const DATA_PROBE_RETRY_DELAY_MS = 1500;
 
 /** Run chrome-headless-shell --dump-dom against a URL and extract the probe
- *  payload. Returns { path, payload } with payload === null when the DOM has
- *  no finished probe result (page never loaded / script never completed). */
+ *  payload. Returns { path, mechanism, payload } with payload === null when
+ *  the DOM has no finished probe result (page never loaded / script never
+ *  completed). */
 function runShellProbe(url, label, timeoutMs) {
   const bin = findHeadlessShell();
-  if (!bin) return { path: null, payload: null };
+  if (!bin) return { path: null, mechanism: null, payload: null };
   const res = spawnSync(
     bin,
-    ["--no-sandbox", "--disable-gpu", "--virtual-time-budget=20000", `--timeout=${timeoutMs}`, "--dump-dom", url],
+    [
+      ...BROWSER_LAUNCH_FLAGS, // includes --autoplay-policy=no-user-gesture-required
+      "--virtual-time-budget=20000",
+      `--timeout=${timeoutMs}`,
+      "--dump-dom",
+      url,
+    ],
     { encoding: "utf8", timeout: timeoutMs + 60_000, maxBuffer: 64 * 1024 * 1024 },
   );
   const m = res.stdout ? /<pre id="probe-result">([\s\S]*?)<\/pre>/.exec(res.stdout) : null;
@@ -911,14 +982,15 @@ function runShellProbe(url, label, timeoutMs) {
   if (!text || !text.startsWith("{")) {
     return {
       path: `chrome-headless-shell (${label})`,
+      mechanism: "shell",
       payload: null,
       note: text === "booting" ? "probe script did not finish" : text === null ? `page did not load (${String(res.stderr).split("\n")[0] || "no stderr"})` : text,
     };
   }
   try {
-    return { path: `chrome-headless-shell (${label})`, payload: JSON.parse(text) };
+    return { path: `chrome-headless-shell (${label})`, mechanism: "shell", payload: JSON.parse(text) };
   } catch {
-    return { path: `chrome-headless-shell (${label})`, payload: null, note: `unparsable probe payload: ${text.slice(0, 200)}` };
+    return { path: `chrome-headless-shell (${label})`, mechanism: "shell", payload: null, note: `unparsable probe payload: ${text.slice(0, 200)}` };
   }
 }
 
@@ -926,12 +998,25 @@ function runShellProbe(url, label, timeoutMs) {
  *  cannot complete plain http navigations ("Page load timed out" even for a
  *  static page), so instead of fetching over the throwaway server the probe
  *  page is delivered as a data: URL and receives (a) the unmodified
- *  passport-host.js source as a blob module import and (b) the bundle's
- *  app.wasm bytes inline (base64 -> ArrayBuffer -> options.wasmBytes). The
- *  assertion payload and the frame/input sequence are IDENTICAL to
- *  web-host/test/browser-probe.html — only the loading path differs. */
+ *  passport-host.js source as a blob module import, (b) the worklet source as
+ *  a blob URL for options.workletUrl, and (c) the bundle's app.wasm bytes
+ *  inline (base64 -> ArrayBuffer -> options.wasmBytes).
+ *
+ * AUDIO IS REAL here too: no audioContextFactory override, so createHost
+ * constructs the real AudioContext at 16000 Hz. A data: page has an opaque
+ * origin and no server, so the host's default worklet location (resolved
+ * against the blob module's import.meta.url) could not even be built as a
+ * URL — hence the explicit blob workletUrl. If addModule refuses the blob,
+ * the host's documented ScriptProcessor fallback takes over and the payload
+ * records audioKind "script" plus audioWorkletError (documented degradation;
+ * the http path prefers a real worklet).
+ *
+ * The assertion payload, the audio observers/wait and the frame/input
+ * sequence are LOGICALLY IDENTICAL to hosts/web/test/browser-probe.html —
+ * only the loading path differs. */
 function buildSelfContainedProbeUrl(bundleDir) {
   const hostB64 = fs.readFileSync(HOST_MODULE).toString("base64");
+  const workletB64 = fs.readFileSync(path.join(webHostDir, "pcm-worklet.js")).toString("base64");
   const wasmB64 = fs.readFileSync(path.join(bundleDir, "app.wasm")).toString("base64");
   const html = `<!doctype html><html><head><meta charset="utf-8"><title>passport self-contained probe</title></head>
 <body><canvas id="probe-canvas" width="120" height="160"></canvas>
@@ -939,23 +1024,82 @@ function buildSelfContainedProbeUrl(bundleDir) {
 <script type="module">
 (async () => {
   const resultEl = document.getElementById("probe-result");
+  // ---- helpers: byte-identical logic to browser-probe.html ----
   function fnv1a(bytes) {
     let h = 0x811c9dc5 | 0;
     for (let i = 0; i < bytes.length; i++) { h ^= bytes[i]; h = Math.imul(h, 0x01000193); }
     return (h >>> 0).toString(16).padStart(8, "0");
   }
+  function installAudioObservers(host) {
+    const obs = { kind: host.audio.kind, posted: 0, reports: 0, consumed: 0, filled: 0, underruns: 0, dropped: 0 };
+    if (obs.kind === "worklet" && host.audio.node && host.audio.node.port) {
+      const port = host.audio.node.port;
+      const origPost = port.postMessage.bind(port);
+      port.postMessage = (msg, ...rest) => {
+        if (msg && msg.type === "pcm" && msg.data instanceof Float32Array) obs.posted += msg.data.length;
+        return origPost(msg, ...rest);
+      };
+      port.addEventListener("message", (ev) => {
+        const r = ev.data;
+        if (!r || typeof r !== "object") return;
+        obs.reports += 1;
+        if (typeof r.consumed === "number") obs.consumed = Math.max(obs.consumed, r.consumed);
+        if (typeof r.filled === "number") obs.filled = Math.max(obs.filled, r.filled);
+        if (typeof r.underruns === "number") obs.underruns = r.underruns;
+        if (typeof r.dropped === "number") obs.dropped = r.dropped;
+      });
+    } else if (obs.kind === "script" && host.audio.node) {
+      const sp = host.audio.node;
+      const origPull = sp.onaudioprocess;
+      sp.onaudioprocess = (event) => {
+        origPull(event);
+        obs.reports += 1;
+        const total = Math.round(Number(host.playbackPosUs()) / 62.5);
+        if (Number.isFinite(total) && total > obs.consumed) obs.consumed = total;
+        obs.filled = obs.consumed;
+      };
+    }
+    return obs;
+  }
+  async function waitForAudioProof(host, obs) {
+    const startedMs = Date.now();
+    const startAudioTime = host.audio.ctx ? host.audio.ctx.currentTime : 0;
+    await new Promise((resolve) => {
+      const timer = setInterval(() => {
+        host.resumeAudio();
+        const audioElapsedS = host.audio.ctx ? host.audio.ctx.currentTime - startAudioTime : 0;
+        if (
+          obs.consumed > 0 ||
+          host.audio.kind === "none" ||
+          audioElapsedS >= 3.0 ||
+          Date.now() - startedMs >= 10000
+        ) {
+          clearInterval(timer);
+          resolve();
+        }
+      }, 50);
+    });
+    return Date.now() - startedMs;
+  }
+  // ---- probe body: identical sequence and payload to browser-probe.html ----
   try {
     const hostSrc = atob("${hostB64}");
+    const workletSrc = atob("${workletB64}");
     const mod = await import(URL.createObjectURL(new Blob([hostSrc], { type: "text/javascript" })));
     const wasmBytes = Uint8Array.from(atob("${wasmB64}"), (c) => c.charCodeAt(0)).buffer;
     const canvas = document.getElementById("probe-canvas");
     let n = 0;
+    // REAL audio (no audioContextFactory): createHost builds the real
+    // AudioContext; the launcher passes
+    // --autoplay-policy=no-user-gesture-required so it starts running.
     const host = await mod.createHost({
       canvas,
       wasmBytes,
+      workletUrl: URL.createObjectURL(new Blob([workletSrc], { type: "text/javascript" })),
       nowUs: () => BigInt(n) * 16667n,
-      audioContextFactory: () => { throw new Error("audio disabled for deterministic probe"); },
     });
+    host.resumeAudio();
+    const obs = installAudioObservers(host);
     for (; n < 5; n++) {
       const r = host.tick(BigInt(n) * 16667n);
       if (!r || !r.presented) throw new Error("tick not presented at N=" + n);
@@ -968,6 +1112,8 @@ function buildSelfContainedProbeUrl(bundleDir) {
     const canvasCrc = fnv1a(img.data);
     const fb = host.getFramebufferView();
     const fbCrc = fnv1a(new Uint8Array(fb.buffer, fb.byteOffset, fb.byteLength));
+    const audioWaitMs = await waitForAudioProof(host, obs);
+    const stats = host.pcmStats;
     resultEl.textContent = JSON.stringify({
       status: "ok",
       frameCount: host.frameCount,
@@ -978,6 +1124,14 @@ function buildSelfContainedProbeUrl(bundleDir) {
       canvasCrc,
       fbCrc,
       audioKind: host.audio.kind,
+      audioReason: host.audio.reason,
+      audioWorkletError: host.audio.workletError,
+      pcmCalls: stats.calls,
+      pcmBytes: stats.bytesReceived,
+      audioFilled: host.audio.kind === "worklet" ? obs.posted : obs.filled,
+      audioConsumed: obs.consumed,
+      audioWaitMs,
+      audioProof: obs.consumed > 0 ? "full" : "ingest-only",
     });
   } catch (err) {
     resultEl.textContent = JSON.stringify({
@@ -990,7 +1144,7 @@ function buildSelfContainedProbeUrl(bundleDir) {
   return `data:text/html;base64,${Buffer.from(html).toString("base64")}`;
 }
 
-suite("browser: exact RGB565 output reaches a real HTML canvas", async () => {
+suite("browser: exact RGB565 canvas + normalized-PCM audio in a real browser", async () => {
   if (SKIP_BROWSER) {
     console.log("  skipped by --skip-browser / PASSPORT_SKIP_BROWSER=1");
     return;
@@ -1003,12 +1157,16 @@ suite("browser: exact RGB565 output reaches a real HTML canvas", async () => {
     const expected = await computeBrowserExpectation();
 
     // Path 1: playwright (cached chromium) against the http-served probe page.
+    //         The CI mechanism: the FULL audio proof is REQUIRED here.
     // Path 2: chrome-headless-shell --dump-dom against the same http page.
     // Path 3: chrome-headless-shell against a self-contained data: URL probe
     //         (used when the browser cannot load http in this environment).
+    // Paths 2+3 are local FALLBACKS: if the render side never reports
+    // consumption they may pass ingest-only, with an explicit printed
+    // degradation line — never usable by CI.
     server = await startProbeServer(bundleDir);
     const url = `http://127.0.0.1:${server.address().port}/test/browser-probe.html`;
-    let outcome = { path: null, payload: null, note: null };
+    let outcome = { path: null, mechanism: null, payload: null, note: null };
     try {
       const pw = await runProbeInPlaywright(url);
       if (pw.payload) outcome = pw;
@@ -1045,8 +1203,35 @@ suite("browser: exact RGB565 output reaches a real HTML canvas", async () => {
         (outcome.note ? `; attempts: ${outcome.note}` : ""),
     );
     const { payload, path: usedPath } = outcome;
+
+    // ---- gate 1: clean boot (as before) ----
     ok(payload.status === "ok", `probe must boot cleanly; payload: ${JSON.stringify(payload)}`);
-    console.log(`  browser path: ${usedPath}; probe audio kind: ${payload.audioKind}`);
+    console.log(`  browser path: ${usedPath} [mechanism: ${outcome.mechanism}]`);
+
+    // ---- gate 2: audio facts observed in the page (before display eqs, so a
+    // broken payload names the audio gap first) ----
+    ok(
+      typeof payload.pcmCalls === "number" && payload.pcmCalls > 0 && payload.pcmBytes > 0,
+      `wasm must push normalized PCM through host_pcm_write in the real browser ` +
+        `(pcmCalls=${payload.pcmCalls} pcmBytes=${payload.pcmBytes})`,
+    );
+    ok(
+      payload.audioKind === "worklet" || payload.audioKind === "script",
+      `audioKind must be "worklet" or "script" in a real browser, got ${JSON.stringify(payload.audioKind)}` +
+        (payload.audioReason ? ` (audioReason: ${payload.audioReason})` : ""),
+    );
+    ok(
+      typeof payload.audioFilled === "number" && payload.audioFilled > 0,
+      `decoded PCM must reach the audio transport (audioFilled=${payload.audioFilled})`,
+    );
+    console.log(
+      `  audio proof: kind=${payload.audioKind} pcmCalls=${payload.pcmCalls} pcmBytes=${payload.pcmBytes} ` +
+        `filled=${payload.audioFilled} consumed=${payload.audioConsumed} proof=${payload.audioProof} ` +
+        `waitMs=${payload.audioWaitMs}` +
+        (payload.audioWorkletError ? ` workletError=${payload.audioWorkletError}` : ""),
+    );
+
+    // ---- gate 3: display/input equality (UNCHANGED strength) ----
     eq(payload.frameCount, expected.frameCount, "probe frameCount (status/fps sanity: exact tick count)");
     eq(payload.lastNowUs, expected.lastNowUs, "probe lastNowUs");
     eq(payload.fbLen, FB_LEN / 2, "probe framebuffer view length");
@@ -1058,6 +1243,22 @@ suite("browser: exact RGB565 output reaches a real HTML canvas", async () => {
       expected.canvasCrc,
       "canvas ImageData RGBA must equal host RGB565->RGBA of the same framebuffer (round-trip equality)",
     );
+
+    // ---- gate 4: end-to-end audio consumption, mechanism-dependent ----
+    if (outcome.mechanism === "playwright") {
+      ok(
+        typeof payload.audioConsumed === "number" && payload.audioConsumed > 0 && payload.audioProof === "full",
+        `the playwright path (CI mechanism) must prove the FULL host audio path end to end: ` +
+          `audioConsumed=${payload.audioConsumed} audioProof=${JSON.stringify(payload.audioProof)}`,
+      );
+    } else if (payload.audioProof !== "full") {
+      // Local chrome-headless-shell FALLBACK ONLY (never used by CI): render
+      // consumption is not observable in this environment. This pass is a
+      // documented environmental degradation — the printed line and the
+      // payload's audioProof:"ingest-only" must make it impossible to
+      // confuse with the full proof.
+      console.log("  browser fallback: audio render not verifiable in this environment (ingest-only)");
+    }
   } finally {
     if (server) server.close();
     fs.rmSync(bundleDir, { recursive: true, force: true });
@@ -1076,7 +1277,7 @@ if (!fs.existsSync(RELEASE_WASM) || !fs.existsSync(DEBUG_WASM)) {
   process.exit(2);
 }
 if (!fs.existsSync(PCM_ASSET)) {
-  console.log("run-tests: web-host/assets/test.pcm missing; generating it via gen-test-pcm.mjs");
+  console.log("run-tests: hosts/web/assets/test.pcm missing; generating it via gen-test-pcm.mjs");
   const r = spawnSync(process.execPath, [GEN_PCM_TOOL], { stdio: "inherit" });
   if (r.status !== 0) process.exit(r.status ?? 1);
 }

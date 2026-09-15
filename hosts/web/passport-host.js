@@ -1,6 +1,8 @@
 /**
  * passport-host.js — application-agnostic WebAssembly host backend for the
- * AI Passport SDK. Implements ABI v0 (FROZEN for R1), see docs/R1_TRACKING.md.
+ * AI Passport SDK. Implements the FROZEN ABI v0 contract (framebuffer
+ * 120x160 RGB565 LE at byte offset 4096, length 38400; PCM staging buffer at
+ * 42496; normalized PCM16 LE mono at 16000 Hz).
  *
  * Host responsibilities (the frozen JS/app split):
  *   - instantiate app.wasm, provide the "passport" imports, call _start() once
@@ -22,7 +24,7 @@
  */
 
 // ---------------------------------------------------------------------------
-// Frozen ABI v0 constants (mirrored from src/hostabi; docs/R1_TRACKING.md)
+// Frozen ABI v0 constants (mirrored from src/hostabi)
 // ---------------------------------------------------------------------------
 
 /** Semantic buttons passed to passport_input(button, pressed). */

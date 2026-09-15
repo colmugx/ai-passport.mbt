@@ -1,13 +1,13 @@
 #!/usr/bin/env node
 /**
  * make-bundle.mjs — assemble a host-consumable test bundle (the directory
- * contract documented in web-host/README.md):
+ * contract documented in hosts/web/README.md):
  *
  *     <outdir>/app.wasm          copy of the RELEASE fixture wasm
  *     <outdir>/assets/test.pcm   copy of the generated PCM test asset
  *
  * Usage:
- *     node web-host/tools/make-bundle.mjs [outdir]
+ *     node hosts/web/tools/make-bundle.mjs [outdir]
  *     (default outdir: <repo>/_build/passport-bundle)
  *
  * Environment (test seam only):
@@ -24,14 +24,14 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const toolDir = path.dirname(fileURLToPath(import.meta.url));
-const repoRoot = path.resolve(toolDir, "..", "..");
+const repoRoot = path.resolve(toolDir, "..", "..", ".."); // hosts/web/tools -> repository root
 
 const defaultWasm = path.join(repoRoot, "_build", "wasm", "release", "build", "fixture", "fixture.wasm");
 const wasmPath = process.env.PASSPORT_FIXTURE_WASM
   ? path.resolve(process.env.PASSPORT_FIXTURE_WASM)
   : defaultWasm;
 const outDir = path.resolve(process.argv[2] || path.join(repoRoot, "_build", "passport-bundle"));
-const assetSrc = path.join(repoRoot, "web-host", "assets", "test.pcm");
+const assetSrc = path.join(repoRoot, "hosts", "web", "assets", "test.pcm");
 
 if (!existsSync(wasmPath)) {
   console.error(`make-bundle: app wasm not found at ${wasmPath}`);
@@ -43,7 +43,7 @@ if (!existsSync(wasmPath)) {
 if (!existsSync(assetSrc)) {
   console.error(`make-bundle: test.pcm not found at ${assetSrc}`);
   console.error("Generate it first:");
-  console.error("  node web-host/tools/gen-test-pcm.mjs");
+  console.error("  node hosts/web/tools/gen-test-pcm.mjs");
   process.exit(1);
 }
 

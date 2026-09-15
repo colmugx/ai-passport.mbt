@@ -104,3 +104,90 @@ test "frames larger than the logical display are clipped into the region" {
   }
   assert_eq(max_addr, @hostabi.FRAMEBUFFER_PTR + @hostabi.FRAMEBUFFER_LEN - 2)
 }
+
+///|
+test "repeated presents on one bridge leave the region holding the last frame exactly" {
+  let writes : Array[(Int, Int)] = []
+  let bridge = @hostabi.HostBridge::new(
+    store_u16=(addr, value) => writes.push((addr, value)),
+    pcm_write=(_, _) => (),
+    battery_percent=() => -1,
+  )
+  let sink : &@driver.DisplaySink = bridge
+  let pixels = @core.LOGICAL_WIDTH * @core.LOGICAL_HEIGHT
+  let full = @graphics.Canvas::logical()
+  // Frame 1: full red (RGB565 0xF800 = 63488).
+  full.fill_rect(
+    x=0,
+    y=0,
+    w=120,
+    h=160,
+    color=@core.Color::rgb(r=255, g=0, b=0),
+  )
+  sink.present(frame=full.frame_view())
+  // Frame 2: full green (RGB565 0x07E0 = 2016).
+  full.fill_rect(
+    x=0,
+    y=0,
+    w=120,
+    h=160,
+    color=@core.Color::rgb(r=0, g=255, b=0),
+  )
+  sink.present(frame=full.frame_view())
+  // Frame 3: a narrow canvas — leaves stale entries in the tail of the
+  // reused scratch row; a buggy read of entries `n..<LOGICAL_WIDTH` would
+  // push old red/green pixels into this frame's write stream.
+  let narrow = @graphics.Canvas::new(width=8, height=2)
+  narrow.fill_rect(x=0, y=0, w=8, h=2, color=@core.Color::rgb(r=0, g=0, b=255))
+  sink.present(frame=narrow.frame_view())
+  // Frame 4: full white — every region pixel and scratch cell rewritten.
+  full.fill_rect(
+    x=0,
+    y=0,
+    w=120,
+    h=160,
+    color=@core.Color::rgb(r=255, g=255, b=255),
+  )
+  sink.present(frame=full.frame_view())
+  // Frame 5 (last): green with a black checkerboard, so every pixel of the
+  // last frame is individually identifiable.
+  full.fill_rect(
+    x=0,
+    y=0,
+    w=120,
+    h=160,
+    color=@core.Color::rgb(r=0, g=255, b=0),
+  )
+  for y in 0..<@core.LOGICAL_HEIGHT {
+    for x in 0..<@core.LOGICAL_WIDTH {
+      if (x + y) % 2 == 0 {
+        full.pixel(x~, y~, color=@core.Color::rgb(r=0, g=0, b=0))
+      }
+    }
+  }
+  sink.present(frame=full.frame_view())
+  // Replay every recorded write into a region model; the last write per
+  // pixel wins, exactly like a host blitting after each frame.
+  let region : FixedArray[Int] = FixedArray::make(pixels, -1)
+  for (addr, value) in writes {
+    region[(addr - @hostabi.FRAMEBUFFER_PTR) / 2] = value
+  }
+  // The last frame itself must have written every pixel of the region: no
+  // cell may still hold the sentinel.
+  let mut stale = 0
+  for i in 0..<pixels {
+    if region[i] == -1 {
+      stale += 1
+    }
+  }
+  assert_eq(stale, 0)
+  // ...and each pixel must equal the last frame's checkerboard — pure black
+  // (0) on even diagonals, pure green (2016) elsewhere. Any leakage of the
+  // earlier red/green/blue/white frames shows up here.
+  for y in 0..<@core.LOGICAL_HEIGHT {
+    for x in 0..<@core.LOGICAL_WIDTH {
+      let expected = if (x + y) % 2 == 0 { 0 } else { 2016 }
+      assert_eq(region[y * @core.LOGICAL_WIDTH + x], expected)
+    }
+  }
+}

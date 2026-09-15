@@ -4,8 +4,8 @@
 /// externs declare imports from the `"passport"` module that the JS host
 /// must provide at instantiation, so a native or js build would not link,
 /// and a wasm test runner (moonrun) cannot supply the imports either — which
-/// is why every test file in this package is gated to `native` + `js` (work
-/// log ruling 2). Wasm-side coverage comes from the integration tests
+/// is why every test file in this package is gated to `native` + `js`.
+/// Wasm-side coverage comes from the integration tests
 /// against the real artifact.
 
 ///|
@@ -42,8 +42,9 @@ pub fn host_playback_pos_us() -> Int64 = "passport" "host_playback_pos_us"
 /// order. Little-endian is guaranteed by the WebAssembly ISA itself (the
 /// spec defines linear memory as byte-addressed little-endian) — not by host
 /// chance — so the same binary produces identical bytes on every wasm
-/// engine. This and `load_u16` are the ONLY raw memory accesses in the ABI;
-/// no MoonBit object address is ever read or exposed (work log ruling 3).
+/// engine. This and `load_u16` are the ONLY raw memory accesses in the ABI:
+/// the boundary passes integer addresses, lengths, and raw 16-bit patterns
+/// only, and no MoonBit object address is ever read or exposed across it.
 pub fn store_u16(addr : Int, value : Int) -> Unit = "(func (param $addr i32) (param $value i32) (i32.store16 (local.get $addr) (local.get $value)))"
 
 ///|
@@ -56,7 +57,7 @@ pub fn load_u16(addr : Int) -> Int = "(func (param $addr i32) (result i32) (i32.
 /// Constructs the real wasm bridge: the injected raw operations become the
 /// inline-WAT `store_u16` helper and the `"passport"` externs.
 ///
-/// Fixture wiring pattern (`src/fixture`, W3):
+/// Fixture wiring pattern (`src/fixture`):
 ///
 /// ```mbt nocheck
 /// let bridge = @hostabi.new_wasm_bridge()

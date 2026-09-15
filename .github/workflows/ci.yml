@@ -43,3 +43,64 @@ jobs:
 
       - name: Fail on uncommitted generator/formatter diff
         run: git diff --exit-code
+
+  wasm-host:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      # Node 22: active LTS floor. The suites use no node>=24-only APIs
+      # (plain ESM, BigInt, spawnSync, top-level await all predate 22).
+      - name: Set up Node 24
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24
+
+      - name: Set up MoonBit
+        run: |
+          curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash
+          echo "$HOME/.moon/bin" >> $GITHUB_PATH
+
+      - name: MoonBit version and dependency update
+        run: |
+          moon version --all
+          moon update
+
+      - name: Check (wasm)
+        run: moon check --target wasm --output-json
+
+      - name: Test (wasm)
+        run: moon test --target wasm --output-json
+
+      # The integration suite requires BOTH build profiles as prerequisites
+      # (_build/wasm/release/build/fixture/fixture.wasm for the golden and
+      # browser suites, _build/wasm/debug/build/fixture/fixture.wasm for the
+      # debug surface-parity suite). The ls records the exact artifact paths.
+      - name: Build fixture wasm (release, then debug)
+        run: |
+          moon build --target wasm --release
+          moon build --target wasm
+          ls -l _build/wasm/release/build/fixture/fixture.wasm _build/wasm/debug/build/fixture/fixture.wasm
+
+      - name: Generate PCM test asset
+        run: node hosts/web/tools/gen-test-pcm.mjs
+
+      # The browser suite resolves playwright from the npx package cache
+      # (~/.npm/_npx/*/node_modules/playwright) and launches the matching
+      # chromium from the playwright browser cache (~/.cache/ms-playwright on
+      # linux). One pinned `npx -y playwright@<version> install chromium`
+      # populates both caches. The version is pinned so CI gets a
+      # deterministic browser build, and because a fresh runner's npx cache
+      # then contains exactly one playwright version — the suite's cache scan
+      # cannot resolve a mismatched one.
+      - name: Install pinned playwright and its chromium
+        run: npx -y playwright@1.63.0 install chromium --with-deps
+
+      # Hard gate, no --skip-browser / PASSPORT_SKIP_BROWSER: exits 2 when the
+      # fixture wasm artifacts are missing, 1 when any of the nine suites
+      # fails — including the browser suite, which must run via playwright.
+      - name: Wasm-host integration suites (incl. real browser)
+        run: node hosts/web/test/run-tests.mjs
