@@ -11,6 +11,11 @@
  *   - normalized PCM16 LE mono 16000 Hz playback (AudioWorklet primary,
  *     ScriptProcessorNode fallback), master volume/mute gain, best-effort
  *     playback position
+ *   - optional PCM ASSET mode (createHost options pcmAssetUrl/pcmAssetBytes +
+ *     pcmLoop): the host itself fetches an already-normalized .pcm artifact
+ *     and streams it through the SAME decode/queue/transport path as
+ *     host_pcm_write, in bounded chunks with sample-exact looping. The two
+ *     producer modes are explicitly exclusive (see resolvePcmAssetConfig).
  *   - keyboard -> semantic buttons (Up/Down/Ok), host-facts HUD
  *
  * There is NO application logic here: nothing knows about any specific app,
@@ -47,6 +52,8 @@ export const HEAP_START = 65536;
 
 const TARGET_BUFFERED_SAMPLES = 3200; // ~200 ms at 16 kHz kept in the worklet ring
 const MAX_PENDING_SAMPLES = 160000; // ~10 s backstop when nothing drains the queue
+const SCRIPT_PROCESSOR_SAMPLES = 4096; // ScriptProcessor pull size (fallback transport)
+const ASSET_CHUNK_SAMPLES = 3200; // PCM asset decode granularity (~200 ms at 16 kHz)
 const HUD_INTERVAL_MS = 250; // HUD refresh ~4x per second
 const DEFAULT_SCALE = 3; // CSS integer scale
 const DEFAULT_BATTERY_PERCENT = 82;
@@ -162,6 +169,52 @@ async function loadWasmBytes(options) {
 }
 
 // ---------------------------------------------------------------------------
+// PCM asset configuration (host configuration, never application semantics)
+// ---------------------------------------------------------------------------
+
+/** Validate and normalize the PCM asset options. Returns null when the host is
+ *  NOT configured for asset playback (the default streamed-PCM mode), or
+ *  { source: "url"|"bytes", url, bytes, loop } when it is. The two producer
+ *  modes are explicitly exclusive: an app that imports host_pcm_write cannot
+ *  boot on an asset-configured host (checked in createHost against the module
+ *  import table), and the streamed-PCM test seam refuses to run. */
+function resolvePcmAssetConfig(options) {
+  const hasUrl = options.pcmAssetUrl !== undefined;
+  const hasBytes = options.pcmAssetBytes !== undefined;
+  const loop = !!options.pcmLoop;
+  if (hasUrl && hasBytes) {
+    throw new TypeError("createHost: pcmAssetUrl and pcmAssetBytes are mutually exclusive; pass exactly one");
+  }
+  if (!hasUrl && !hasBytes) {
+    if (loop) {
+      throw new TypeError("createHost: pcmLoop requires pcmAssetUrl or pcmAssetBytes");
+    }
+    return null;
+  }
+  if (hasUrl) {
+    const url = options.pcmAssetUrl;
+    if (typeof url !== "string" && !(url instanceof URL)) {
+      throw new TypeError("createHost: options.pcmAssetUrl must be a string or URL of a normalized .pcm artifact");
+    }
+    return { source: "url", url: String(url), bytes: null, loop };
+  }
+  const bytes = options.pcmAssetBytes;
+  if (!(bytes instanceof ArrayBuffer) && !ArrayBuffer.isView(bytes)) {
+    throw new TypeError("createHost: options.pcmAssetBytes must be an ArrayBuffer or TypedArray of PCM16 LE mono 16000 Hz");
+  }
+  return { source: "bytes", url: null, bytes, loop };
+}
+
+/** Exact-copy a TypedArray input into its own ArrayBuffer (done once, at
+ *  load); ArrayBuffer input is authoritative already. */
+function normalizeAssetBytes(input) {
+  if (input instanceof ArrayBuffer) return input;
+  const out = new ArrayBuffer(input.byteLength);
+  new Uint8Array(out).set(new Uint8Array(input.buffer, input.byteOffset, input.byteLength));
+  return out;
+}
+
+// ---------------------------------------------------------------------------
 // Normalized PCM path: decode (PCM16 LE -> Float32), queue, transport, position
 // ---------------------------------------------------------------------------
 
@@ -181,8 +234,17 @@ function decodePcm16Le(buffer, byteOffset, sampleCount) {
 }
 
 /** passport import host_pcm_write(ptr, samples): copy out synchronously and
- *  queue; NEVER blocks the wasm call. */
+ *  queue; NEVER blocks the wasm call. Refused on an asset-configured host —
+ *  but that is already prevented at boot (createHost rejects a module that
+ *  imports host_pcm_write while an asset is configured); this guard covers
+ *  import overrides only. */
 function onPcmWrite(state, ptr, samples) {
+  if (state.asset) {
+    throw new Error(
+      "passport host_pcm_write: this host is configured for PCM asset playback " +
+        "(pcmAssetUrl/pcmAssetBytes); streamed PCM and asset playback are mutually exclusive",
+    );
+  }
   state.pcmStats.calls += 1;
   const count = samples | 0;
   if (count <= 0) return;
@@ -198,12 +260,14 @@ function onPcmWrite(state, ptr, samples) {
   enqueueDecoded(state, chunk);
 }
 
-/** Shared sink for host_pcm_write and feedNormalizedPcm (the SAME
- *  normalized-PCM path). Drop-oldest backstop only matters when no audio
- *  backend drains the queue (e.g. Node without an injected fake context). */
+/** Shared sink for host_pcm_write, feedNormalizedPcm and the PCM asset
+ *  refiller (the SAME normalized-PCM path). Drop-oldest backstop only matters
+ *  when no audio backend drains the queue (e.g. Node without an injected fake
+ *  context). */
 function enqueueDecoded(state, chunk) {
   state.pending.push(chunk);
   state.pendingSamples += chunk.length;
+  if (state.pendingSamples > state.peakPendingSamples) state.peakPendingSamples = state.pendingSamples;
   while (state.pendingSamples > MAX_PENDING_SAMPLES) {
     const oldest = state.pending.shift();
     state.pendingSamples -= oldest.length;
@@ -235,7 +299,7 @@ function onAudioReport(state, report) {
   if (typeof report.filled === "number") state.estimatedFill = report.filled;
   if (typeof report.underruns === "number") state.audio.underruns = report.underruns;
   if (typeof report.dropped === "number") state.audio.dropped = report.dropped;
-  pump(state);
+  serviceAudio(state);
 }
 
 /** Best-effort playback position in microseconds (BigInt, i64 at the ABI).
@@ -255,8 +319,15 @@ function playbackPosUs(state) {
 }
 
 /** Test entry: inject normalized PCM16 LE through the SAME decode+queue path
- *  as host_pcm_write. Does not touch pcmStats (which counts the wasm import). */
+ *  as host_pcm_write. Does not touch pcmStats (which counts the wasm import).
+ *  Refused on an asset-configured host (the two producer modes are exclusive). */
 function feedNormalizedPcm(state, input) {
+  if (state.asset) {
+    throw new TypeError(
+      "feedNormalizedPcm: this host is configured for PCM asset playback " +
+        "(pcmAssetUrl/pcmAssetBytes); streamed PCM and asset playback are mutually exclusive",
+    );
+  }
   let view;
   if (input instanceof Int16Array) {
     view = input;
@@ -271,6 +342,157 @@ function feedNormalizedPcm(state, input) {
   const chunk = new Float32Array(view.length);
   for (let i = 0; i < view.length; i++) chunk[i] = view[i] / 32768;
   enqueueDecoded(state, chunk);
+}
+
+// ---------------------------------------------------------------------------
+// PCM asset playback: fetch raw .pcm bytes once, then bounded refill
+// ---------------------------------------------------------------------------
+
+/** Load the configured asset WITHOUT blocking app frames: createHost kicks
+ *  this off and resolves state.asset.ready when the raw bytes are resident
+ *  (or records the failure and keeps the host alive). The raw ArrayBuffer is
+ *  the authoritative artifact and stays resident; NO whole-track Float32 copy
+ *  is ever created — decoding happens in bounded chunks (refillAsset). */
+async function loadPcmAsset(state) {
+  const asset = state.asset;
+  try {
+    let buffer;
+    if (asset.source === "bytes") {
+      buffer = normalizeAssetBytes(asset.bytesInput);
+    } else {
+      if (typeof fetch !== "function") {
+        throw new Error(`passport-host: cannot fetch PCM asset at ${asset.url}: fetch() unavailable here; pass options.pcmAssetBytes`);
+      }
+      const response = await fetch(asset.url);
+      if (!response.ok) {
+        throw new Error(`passport-host: failed to fetch PCM asset at ${asset.url}: HTTP ${response.status}`);
+      }
+      buffer = await response.arrayBuffer();
+    }
+    if (buffer.byteLength === 0) {
+      throw new Error(`passport-host: PCM asset at ${asset.source === "url" ? asset.url : "pcmAssetBytes"} is empty (0 samples)`);
+    }
+    if (buffer.byteLength % 2 !== 0) {
+      throw new Error(
+        `passport-host: PCM asset byte length ${buffer.byteLength} is not even; the accepted format is strictly PCM16 LE mono 16000 Hz (no header, no MP3/WAV)`,
+      );
+    }
+    if (state.disposed) return;
+    asset.bytes = buffer;
+    asset.samples = buffer.byteLength / 2;
+    asset.loaded = true;
+    serviceAudio(state);
+    asset.resolveReady();
+  } catch (err) {
+    asset.error = String(err && err.message ? err.message : err);
+    if (state.hud) setStatusText(state, `audio asset error: ${asset.error}`);
+    asset.rejectReady(err instanceof Error ? err : new Error(asset.error));
+  }
+}
+
+/** Decode the NEXT bounded chunk from the resident raw PCM artifact. A chunk
+ *  never crosses the loop seam: when fewer than ASSET_CHUNK_SAMPLES remain,
+ *  the chunk is short and the cursor wraps to sample 0 (loop) or hits EOF.
+ *  Looping is therefore sample-exact: the stream is s[0..N-1] repeated, with
+ *  no silence, padding, or duplicated sample at the boundary. */
+function decodeNextAssetChunk(state) {
+  const asset = state.asset;
+  const count = Math.min(ASSET_CHUNK_SAMPLES, asset.samples - asset.cursor);
+  const out = new Float32Array(count);
+  const view = new Int16Array(asset.bytes, asset.cursor * 2, count); // even offset, LE platform (boot check)
+  for (let i = 0; i < count; i++) out[i] = view[i] / 32768;
+  asset.cursor += count;
+  if (asset.cursor >= asset.samples) {
+    if (asset.loop) {
+      asset.cursor = 0;
+      asset.decodeWraps += 1;
+    } else {
+      asset.eof = true; // non-loop: stop feeding after the last sample
+    }
+  }
+  asset.chunksDecoded += 1;
+  if (count > asset.maxChunkSamples) asset.maxChunkSamples = count;
+  return out;
+}
+
+/** Pending-side refill budget. ScriptProcessor pulls up to 4096 samples
+ *  synchronously out of `pending`, so in script mode keep two pull buffers
+ *  queued; in worklet mode the ~200 ms pump target bounds everything. */
+function assetPendingTarget(state) {
+  return state.audio.kind === "script" ? SCRIPT_PROCESSOR_SAMPLES * 2 : TARGET_BUFFERED_SAMPLES;
+}
+
+/** Demand-driven refill: decode bounded chunks from the raw artifact only
+ *  while the decoded queue is below the budget. Never touches the artifact
+ *  bytes beyond the cursor, never decodes the whole track at once, and stops
+ *  permanently at EOF in non-loop mode. */
+function refillAsset(state) {
+  const asset = state.asset;
+  if (!asset || !asset.loaded || asset.eof) return;
+  while (state.pendingSamples < assetPendingTarget(state)) {
+    enqueueDecoded(state, decodeNextAssetChunk(state));
+    if (asset.eof) break;
+  }
+}
+
+/** Unified audio servicing: forward pending chunks toward the transport
+ *  (pump), then top the queue up from the PCM asset if one is configured.
+ *  Called after every consumption report, ScriptProcessor pull, resume, and
+ *  asset load. */
+function serviceAudio(state) {
+  if (state.disposed) return;
+  pump(state);
+  refillAsset(state);
+}
+
+/** Host-side asset facts snapshot for tooling/tests (never a wasm import). */
+function assetDetail(state) {
+  if (!state.asset) {
+    return {
+      configured: false,
+      source: null,
+      url: null,
+      loaded: false,
+      error: null,
+      samples: 0,
+      byteLength: 0,
+      durationUs: 0n,
+      looping: false,
+      cursor: 0,
+      eof: false,
+      chunkSamples: ASSET_CHUNK_SAMPLES,
+      chunksDecoded: 0,
+      maxChunkSamples: 0,
+      pendingSamples: state.pendingSamples,
+      peakPendingSamples: state.peakPendingSamples,
+      loops: 0,
+    };
+  }
+  const asset = state.asset;
+  const consumed = state.posSnapshot ? state.posSnapshot.samples : 0;
+  return {
+    configured: true,
+    source: asset.source,
+    url: asset.url,
+    loaded: asset.loaded,
+    error: asset.error,
+    samples: asset.loaded ? asset.samples : 0,
+    byteLength: asset.bytes ? asset.bytes.byteLength : 0,
+    durationUs: asset.loaded ? assetDurationUsValue(asset.samples) : 0n,
+    looping: asset.loop,
+    cursor: asset.cursor,
+    eof: asset.eof,
+    chunkSamples: ASSET_CHUNK_SAMPLES,
+    chunksDecoded: asset.chunksDecoded,
+    maxChunkSamples: asset.maxChunkSamples,
+    pendingSamples: state.pendingSamples,
+    peakPendingSamples: state.peakPendingSamples,
+    loops: asset.loaded ? Math.floor(consumed / asset.samples) : 0,
+  };
+}
+
+function assetDurationUsValue(samples) {
+  return BigInt(Math.round((samples * 1e6) / SAMPLE_RATE));
 }
 
 // ---------------------------------------------------------------------------
@@ -475,7 +697,9 @@ function resumeAudio(state) {
   if (ctx && typeof ctx.resume === "function" && ctx.state === "suspended") {
     try {
       const p = ctx.resume();
-      if (p && typeof p.catch === "function") p.catch(() => {});
+      if (p && typeof p.then === "function") {
+        p.then(() => serviceAudio(state)).catch(() => {});
+      }
     } catch {
       // ignore: audio stays suspended until a later gesture
     }
@@ -576,7 +800,7 @@ async function setupAudio(state, options) {
   // can jitter under load). Used ONLY when the engine has no usable
   // AudioWorklet — see README "Known limitations" for the full rationale.
   if (typeof ctx.createScriptProcessor === "function") {
-    const sp = ctx.createScriptProcessor(4096, 0, 1);
+    const sp = ctx.createScriptProcessor(SCRIPT_PROCESSOR_SAMPLES, 0, 1);
     sp.onaudioprocess = (event) => scriptProcessorPull(state, event);
     try {
       sp.connect(gain);
@@ -615,6 +839,7 @@ function scriptProcessorPull(state, event) {
   while (i < out.length) out[i++] = 0; // underrun: silence
   const ctx = state.audio.ctx;
   if (ctx) state.posSnapshot = { samples: state.spConsumed, ctxTime: ctx.currentTime };
+  serviceAudio(state); // pull drained the queue: top it up from the asset, if any
 }
 
 // ---------------------------------------------------------------------------
@@ -677,6 +902,16 @@ function setStatusText(state, text) {
  *   16000 Hz. Omit in Node to run audio-less.
  * @param {string|URL} [options.workletUrl] - pcm-worklet.js URL; defaults to a
  *   sibling of this module.
+ * @param {string|URL} [options.pcmAssetUrl] - URL of an ALREADY-NORMALIZED
+ *   .pcm artifact (signed PCM16 LE mono 16000 Hz, headerless, even byte
+ *   length). Configures PCM asset mode: the host fetches the raw bytes and
+ *   streams them through the same audio transport in bounded chunks. The app
+ *   must NOT import host_pcm_write (the two producer modes are exclusive and
+ *   mixing them fails at boot). Fetching never blocks app frames.
+ * @param {ArrayBuffer|TypedArray} [options.pcmAssetBytes] - inline variant of
+ *   pcmAssetUrl (Node/tests, data: pages). Mutually exclusive with pcmAssetUrl.
+ * @param {boolean} [options.pcmLoop] - loop the asset at the exact PCM sample
+ *   boundary (default false: play to EOF, then stop feeding).
  * @param {object} [options.imports] - `{ passport: { host_x: fn } }` per-key
  *   overrides merged over the default import implementations.
  * @param {() => bigint} [options.nowUs] - frame clock; default
@@ -695,6 +930,39 @@ export async function createHost(options = {}) {
     throw new TypeError("createHost: options.nowUs must be a function returning BigInt microseconds");
   }
   const params = readUrlParams();
+  const assetConfig = resolvePcmAssetConfig(options);
+
+  let assetState = null;
+  if (assetConfig) {
+    let resolveReady;
+    let rejectReady;
+    const readyPromise = new Promise((resolve, reject) => {
+      resolveReady = resolve;
+      rejectReady = reject;
+    });
+    // Mark rejection handled at the source: pages that never await
+    // waitForAudioAsset() must not trip unhandled-promise-rejection reporting.
+    readyPromise.catch(() => {});
+    assetState = {
+      configured: true,
+      source: assetConfig.source,
+      url: assetConfig.source === "url" ? assetConfig.url : null,
+      bytesInput: assetConfig.bytes,
+      loop: assetConfig.loop,
+      bytes: null,
+      samples: 0,
+      loaded: false,
+      error: null,
+      cursor: 0,
+      eof: false,
+      decodeWraps: 0,
+      chunksDecoded: 0,
+      maxChunkSamples: 0,
+      readyPromise,
+      resolveReady,
+      rejectReady,
+    };
+  }
 
   const state = {
     options,
@@ -716,10 +984,12 @@ export async function createHost(options = {}) {
     lastNowUs: null,
     pending: [],
     pendingSamples: 0,
+    peakPendingSamples: 0,
     estimatedFill: 0,
     spConsumed: 0,
     posSnapshot: null,
     pcmStats: { bytesReceived: 0, calls: 0, droppedSamples: 0 },
+    asset: assetState,
     audio: {
       enabled: false,
       kind: "none", // "worklet" | "script" | "none"
@@ -759,8 +1029,23 @@ export async function createHost(options = {}) {
     }
   }
 
-  // Lifecycle step 1: instantiate with the passport import object.
+  // Lifecycle step 1: compile, enforce producer-mode exclusivity, instantiate.
+  // Compiling the Module first lets the host inspect the declared imports: an
+  // app that imports passport.host_pcm_write is a streamed-PCM app and cannot
+  // run on an asset-configured host — fail loudly at boot, never silently mix.
   const bytes = await loadWasmBytes(options);
+  const module = new WebAssembly.Module(bytes);
+  if (assetState) {
+    const declared = WebAssembly.Module.imports(module);
+    if (declared.some((entry) => entry.module === "passport" && entry.name === "host_pcm_write")) {
+      throw new Error(
+        "passport-host: this app.wasm imports passport.host_pcm_write (streamed PCM mode) " +
+          "but the host is configured for PCM asset playback (pcmAssetUrl/pcmAssetBytes). " +
+          "The two producer modes are mutually exclusive: remove the pcmAsset* options, " +
+          "or serve an app that does not stream PCM itself.",
+      );
+    }
+  }
   const { instance } = await WebAssembly.instantiate(bytes, imports);
   const appExports = instance.exports;
   const missing = REQUIRED_EXPORTS.filter((name) => typeof appExports[name] !== "function");
@@ -777,6 +1062,7 @@ export async function createHost(options = {}) {
   attachInput(state);
   setupHud(state);
   await setupAudio(state, options);
+  if (assetState) loadPcmAsset(state); // async by design: app frames never wait on it
 
   // Lifecycle step 2: _start() exactly once; app main initializes and RETURNS.
   appExports._start();
@@ -810,6 +1096,19 @@ export async function createHost(options = {}) {
  * @property {() => {bytesReceived: number, calls: number, droppedSamples: number}} pcmStats
  *   - host_pcm_write totals (wasm path only). droppedSamples is an extra
  *   observability field beyond the frozen minimum.
+ * @property {() => boolean} audioAssetLoaded - PCM asset bytes resident.
+ * @property {() => number} audioAssetSamples - total PCM samples of the asset.
+ * @property {() => bigint} audioAssetDurationUs - one full pass of the asset.
+ * @property {() => boolean} audioAssetLooping - whether pcmLoop is on.
+ * @property {() => number} audioAssetLoops - completed CONSUMPTION passes
+ *   (floor(consumedSamples / assetSamples)); 0 before playback.
+ * @property {() => object} audioAsset - full facts snapshot for tooling
+ *   (configured/source/url/loaded/error/samples/byteLength/durationUs/
+ *   looping/cursor/eof/chunkSamples/chunksDecoded/maxChunkSamples/
+ *   peakPendingSamples/loops).
+ * @property {() => Promise<void>} waitForAudioAsset - resolves when the asset
+ *   bytes are loaded (immediately when no asset is configured); rejects on
+ *   fetch/validation failure without ever blocking app frames.
  * @property {(v: number) => void} setVolume
  * @property {(b: boolean|number) => void} setMuted
  * @property {() => bigint} playbackPosUs - best-effort µs; 0n before playback.
@@ -867,6 +1166,27 @@ function buildHostApi(state, imports, appExports) {
     get pcmStats() {
       return { ...state.pcmStats };
     },
+    get audioAssetLoaded() {
+      return !!(state.asset && state.asset.loaded);
+    },
+    get audioAssetSamples() {
+      return state.asset && state.asset.loaded ? state.asset.samples : 0;
+    },
+    get audioAssetDurationUs() {
+      return state.asset && state.asset.loaded ? assetDurationUsValue(state.asset.samples) : 0n;
+    },
+    get audioAssetLooping() {
+      return !!(state.asset && state.asset.loop);
+    },
+    get audioAssetLoops() {
+      if (!state.asset || !state.asset.loaded) return 0;
+      const consumed = state.posSnapshot ? state.posSnapshot.samples : 0;
+      return Math.floor(consumed / state.asset.samples);
+    },
+    get audioAsset() {
+      return assetDetail(state);
+    },
+    waitForAudioAsset: () => (state.asset ? state.asset.readyPromise : Promise.resolve()),
     setVolume: (value) => setVolume(state, value),
     setMuted: (value) => setMuted(state, value),
     playbackPosUs: () => playbackPosUs(state),
@@ -898,7 +1218,12 @@ async function autoBootFromDom() {
     return;
   }
   try {
-    const host = await createHost({ canvas });
+    const hostOptions = { canvas };
+    // ?pcm=<url> + ?pcmLoop=1: generic PCM asset configuration through the
+    // page URL (host configuration only — no app semantics, no default asset).
+    if (params.pcm !== undefined && params.pcm !== "") hostOptions.pcmAssetUrl = params.pcm;
+    if (params.pcmLoop === "1" || params.pcmLoop === "true") hostOptions.pcmLoop = true;
+    const host = await createHost(hostOptions);
     globalThis.__passportHost = host;
     setStatusText(
       host,

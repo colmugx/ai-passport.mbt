@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>passport wasm-host PCM asset probe</title>
+    <style>
+      body { font-family: monospace; margin: 1em; }
+      canvas { image-rendering: pixelated; width: 360px; height: 480px; }
+      pre { background: #f4f4f4; padding: 0.5em; }
+    </style>
+  </head>
+  <body>
+    <!-- NOTE: id must NOT be "passport-canvas" — that id would trigger
+         passport-host.js's browser auto-boot alongside this probe. -->
+    <canvas id="probe-canvas" width="120" height="160"></canvas>
+    <pre id="probe-result">booting</pre>
+    <script type="module">
+      // Browser probe for the PCM ASSET transport suite. Two loading paths,
+      // ONE logic:
+      //   http (CI, playwright):  import /passport-host.js, fetch
+      //                           /assets/minimal.wasm and /assets/test.pcm
+      //                           from the throwaway node server.
+      //   data: (env fallback):   window.__PCM_ASSET_PROBE_INLINE__ is
+      //                           injected before this script (host module as
+      //                           a blob import, worklet as a blob URL, wasm
+      //                           and PCM bytes inline as base64).
+      // The app is the minimal no-import wasm module (test/minimal-wasm.mjs):
+      // it does NOT declare passport.host_pcm_write, so the host boots in PCM
+      // asset mode — proving the wasm host_pcm_write path is not involved.
+      //
+      // What the payload proves (gated node-side in run-tests.mjs):
+      //   - the PCM asset fetch succeeded and the facts are exact
+      //     (samples 4000, duration 250000 us, looping on)
+      //   - decoding was the PCM16 LE -> Float32 /32768 path: the FNV-1a of
+      //     the FIRST chunk posted to the worklet equals the node-side
+      //     expectation computed from the raw .pcm bytes (no MP3/WAV decoder
+      //     can produce this)
+      //   - samples reached the AudioWorklet transport and were consumed
+      //   - consumption passed 2x the 0.25 s asset (loop refill occurred)
+      //   - wasm/canvas frames kept presenting WHILE audio ran
+      //   - muting did not stop the playback position
+      // No rAF loop is started; frames are ticked deterministically.
+      (async () => {
+        const resultEl = document.getElementById("probe-result");
+        function fnv1a(bytes) {
+          let h = 0x811c9dc5 | 0;
+          for (let i = 0; i < bytes.length; i++) { h ^= bytes[i]; h = Math.imul(h, 0x01000193); }
+          return (h >>> 0).toString(16).padStart(8, "0");
+        }
+        try {
+          const inline = globalThis.__PCM_ASSET_PROBE_INLINE__ || null;
+          const hostUrl = inline
+            ? URL.createObjectURL(new Blob([atob(inline.hostB64)], { type: "text/javascript" }))
+            : "/passport-host.js";
+          const { createHost } = await import(hostUrl);
+
+          const canvas = document.getElementById("probe-canvas");
+          let n = 0;
+          // REAL audio on purpose (no audioContextFactory): the real
+          // AudioContext at 16000 Hz and the AudioWorklet transport.
+          const opts = {
+            canvas,
+            pcmLoop: true,
+            workletUrl: inline
+              ? URL.createObjectURL(new Blob([atob(inline.workletB64)], { type: "text/javascript" }))
+              : "/pcm-worklet.js",
+            nowUs: () => BigInt(n) * 16667n,
+          };
+          if (inline) {
+            opts.wasmBytes = Uint8Array.from(atob(inline.wasmB64), (c) => c.charCodeAt(0)).buffer;
+            opts.pcmAssetBytes = Uint8Array.from(atob(inline.pcmB64), (c) => c.charCodeAt(0)).buffer;
+          } else {
+            opts.wasmUrl = "/assets/minimal.wasm";
+            opts.pcmAssetUrl = "/assets/test.pcm";
+          }
+          const host = await createHost(opts);
+          host.resumeAudio();
+          await host.waitForAudioAsset();
+
+          // Observe the transport WITHOUT changing behavior; capture the FIRST
+          // decoded chunk posted to the worklet for the exact-decode proof.
+          const obs = { kind: host.audio.kind, posted: 0, reports: 0, consumed: 0, filled: 0, underruns: 0, dropped: 0, firstChunkLen: 0, firstChunkCrc: null };
+          if (obs.kind === "worklet" && host.audio.node && host.audio.node.port) {
+            const port = host.audio.node.port;
+            const origPost = port.postMessage.bind(port);
+            port.postMessage = (msg, ...rest) => {
+              if (msg && msg.type === "pcm" && msg.data instanceof Float32Array) {
+                const d = msg.data;
+                obs.posted += d.length;
+                if (obs.firstChunkLen === 0) {
+                  obs.firstChunkLen = d.length;
+                  obs.firstChunkCrc = fnv1a(new Uint8Array(d.buffer, d.byteOffset, d.byteLength));
+                }
+              }
+              return origPost(msg, ...rest);
+            };
+            port.addEventListener("message", (ev) => {
+              const r = ev.data;
+              if (!r || typeof r !== "object") return;
+              obs.reports += 1;
+              if (typeof r.consumed === "number") obs.consumed = Math.max(obs.consumed, r.consumed);
+              if (typeof r.filled === "number") obs.filled = Math.max(obs.filled, r.filled);
+              if (typeof r.underruns === "number") obs.underruns = r.underruns;
+              if (typeof r.dropped === "number") obs.dropped = r.dropped;
+            });
+          } else if (obs.kind === "script" && host.audio.node) {
+            const sp = host.audio.node;
+            const origPull = sp.onaudioprocess;
+            sp.onaudioprocess = (event) => {
+              origPull(event);
+              obs.reports += 1;
+              const total = Math.round(Number(host.playbackPosUs()) / 62.5);
+              if (Number.isFinite(total) && total > obs.consumed) obs.consumed = total;
+              obs.filled = obs.consumed;
+            };
+          }
+
+          // Deterministic pre-audio frames.
+          for (; n < 5; n++) {
+            const r = host.tick(BigInt(n) * 16667n);
+            if (!r || !r.presented) throw new Error("tick not presented at N=" + n);
+          }
+          const framesBefore = host.frameCount;
+
+          // Bounded wait: tick frames WHILE audio runs; mute partway; exit on
+          // 2.4x the asset consumed (margin for the ~32 ms report lag), 4 s
+          // of the audio clock, 12 s wall, or audio provably absent.
+          let muted = false;
+          let posAtMuteUs = null;
+          let presentedDuring = 0;
+          const startedMs = Date.now();
+          const startAudioTime = host.audio.ctx ? host.audio.ctx.currentTime : 0;
+          await new Promise((resolve) => {
+            const timer = setInterval(() => {
+              host.resumeAudio();
+              n += 1;
+              const r = host.tick(BigInt(n) * 16667n);
+              if (r && r.presented) presentedDuring += 1;
+              if (!muted && obs.consumed > 1600) {
+                host.setMuted(true);
+                muted = true;
+                posAtMuteUs = host.playbackPosUs();
+              }
+              const audioElapsedS = host.audio.ctx ? host.audio.ctx.currentTime - startAudioTime : 0;
+              if (
+                obs.consumed > 9600 ||
+                host.audio.kind === "none" ||
+                audioElapsedS >= 4.0 ||
+                Date.now() - startedMs >= 12000
+              ) {
+                clearInterval(timer);
+                resolve();
+              }
+            }, 50);
+          });
+          const audioWaitMs = Date.now() - startedMs;
+          const detail = host.audioAsset;
+
+          resultEl.textContent = JSON.stringify({
+            status: "ok",
+            inline: !!inline,
+            assetLoaded: host.audioAssetLoaded,
+            assetSamples: host.audioAssetSamples,
+            assetDurationUs: String(host.audioAssetDurationUs),
+            assetLooping: host.audioAssetLooping,
+            assetError: detail.error,
+            audioKind: host.audio.kind,
+            audioReason: host.audio.reason,
+            audioWorkletError: host.audio.workletError,
+            firstChunkLen: obs.firstChunkLen,
+            firstChunkCrc: obs.firstChunkCrc,
+            posted: obs.posted,
+            audioFilled: host.audio.kind === "worklet" ? obs.posted : obs.filled,
+            consumed: obs.consumed,
+            loops: host.audioAssetLoops,
+            underruns: host.audio.kind === "worklet" ? obs.underruns : host.audio.underruns,
+            dropped: host.audio.kind === "worklet" ? obs.dropped : host.audio.dropped,
+            framesBefore,
+            framesDuring: host.frameCount - framesBefore,
+            presentedDuring,
+            muted: host.muted,
+            volume: host.volume,
+            posAtMuteUs: posAtMuteUs === null ? null : String(posAtMuteUs),
+            posEndUs: String(host.playbackPosUs()),
+            audioWaitMs,
+          });
+        } catch (err) {
+          resultEl.textContent = JSON.stringify({
+            status: "error",
+            message: String(err && err.message ? err.message : err),
+          });
+        }
+      })();
+    </script>
+  </body>
+</html>

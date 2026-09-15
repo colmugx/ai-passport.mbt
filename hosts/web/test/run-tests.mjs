@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 /**
  * run-tests.mjs — the single node entry for the ai-passport SDK Wasm-host
- * integration suites (R1 Wave C / W4). Runs everything sequentially and
- * exits non-zero on any suite failure, printing one PASS/FAIL line per
- * suite.
+ * integration suites (R1 Wave C / W4 / R1.2 PCM asset transport). Runs
+ * everything sequentially and exits non-zero on any suite failure, printing
+ * one PASS/FAIL line per suite.
  *
  *   node hosts/web/test/run-tests.mjs [--skip-browser]
  *
@@ -23,6 +23,16 @@
  *                         (playwright if available — the CI mechanism, full
  *                         proof required — else the cached
  *                         chrome-headless-shell; --skip-browser to skip)
+ *  10-16. pcm-asset:*     node suites for the PCM ASSET transport (registered
+ *                         from pcm-asset-suites.mjs): minimal no-import wasm,
+ *                         strict input + non-blocking load, bounded refill,
+ *                         sample-exact loop, non-loop EOF, mute/volume clock,
+ *                         suspended AudioContext, producer-mode exclusivity
+ *  17. browser pcm-asset  the PCM asset transport in a real browser: fetch a
+ *                         normalized .pcm over http -> bounded decode chunks
+ *                         -> the SAME AudioWorklet transport -> consumption
+ *                         past 2 full asset loops, frames continuing while
+ *                         audio runs, mute not stopping the position
  *
  * Prerequisites (checked, with the exact commands printed when missing):
  *   moon build --target wasm --release    # _build/wasm/release/build/fixture/fixture.wasm
@@ -39,6 +49,8 @@ import http from "node:http";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { registerPcmAssetSuites } from "./pcm-asset-suites.mjs";
+import { buildMinimalPassportWasm } from "./minimal-wasm.mjs";
 
 // ---------------------------------------------------------------------------
 // Layout
@@ -54,6 +66,7 @@ const GEN_PCM_TOOL = path.join(webHostDir, "tools", "gen-test-pcm.mjs");
 const MAKE_BUNDLE_TOOL = path.join(webHostDir, "tools", "make-bundle.mjs");
 const HOST_MODULE = path.join(webHostDir, "passport-host.js");
 const PROBE_PAGE = path.join(testDir, "browser-probe.html");
+const PCM_ASSET_PROBE_PAGE = path.join(testDir, "pcm-asset-probe.html");
 const SKIP_BROWSER =
   process.argv.includes("--skip-browser") || process.env.PASSPORT_SKIP_BROWSER === "1";
 
@@ -754,6 +767,20 @@ suite("bundle: make-bundle assembly, default outdir, refusal", () => {
   }
 });
 
+// --- Suites 10-16: PCM asset transport (node) -------------------------------
+
+registerPcmAssetSuites({
+  suite,
+  ok,
+  eq,
+  eqText,
+  throwsType,
+  SuiteError,
+  hostModule,
+  fs,
+  releaseWasmPath: RELEASE_WASM,
+});
+
 // --- Suite 9: browser ---------------------------------------------------------
 
 /** Candidate npm cache roots for npx-installed packages. npm's default cache
@@ -894,6 +921,9 @@ function startProbeServer(bundleDir) {
     else if (urlPath === "/passport-host.js") filePath = HOST_MODULE;
     else if (urlPath === "/pcm-worklet.js") filePath = path.join(webHostDir, "pcm-worklet.js");
     else if (urlPath === "/" || urlPath === "/test/browser-probe.html") filePath = PROBE_PAGE;
+    else if (urlPath === "/test/pcm-asset-probe.html") filePath = PCM_ASSET_PROBE_PAGE;
+    else if (urlPath === "/assets/test.pcm") filePath = path.join(bundleDir, "assets", "test.pcm");
+    else if (urlPath === "/assets/minimal.wasm") filePath = path.join(bundleDir, "assets", "minimal.wasm");
     if (!filePath || !fs.existsSync(filePath)) {
       res.writeHead(404, { "content-type": "text/plain" });
       res.end("not found");
@@ -905,7 +935,9 @@ function startProbeServer(bundleDir) {
         ? "text/html; charset=utf-8"
         : filePath.endsWith(".js")
           ? "text/javascript"
-          : "application/octet-stream";
+          : filePath.endsWith(".pcm")
+            ? "application/octet-stream"
+            : "application/octet-stream";
     res.writeHead(200, { "content-type": type });
     res.end(fs.readFileSync(filePath));
   });
@@ -1259,6 +1291,174 @@ suite("browser: exact RGB565 canvas + normalized-PCM audio in a real browser", a
       // confuse with the full proof.
       console.log("  browser fallback: audio render not verifiable in this environment (ingest-only)");
     }
+  } finally {
+    if (server) server.close();
+    fs.rmSync(bundleDir, { recursive: true, force: true });
+  }
+});
+
+// --- Suite 17: browser PCM asset transport -----------------------------------
+
+/** Node-side golden for the PCM asset probe: decode the first transport chunk
+ *  of the committed asset exactly as the host does (PCM16 LE -> Float32
+ *  /32768) and FNV-1a the raw Float32 bytes. A browser that decoded through
+ *  any MP3/WAV path could not reproduce this checksum. */
+function computePcmAssetExpectation() {
+  const buf = fs.readFileSync(PCM_ASSET);
+  const totalSamples = buf.length / 2;
+  const chunkSamples = Math.min(3200, totalSamples); // mirrors ASSET_CHUNK_SAMPLES
+  const floats = new Float32Array(chunkSamples);
+  for (let i = 0; i < chunkSamples; i++) floats[i] = buf.readInt16LE(i * 2) / 32768;
+  return {
+    samples: totalSamples,
+    durationUs: String(BigInt(Math.round((totalSamples * 1e6) / SAMPLE_RATE))),
+    firstChunkLen: chunkSamples,
+    firstChunkCrc: fnv1a(new Uint8Array(floats.buffer, floats.byteOffset, floats.byteLength)),
+  };
+}
+
+/** Self-contained data: variant of the PCM asset probe: the SAME probe page
+ *  with window.__PCM_ASSET_PROBE_INLINE__ injected before its module script
+ *  (host module blob, worklet blob, minimal wasm bytes, PCM asset bytes —
+ *  all inline base64). Identical probe logic; only the loading path differs
+ *  (exercises options.pcmAssetBytes instead of the http fetch). */
+function buildPcmAssetDataProbeUrl(bundleDir) {
+  const html = fs.readFileSync(PCM_ASSET_PROBE_PAGE, "utf8");
+  const inline = {
+    hostB64: fs.readFileSync(HOST_MODULE).toString("base64"),
+    workletB64: fs.readFileSync(path.join(webHostDir, "pcm-worklet.js")).toString("base64"),
+    wasmB64: fs.readFileSync(path.join(bundleDir, "assets", "minimal.wasm")).toString("base64"),
+    pcmB64: fs.readFileSync(PCM_ASSET).toString("base64"),
+  };
+  const inject = `<script>window.__PCM_ASSET_PROBE_INLINE__=${JSON.stringify(inline)};</script>`;
+  const marker = '<script type="module">';
+  const at = html.indexOf(marker);
+  if (at === -1) throw new Error("run-tests: pcm-asset-probe.html has no module script marker to inject before");
+  const patched = html.slice(0, at) + inject + html.slice(at);
+  return `data:text/html;base64,${Buffer.from(patched).toString("base64")}`;
+}
+
+suite("browser: PCM asset transport (fetch -> bounded chunks -> AudioWorklet)", async () => {
+  if (SKIP_BROWSER) {
+    console.log("  skipped by --skip-browser / PASSPORT_SKIP_BROWSER=1");
+    return;
+  }
+  const bundleDir = fs.mkdtempSync(path.join(os.tmpdir(), "passport-pcm-browser-"));
+  let server = null;
+  try {
+    const res = spawnSync(process.execPath, [MAKE_BUNDLE_TOOL, bundleDir], { encoding: "utf8" });
+    eq(res.status, 0, `pcm browser suite bundle assembly must succeed; stderr: ${res.stderr}`);
+    // The asset-mode app: minimal wasm with NO passport imports (written into
+    // the throwaway bundle dir; never into the committed tree).
+    fs.writeFileSync(path.join(bundleDir, "assets", "minimal.wasm"), buildMinimalPassportWasm());
+    const expected = computePcmAssetExpectation();
+
+    // Path 1: playwright against the http-served probe (the CI mechanism:
+    //         the REAL http fetch of the normalized .pcm + AudioWorklet are
+    //         REQUIRED here). Paths 2+3: chrome-headless-shell fallbacks.
+    server = await startProbeServer(bundleDir);
+    const url = `http://127.0.0.1:${server.address().port}/test/pcm-asset-probe.html`;
+    let outcome = { path: null, mechanism: null, payload: null, note: null };
+    try {
+      const pw = await runProbeInPlaywright(url);
+      if (pw.payload) outcome = pw;
+      else if (pw.note) console.log(`  playwright unavailable: ${pw.note}`);
+    } catch (err) {
+      console.log(`  playwright path failed (${err && err.message ? err.message : err}); trying chrome-headless-shell`);
+    }
+    if (!outcome.payload) {
+      outcome = runShellProbe(url, "http pcm-asset probe page", 8_000);
+      if (!outcome.payload) {
+        console.log(`  http pcm-asset probe did not complete (${outcome.note || "no payload"}); trying self-contained data: probe`);
+        const dataUrl = buildPcmAssetDataProbeUrl(bundleDir);
+        const notes = [];
+        for (let attempt = 1; attempt <= DATA_PROBE_ATTEMPTS && !outcome.payload; attempt++) {
+          if (attempt > 1) {
+            await sleep(DATA_PROBE_RETRY_DELAY_MS);
+            console.log(`  self-contained pcm data: probe attempt ${attempt}/${DATA_PROBE_ATTEMPTS}`);
+          }
+          const retried = runShellProbe(dataUrl, `pcm self-contained data: probe, attempt ${attempt}/${DATA_PROBE_ATTEMPTS}`, 20_000);
+          if (retried.payload) {
+            outcome = retried;
+          } else {
+            notes.push(retried.note || "no payload");
+          }
+        }
+        if (!outcome.payload) outcome.note = notes.join("; ");
+      }
+    }
+    ok(
+      outcome.payload !== null,
+      "no browser path produced a pcm-asset probe result" + (outcome.note ? `; attempts: ${outcome.note}` : ""),
+    );
+    const { payload, path: usedPath } = outcome;
+
+    ok(payload.status === "ok", `pcm-asset probe must boot cleanly; payload: ${JSON.stringify(payload)}`);
+    console.log(`  browser path: ${usedPath} [mechanism: ${outcome.mechanism}]${payload.inline ? " [inline]" : ""}`);
+
+    // ---- asset facts: exact fetch + normalization state ----
+    eq(payload.assetLoaded, true, "PCM asset must be fetched and resident in the browser");
+    eq(payload.assetSamples, expected.samples, `asset sample count (${expected.samples})`);
+    eq(payload.assetDurationUs, expected.durationUs, "asset duration_us fact");
+    eq(payload.assetLooping, true, "asset looping on");
+    ok(!payload.assetError, `no asset error (got ${JSON.stringify(payload.assetError)})`);
+
+    // ---- transport: AudioWorklet required on the playwright (CI) path ----
+    ok(
+      payload.audioKind === "worklet" || payload.audioKind === "script",
+      `audioKind must be worklet or script, got ${JSON.stringify(payload.audioKind)}` +
+        (payload.audioReason ? ` (audioReason: ${payload.audioReason})` : ""),
+    );
+    if (outcome.mechanism === "playwright") {
+      eq(payload.audioKind, "worklet", "the CI path must use the real AudioWorklet transport for the PCM asset");
+    }
+    // ---- exact decode: first posted chunk byte-equals the node-side PCM16
+    //      decode of the same artifact (worklet path only — SP has no chunks) ----
+    if (payload.audioKind === "worklet") {
+      eq(payload.firstChunkLen, expected.firstChunkLen, `first decode chunk length (${expected.firstChunkLen})`);
+      eq(
+        payload.firstChunkCrc,
+        expected.firstChunkCrc,
+        "first chunk Float32 bytes must equal the node-side PCM16 LE decode (no MP3/WAV decoder involved)",
+      );
+    }
+    ok(typeof payload.audioFilled === "number" && payload.audioFilled > 0, `chunks reached the transport (audioFilled=${payload.audioFilled})`);
+    ok(payload.dropped === 0, `worklet ring must never overflow (dropped=${payload.dropped})`);
+
+    // ---- consumption + loop refill (2+ passes over the 0.25 s asset) ----
+    const loopRequired = outcome.mechanism === "playwright";
+    if (loopRequired || payload.consumed > 0) {
+      ok(
+        payload.consumed > 8000,
+        `render side must consume past 2 full asset passes (consumed=${payload.consumed} > 8000 = 2x4000)`,
+      );
+      ok(payload.loops >= 2, `consumption-based loop count must be >= 2 (loops=${payload.loops})`);
+    } else {
+      console.log("  browser fallback: asset render not verifiable in this environment (ingest-only)");
+    }
+
+    // ---- frames + canvas keep running while audio is active ----
+    ok(payload.framesDuring > 0, `wasm frames must continue while audio runs (framesDuring=${payload.framesDuring})`);
+    eq(
+      payload.presentedDuring,
+      payload.framesDuring,
+      "every in-wait frame presented to the canvas (minimal app is always dirty)",
+    );
+    eq(payload.framesBefore, 5, "pre-audio deterministic tick count");
+
+    // ---- mute never stops the playback position ----
+    eq(payload.muted, true, "probe muted the host partway (after 1600 consumed)");
+    ok(payload.posAtMuteUs !== null, "position captured at mute time");
+    ok(
+      Number(payload.posEndUs) > Number(payload.posAtMuteUs),
+      `playback position advanced while muted (posAtMute=${payload.posAtMuteUs} -> posEnd=${payload.posEndUs})`,
+    );
+    console.log(
+      `  asset proof: kind=${payload.audioKind} samples=${payload.assetSamples} consumed=${payload.consumed} ` +
+        `loops=${payload.loops} framesDuring=${payload.framesDuring} mutedPos=${payload.posAtMuteUs}->${payload.posEndUs} ` +
+        `waitMs=${payload.audioWaitMs}` +
+        (payload.audioWorkletError ? ` workletError=${payload.audioWorkletError}` : ""),
+    );
   } finally {
     if (server) server.close();
     fs.rmSync(bundleDir, { recursive: true, force: true });
