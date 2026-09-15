@@ -1299,21 +1299,34 @@ suite("browser: exact RGB565 canvas + normalized-PCM audio in a real browser", a
 
 // --- Suite 17: browser PCM asset transport -----------------------------------
 
-/** Node-side golden for the PCM asset probe: decode the first transport chunk
- *  of the committed asset exactly as the host does (PCM16 LE -> Float32
- *  /32768) and FNV-1a the raw Float32 bytes. A browser that decoded through
- *  any MP3/WAV path could not reproduce this checksum. */
+/** Node-side golden for the PCM asset probe: decode the committed asset
+ *  exactly as the host does (PCM16 LE -> Float32 /32768, looping) and FNV-1a
+ *  the raw Float32 bytes of every seam-aligned chunk the probe could observe
+ *  as its "first wrapped post". The probe wraps the worklet port AFTER the
+ *  asset resolves, and the initial fill's first 3200-sample chunk is posted
+ *  before the wrapper exists — so the first OBSERVED chunk is one of the
+ *  seam-aligned spans of the looping stream (deterministic per environment,
+ *  both accepted). A browser that decoded through any MP3/WAV path could not
+ *  reproduce any of these checksums. */
 function computePcmAssetExpectation() {
   const buf = fs.readFileSync(PCM_ASSET);
   const totalSamples = buf.length / 2;
-  const chunkSamples = Math.min(3200, totalSamples); // mirrors ASSET_CHUNK_SAMPLES
-  const floats = new Float32Array(chunkSamples);
-  for (let i = 0; i < chunkSamples; i++) floats[i] = buf.readInt16LE(i * 2) / 32768;
+  const decodeLooped = (offset, len) => {
+    const floats = new Float32Array(len);
+    for (let i = 0; i < len; i++) floats[i] = buf.readInt16LE(((offset + i) % totalSamples) * 2) / 32768;
+    return floats;
+  };
+  const crcOf = (floats) => fnv1a(new Uint8Array(floats.buffer, floats.byteOffset, floats.byteLength));
+  // Chunk seams for a 4000-sample asset with 3200-sample chunks + loop wrap:
+  // spans [0,3200) (len 3200) and [3200,4000) (len 800), repeating forever.
+  const acceptedChunks = [
+    { len: 3200, crcs: new Set([crcOf(decodeLooped(0, 3200))]) },
+    { len: 800, crcs: new Set([crcOf(decodeLooped(3200, 800))]) },
+  ];
   return {
     samples: totalSamples,
     durationUs: String(BigInt(Math.round((totalSamples * 1e6) / SAMPLE_RATE))),
-    firstChunkLen: chunkSamples,
-    firstChunkCrc: fnv1a(new Uint8Array(floats.buffer, floats.byteOffset, floats.byteLength)),
+    acceptedChunks,
   };
 }
 
@@ -1412,14 +1425,16 @@ suite("browser: PCM asset transport (fetch -> bounded chunks -> AudioWorklet)", 
     if (outcome.mechanism === "playwright") {
       eq(payload.audioKind, "worklet", "the CI path must use the real AudioWorklet transport for the PCM asset");
     }
-    // ---- exact decode: first posted chunk byte-equals the node-side PCM16
-    //      decode of the same artifact (worklet path only — SP has no chunks) ----
+    // ---- exact decode: the first OBSERVED posted chunk byte-equals a
+    //      node-side PCM16 decode of a seam-aligned span of the looping
+    //      artifact (worklet path only — SP has no chunks) ----
     if (payload.audioKind === "worklet") {
-      eq(payload.firstChunkLen, expected.firstChunkLen, `first decode chunk length (${expected.firstChunkLen})`);
-      eq(
-        payload.firstChunkCrc,
-        expected.firstChunkCrc,
-        "first chunk Float32 bytes must equal the node-side PCM16 LE decode (no MP3/WAV decoder involved)",
+      const accepted = expected.acceptedChunks.find((c) => c.len === payload.firstChunkLen);
+      ok(accepted !== undefined, `first observed chunk length must be a seam-aligned span (800 or 3200); got ${payload.firstChunkLen}`);
+      ok(
+        accepted && accepted.crcs.has(payload.firstChunkCrc),
+        `first chunk Float32 bytes must equal a node-side PCM16 LE decode of the looping artifact ` +
+          `(len=${payload.firstChunkLen} crc=${payload.firstChunkCrc}; no MP3/WAV decoder can produce these bytes)`,
       );
     }
     ok(typeof payload.audioFilled === "number" && payload.audioFilled > 0, `chunks reached the transport (audioFilled=${payload.audioFilled})`);

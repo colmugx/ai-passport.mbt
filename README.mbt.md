@@ -4,13 +4,13 @@ Reusable MoonBit SDK for the [FoloToy AI Passport](https://github.com/FoloToy/ai
 
 Mooncakes module: `colmugx/ai-passport`.
 
-The SDK defines portable MoonBit application contracts. Host and device backends must implement the same semantics through thin platform adapters. Native and JS are supported and tested targets.
+The SDK defines portable MoonBit application contracts. Host and device backends must implement the same semantics through thin platform adapters. Native, JS, and wasm (web host backend, see below) are supported and tested targets.
 
 ## Repository scope
 
 This repository is **only** the reusable SDK. Forest Walk was removed from this repository and must be recovered from git history into the separate `ai-passport-template` repository. That template is also the place for a starter application, browser preview, device integration, and flashing/provisioning tooling; their migration and release validation are still pending.
 
-No raylib, ESP-IDF, BSP, or browser APIs appear in SDK code or its public API.
+No raylib, ESP-IDF, BSP, or browser APIs appear in SDK MoonBit code or its public API. The web host's browser code lives entirely in the `hosts/web/*.js` assets (see "Web host" below).
 
 ## Packages
 
@@ -23,6 +23,7 @@ No raylib, ESP-IDF, BSP, or browser APIs appear in SDK code or its public API.
 | `audio` | 16 kHz PCM16 mono `Synth` with four monophonic voices, five waveforms (`Pulse12`, `Pulse25`, `Pulse50`, `Triangle`, `Noise`), and a sample-accurate `Player` that owns the music transport (loop, pause/resume, beat sync) |
 | `battery` | `BatterySource` trait and caching `Battery`; readings are `Int?` so unavailable values are explicit |
 | `driver` | Backend-facing `Clock` and `DisplaySink` contracts, plus test fixtures (`ZeroClock`, `SinkProbe`) |
+| `hostabi` | Internal, experimental wasm host-boundary package: ABI v0 constants, the closure-injected `HostBridge` (`DisplaySink` / `PcmSink` / `BatterySource` / `Clock` adapters), wasm-gated `passport.*` externs, and inline-WAT `u16` store/load helpers |
 
 ## Display model
 
@@ -56,6 +57,22 @@ A platform backend implements the relevant `pub(open)` traits:
 - `BatterySource` (in `battery`) — `percent()` and `millivolts()` return optional readings.
 
 Backend glue stays thin and replaceable; all reusable logic is pure MoonBit in the packages above.
+
+## Web host (wasm backend)
+
+The SDK ships an application-agnostic web host backend for compiled MoonBit `wasm` apps: `hosts/web/passport-host.js` with `hosts/web/pcm-worklet.js` and `hosts/web/index.html` implements the internal, experimental ABI v0 contract specified in `docs/WEB_HOST.md`. It is a host **backend**, not an application preview or template — it holds no application state, and all browser code lives in the `hosts/web/*.js` assets, not in SDK MoonBit packages. `src/hostabi` adapts the SDK contracts to the raw wasm boundary, and `src/fixture` is the smallest main package that proves the boundary end-to-end with deterministic pixels and PCM. ABI v0 is internal and not a frozen public SDK API; the bundle contract is `<bundle>/app.wasm` plus `<bundle>/assets/` (`hosts/web/README.md`).
+
+Verify the boundary with the fixture and integration suite, from the repository root:
+
+```sh
+moon build --target wasm --release      # fixture app.wasm, release profile
+moon build --target wasm                # fixture app.wasm, debug profile (the suite pins both)
+node hosts/web/tools/gen-test-pcm.mjs   # once; creates the committed PCM asset
+node hosts/web/tools/make-bundle.mjs    # assembles _build/passport-bundle
+node hosts/web/test/run-tests.mjs       # nine suites; exits 2 if the fixture artifacts are missing
+```
+
+CI runs the same gate in a dedicated `wasm-host` job (`.github/workflows/ci.yml`): `moon check` and `moon test` with `--target wasm`, both fixture build profiles, and the full integration suite — including the real-browser suite through pinned playwright chromium — with no skip flags.
 
 ## Development
 

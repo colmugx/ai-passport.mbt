@@ -63,6 +63,9 @@ class PassportPcmProcessor extends AudioWorkletProcessor {
     while (i < out.length) out[i++] = 0; // underrun: silence
     if (available < out.length) this.underrunCount++;
     this.consumedTotal += available;
+    this.fill -= available; // free the consumed span: the ring must DRAIN, or
+    // readIdx would wrap and replay stale samples forever while the reported
+    // `filled` (which the main thread uses as its refill signal) never drops.
     if ((this.processCalls++ & (REPORT_INTERVAL - 1)) === 0) {
       this.port.postMessage({
         type: "report",

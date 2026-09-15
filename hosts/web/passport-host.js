@@ -277,14 +277,19 @@ function enqueueDecoded(state, chunk) {
 }
 
 /** Forward decoded chunks to the worklet ring, keeping ~200 ms buffered there.
- *  Whole chunks only, so scheduling stays gapless. */
+ *  Whole chunks only, so scheduling stays gapless. NOTE: capture the length
+ *  BEFORE postMessage — the transfer list detaches chunk.buffer, and a
+ *  TypedArray over a detached buffer reports length 0 (which would freeze
+ *  estimatedFill at its last value and, with the asset refiller, spin the
+ *  pump/refill loop forever). */
 function pump(state) {
   if (state.audio.kind !== "worklet" || !state.audio.node) return; // SP mode pulls itself
   while (state.pending.length > 0 && state.estimatedFill < TARGET_BUFFERED_SAMPLES) {
     const chunk = state.pending.shift();
-    state.pendingSamples -= chunk.length;
+    const len = chunk.length; // pre-transfer length
+    state.pendingSamples -= len;
     state.audio.node.port.postMessage({ type: "pcm", data: chunk }, [chunk.buffer]);
-    state.estimatedFill += chunk.length;
+    state.estimatedFill += len;
   }
 }
 
