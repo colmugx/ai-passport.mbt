@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI Passport SDK — wasm host</title>
+<style>
+  :root { color-scheme: dark; }
+  body {
+    margin: 2rem;
+    background: #101418;
+    color: #cfd8dc;
+    font: 14px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  #passport-canvas {
+    display: block;
+    background: #000;
+    image-rendering: pixelated;
+  }
+  #passport-hud { margin-top: 1rem; display: flex; gap: 1.5rem; flex-wrap: wrap; }
+  #passport-hud b { color: #80cbc4; font-weight: 600; }
+  #passport-status { margin-top: 0.75rem; color: #9e9e9e; }
+  .hint { margin-top: 0.5rem; color: #607d8b; }
+</style>
+</head>
+<body>
+  <canvas id="passport-canvas" width="120" height="160"></canvas>
+  <div id="passport-hud">
+    <span>battery <b id="passport-battery">–</b></span>
+    <span>position <b id="passport-pos">0.000 s</b></span>
+    <span>volume <b id="passport-volume">–</b></span>
+    <span>mute <b id="passport-mute">–</b></span>
+    <span>fps <b id="passport-fps">–</b></span>
+  </div>
+  <div id="passport-status">booting…</div>
+  <p class="hint">
+    Keys: ArrowUp / W = Up &middot; ArrowDown / S = Down &middot; Enter / Space = Ok
+    (press any key or click once to unlock audio)
+  </p>
+  <script type="module" src="./passport-host.js"></script>
+</body>
+</html>

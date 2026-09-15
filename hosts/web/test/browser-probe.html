@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>passport wasm-host browser probe</title>
+    <style>
+      body { font-family: monospace; margin: 1em; }
+      canvas { image-rendering: pixelated; width: 360px; height: 480px; }
+      pre { background: #f4f4f4; padding: 0.5em; }
+    </style>
+  </head>
+  <body>
+    <!-- NOTE: id must NOT be "passport-canvas" — that id would trigger
+         passport-host.js's browser auto-boot alongside this probe. -->
+    <canvas id="probe-canvas" width="120" height="160"></canvas>
+    <pre id="probe-result">booting</pre>
+    <script type="module">
+      // Browser probe for the W4 integration suite (suite d). Served by the
+      // throwaway node http server in run-tests.mjs:
+      //   /passport-host.js  -> web-host/passport-host.js
+      //   /bundle/app.wasm   -> make-bundle output (release fixture wasm)
+      // This page drives the SAME deterministic frame/input sequence as
+      // computeBrowserExpectation() on the node side, then reports:
+      //   - boot status, frameCount, lastNowUs, volume
+      //   - FNV-1a (32-bit) of the canvas ImageData RGBA bytes for the last
+      //     presented frame (getImageData of the real 2D canvas)
+      //   - FNV-1a of host.getFramebufferView()'s RGB565 LE bytes for the
+      //     same frame
+      // The node side recomputes both checksums from its own wasm instance
+      // and asserts equality (exact RGB565 output reaches the HTML canvas).
+      // No rAF loop is started: the page stays quiescent after reporting.
+      import { createHost } from "/passport-host.js";
+
+      const resultEl = document.getElementById("probe-result");
+
+      // Same FNV-1a as run-tests.mjs (must stay byte-identical in order).
+      function fnv1a(bytes) {
+        let h = 0x811c9dc5 | 0;
+        for (let i = 0; i < bytes.length; i++) {
+          h ^= bytes[i];
+          h = Math.imul(h, 0x01000193);
+        }
+        return (h >>> 0).toString(16).padStart(8, "0");
+      }
+
+      // No top-level await: pending TLA would block the window load event and
+      // starve --virtual-time-budget of its "load fired" starting point. An
+      // async IIFE keeps module evaluation synchronous so load fires
+      // immediately and the probe work runs under the virtual-time budget.
+      (async () => {
+        try {
+          const canvas = document.getElementById("probe-canvas");
+          let n = 0;
+          const host = await createHost({
+            canvas,
+            wasmUrl: "/bundle/app.wasm",
+            nowUs: () => BigInt(n) * 16667n,
+            // Deterministic probe: no real WebAudio machinery (headless audio
+            // state is orthogonal to the asserted display contract). The
+            // factory throwing is a documented createHost path: audio is
+            // recorded as unavailable and everything else boots normally.
+            audioContextFactory: () => {
+              throw new Error("audio disabled for deterministic probe");
+            },
+          });
+        for (; n < 5; n++) {
+          const r = host.tick(BigInt(n) * 16667n); // frames N=0..4, sel=0
+          if (!r || !r.presented) throw new Error("tick not presented at N=" + n);
+        }
+        host.queueInput(1, true); // BUTTON.Down
+        n += 1;
+        const last = host.tick(5n * 16667n); // frame N=5, sel=1 (row y=28)
+        if (!last || !last.presented) throw new Error("input frame not presented");
+
+        const img = canvas.getContext("2d").getImageData(0, 0, 120, 160);
+        const canvasCrc = fnv1a(img.data);
+        const fb = host.getFramebufferView();
+        const fbBytes = new Uint8Array(fb.buffer, fb.byteOffset, fb.byteLength);
+        resultEl.textContent = JSON.stringify({
+          status: "ok",
+          frameCount: host.frameCount,
+          lastNowUs: String(host.lastNowUs),
+          volume: host.volume,
+          fbLen: fb.length,
+          selCheck: fb[28 * 120] === 0xffe0 ? 1 : 0,
+          canvasCrc,
+          fbCrc: fnv1a(fbBytes),
+          audioKind: host.audio.kind,
+          audioReason: host.audio.reason,
+        });
+        } catch (err) {
+          resultEl.textContent = JSON.stringify({
+            status: "error",
+            message: String(err && err.message ? err.message : err),
+          });
+        }
+      })();
+    </script>
+  </body>
+</html>
