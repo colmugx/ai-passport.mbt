@@ -24,7 +24,8 @@ async fn doctor_command(sub : @argparse.Matches) -> Unit {
   let failures : Array[String] = []
 
   let moon_out = @shell.Cmd::Cmd("moon", ["version"]).output()
-  if moon_out.exit_code() == 0 {
+  let moon_available = moon_out.exit_code() == 0
+  if moon_available {
     let stdout = moon_out.stdout()
     let first_line = match stdout.find("\n") {
       Some(at) => stdout[:at].to_owned()
@@ -53,7 +54,8 @@ async fn doctor_command(sub : @argparse.Matches) -> Unit {
   match loaded {
     Some(project) => {
       let entry_dir = @cli.entry_package_dir(project)
-      if @fs.exists("\{entry_dir}/moon.pkg") {
+      let entry_exists = @fs.exists("\{entry_dir}/moon.pkg")
+      if entry_exists {
         println(
           "ok: entry package \"\{project.contract.entry}\" found under the module source root",
         )
@@ -63,24 +65,44 @@ async fn doctor_command(sub : @argparse.Matches) -> Unit {
         )
         failures.push("entry package")
       }
-      let mut sdk_dir : String? = None
-      try {
-        sdk_dir = Some(resolve_sdk_package_dir(project))
-      } catch {
-        @cli.Fail(message) => {
-          println("FAIL: \{message}")
-          failures.push("SDK Web Host assets")
-        }
-        _ => {
-          println(
-            "FAIL: unexpected error while locating the SDK Web Host assets",
-          )
-          failures.push("SDK Web Host assets")
+      // `moon check` is the supported project operation that validates the
+      // entry and materializes declared dependencies as needed. Do not depend
+      // on a deprecated no-argument installer or Moon's private global cache.
+      let mut dependencies_ready = false
+      if moon_available && entry_exists {
+        let check = @shell.Cmd::Cmd(
+          "moon",
+          ["check", entry_dir, "--target", "wasm"],
+          cwd=project.root,
+        ).output()
+        if check.exit_code() == 0 {
+          println("ok: application entry resolves for wasm")
+          dependencies_ready = true
+        } else {
+          println("FAIL: moon check could not resolve/check the application entry")
+          failures.push("application dependencies")
         }
       }
-      match sdk_dir {
-        Some(dir) => println("ok: SDK Web Host assets at \{dir}")
-        None => ()
+      if dependencies_ready {
+        let mut sdk_dir : String? = None
+        try {
+          sdk_dir = Some(resolve_sdk_package_dir(project))
+        } catch {
+          @cli.Fail(message) => {
+            println("FAIL: \{message}")
+            failures.push("SDK Web Host assets")
+          }
+          _ => {
+            println(
+              "FAIL: unexpected error while locating the SDK Web Host assets",
+            )
+            failures.push("SDK Web Host assets")
+          }
+        }
+        match sdk_dir {
+          Some(dir) => println("ok: SDK Web Host assets at \{dir}")
+          None => ()
+        }
       }
     }
     None => ()
