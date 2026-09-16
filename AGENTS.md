@@ -6,6 +6,8 @@ This repository is the `colmugx/ai-passport` Mooncakes application SDK **and its
 
 Do not add a permanent Forest Walk starter or other application semantics here. Example/starter applications belong in downstream application repositories. Host-specific implementation may contain ESP-IDF, BSP, browser, flashing, provisioning, pin, bus, controller, or toolchain details when they are required to implement that Host; those details must stay behind the Host boundary and must not leak into public application APIs.
 
+This repository and its published Mooncakes archive carry **no third-party product or hardware source code**. A Host directory contains only ai-passport-owned glue/adapters, build recipes, and deterministic metadata (hash manifests, pinned revisions) describing external dependencies. Third-party code (e.g. the FoloToy BSP) is resolved at build time from a project-provided checkout or a CLI-managed pinned clone under the project's `.passport/` tree — never vendored, copied, or committed here.
+
 ## Architectural rules
 
 1. **Host is the only backend abstraction.** Do not introduce parallel Product/Board/DeviceTarget vocabularies for backend selection.
