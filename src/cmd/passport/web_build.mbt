@@ -1,7 +1,7 @@
 ///|
 /// Resolution of the SDK's own Web Host files (index.html,
 /// passport-host.js, pcm-worklet.js) for a downstream project. The files
-/// always come from the SDK release the project actually installed — never
+/// always come from the SDK release Moon materialized for the project — never
 /// from GitHub and never from MoonBit's private dependency-cache layout.
 
 ///|
@@ -21,22 +21,23 @@ async fn package_has_host_files(package_dir : String) -> Bool {
 }
 
 ///|
-/// Locates the installed SDK package directory for a project. A downstream
-/// project must have materialized its declared dependencies with `moon
-/// install`; the CLI deliberately does not depend on Moon's internal cache
-/// directory structure.
+/// Locates the SDK source tree selected for a project. Build/doctor first run
+/// a normal Moon project operation (`moon build` / `moon check`), allowing
+/// Moon itself to resolve and materialize declared dependencies. The CLI then
+/// consumes the resulting module-local `.mooncakes` tree instead of depending
+/// on any undocumented global cache layout.
 async fn resolve_sdk_package_dir(project : @cli.Project) -> String {
   // The SDK module building itself uses the checkout's co-versioned host.
   if project.module_name == SDK_MODULE && package_has_host_files(project.root) {
     return "\{project.root}/\{SDK_HOST_DIR}"
   }
-  // Downstream projects use the dependency installation selected by Moon.
+  // Downstream projects use the dependency materialized by Moon.
   let module_local = "\{project.root}/.mooncakes/\{SDK_MODULE}"
   if package_has_host_files(module_local) {
     return "\{module_local}/\{SDK_HOST_DIR}"
   }
   @cli.fail_cli(
-    "the \{SDK_MODULE} dependency is not installed for this project; run 'moon install' in the project and retry",
+    "Moon did not materialize \{SDK_MODULE} for this project; verify moon.mod and run a normal moon check/build before retrying",
   )
 }
 
