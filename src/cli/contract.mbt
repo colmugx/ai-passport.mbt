@@ -62,8 +62,10 @@ fn validate_relative_path(value : String, field : String) -> Unit raise {
 
 ///|
 fn reserved_bundle_path(path : String) -> Bool {
-  path == "app.wasm" || path == "index.html" ||
-  path == "passport-host.js" || path == "pcm-worklet.js"
+  path == "app.wasm" ||
+  path == "index.html" ||
+  path == "passport-host.js" ||
+  path == "pcm-worklet.js"
 }
 
 ///|
