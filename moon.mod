@@ -11,17 +11,17 @@ license = "Apache-2.0"
 keywords = [
   "moonbit",
   "cli",
-  "game",
   "embedded",
+  "application",
   "graphics",
   "audio",
-  "music",
+  "host",
   "folotoy",
 ]
 
 preferred_target = "native"
 
-description = "Reusable MoonBit SDK for the FoloToy AI Passport wearable: 120x160 RGB565 graphics, semantic input, four-voice music engine, battery, and backend driver contracts."
+description = "MoonBit application SDK and host toolchain for supported embedded devices and the Web host."
 
 source = "src"
 
