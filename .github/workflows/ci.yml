@@ -100,7 +100,7 @@ jobs:
       - name: Wasm-host integration suites (incl. real browser + CLI fixtures)
         run: node hosts/web/test/run-tests.mjs
 
-      - name: Package-list proof (CLI + Web Host assets)
+      - name: Package-list proof (runtime present, test-only files absent)
         run: |
           moon package --list > /tmp/passport-package-list.txt 2>&1
           for required in \
@@ -113,4 +113,18 @@ jobs:
             hosts/web/pcm-worklet.js; do
             grep -x "$required" /tmp/passport-package-list.txt || { echo "MISSING from package: $required"; exit 1; }
           done
-          echo "package-list proof: all required files present"
+          for forbidden in \
+            hosts/web/test/run-tests.mjs \
+            hosts/web/tools/make-bundle.mjs \
+            hosts/web/assets/test.pcm \
+            src/fixture/main.mbt; do
+            if grep -x "$forbidden" /tmp/passport-package-list.txt; then
+              echo "TEST-ONLY file leaked into package: $forbidden"
+              exit 1
+            fi
+          done
+          if grep -E '(_test|_wbtest)\.mbt$' /tmp/passport-package-list.txt; then
+            echo "MoonBit test source leaked into package"
+            exit 1
+          fi
+          echo "package-list proof: runtime surface present and test-only files excluded"
