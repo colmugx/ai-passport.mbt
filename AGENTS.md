@@ -29,7 +29,7 @@ Forest Walk is a downstream reference application, not SDK/tooling semantics. CL
 
 Use `moon ide` (`peek-def`, `outline`, `find-references`) for code navigation. `moon info` regenerates `pkg.generated.mbti` public interfaces; do not edit those files directly. Review interface diffs after public API work. Use `moon fmt` for formatting and `moon test` for tests; update snapshots only for intended behavior changes. Prefer assertions for stable results and `debug_inspect` with `Debug` for structured diagnostic snapshots. `moon coverage analyze` can identify untested code.
 
-For downstream dependency materialization use the MoonBit command intended to install project dependencies (`moon install`). Do not couple runtime tooling to undocumented global cache directory layouts.
+Let normal Moon project operations (`moon check` / `moon build`) resolve and materialize declared dependencies. Do not couple runtime tooling to deprecated installer behavior or undocumented global cache directory layouts.
 
 ## Quality gates
 
