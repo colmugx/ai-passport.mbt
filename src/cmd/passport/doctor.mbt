@@ -79,7 +79,9 @@ async fn doctor_command(sub : @argparse.Matches) -> Unit {
           println("ok: application entry resolves for wasm")
           dependencies_ready = true
         } else {
-          println("FAIL: moon check could not resolve/check the application entry")
+          println(
+            "FAIL: moon check could not resolve/check the application entry",
+          )
           failures.push("application dependencies")
         }
       }
