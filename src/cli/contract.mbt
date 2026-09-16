@@ -41,6 +41,32 @@ pub(all) struct Project {
 } derive(Eq, Debug)
 
 ///|
+/// Contract paths are portable, project-relative slash paths. Reject
+/// traversal and platform-specific separators before any filesystem access.
+fn validate_relative_path(value : String, field : String) -> Unit raise {
+  guard value != "" else {
+    fail_cli("passport.json: \{field} must not be empty")
+  }
+  guard !value.has_prefix("/") else {
+    fail_cli("passport.json: \{field} must be relative")
+  }
+  guard value.find("\\") is None else {
+    fail_cli("passport.json: \{field} must use forward slashes")
+  }
+  for part in value.split("/").to_array() {
+    if part == "" || part == "." || part == ".." {
+      fail_cli("passport.json: \{field} contains an unsafe path component")
+    }
+  }
+}
+
+///|
+fn reserved_bundle_path(path : String) -> Bool {
+  path == "app.wasm" || path == "index.html" ||
+  path == "passport-host.js" || path == "pcm-worklet.js"
+}
+
+///|
 /// Parses the contract JSON text. Pure (no filesystem access).
 pub fn parse_contract(text : String) -> ProjectContract raise {
   let value = @json.parse(text) catch {
@@ -57,14 +83,20 @@ pub fn parse_contract(text : String) -> ProjectContract raise {
         "passport.json: missing required field \"entry\" (the application wasm entry package)",
       )
   }
-  guard entry != "" else {
-    fail_cli("passport.json: \"entry\" must not be empty")
-  }
+  validate_relative_path(entry, "\"entry\"")
   let assets : Array[AssetEntry] = []
   match root.get("assets") {
     Some(Array(list)) =>
       for raw in list {
-        assets.push(parse_asset(raw))
+        let asset = parse_asset(raw)
+        for existing in assets {
+          if existing.bundle_path == asset.bundle_path {
+            fail_cli(
+              "passport.json: duplicate asset \"bundlePath\" \"\{asset.bundle_path}\"",
+            )
+          }
+        }
+        assets.push(asset)
       }
     Some(_) => fail_cli("passport.json: \"assets\" must be an array")
     None => ()
@@ -88,6 +120,13 @@ fn parse_asset(value : Json) -> AssetEntry raise {
   }
   guard obj.get("bundlePath") is Some(String(bundle_path)) else {
     fail_cli("passport.json: asset is missing required field \"bundlePath\"")
+  }
+  validate_relative_path(source, "asset \"source\"")
+  validate_relative_path(bundle_path, "asset \"bundlePath\"")
+  guard !reserved_bundle_path(bundle_path) else {
+    fail_cli(
+      "passport.json: asset \"bundlePath\" \"\{bundle_path}\" is reserved by the Web Host",
+    )
   }
   let pcm_loop = match obj.get("pcmLoop") {
     Some(True) => true
