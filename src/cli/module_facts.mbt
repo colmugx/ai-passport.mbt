@@ -20,6 +20,27 @@ pub fn moon_mod_scalar(mod_text : String, key : String) -> String? {
 }
 
 ///|
+/// Extracts the declared ai-passport dependency version from moon.mod text.
+/// Kept as a pure project-fact helper for diagnostics and tests; runtime host
+/// asset resolution no longer uses MoonBit's private cache layout.
+pub fn sdk_dependency_version(mod_text : String) -> String? {
+  let needle = "\"colmugx/ai-passport@"
+  for line in mod_text.split("\n").to_array() {
+    match line.find(needle) {
+      Some(at) => {
+        let rest = line[at + needle.length():]
+        match rest.find("\"") {
+          Some(end) => return Some(rest[:end].to_owned())
+          None => return None
+        }
+      }
+      None => ()
+    }
+  }
+  None
+}
+
+///|
 /// Joins a project-root path with a module-relative path ("" relative means
 /// the root itself).
 pub fn under_root(root : String, relative : String) -> String {
