@@ -1,15 +1,8 @@
 ///|
 /// Resolution of the SDK's own Web Host files (index.html,
 /// passport-host.js, pcm-worklet.js) for a downstream project. The files
-/// always come from the SDK release the project actually builds against —
-/// never from a git checkout, never from GitHub:
-///
-/// 1. building the SDK module itself: the checkout's own `hosts/web/`
-///    (co-versioned with the CLI under development);
-/// 2. the project's module-local mooncakes install (`.mooncakes/`), which is
-///    exactly what `moon build` resolved the SDK dependency from;
-/// 3. the versioned user dependency cache, pinned by the project's
-///    moon.mod import when there is one.
+/// always come from the SDK release the project actually installed — never
+/// from GitHub and never from MoonBit's private dependency-cache layout.
 
 ///|
 const SDK_MODULE : String = "colmugx/ai-passport"
@@ -28,59 +21,22 @@ async fn package_has_host_files(package_dir : String) -> Bool {
 }
 
 ///|
-/// Locates the installed SDK package directory for a project. `mod_text` is
-/// the project's moon.mod text (used to pin the cache version).
-async fn resolve_sdk_package_dir(
-  project : @cli.Project,
-  mod_text : String,
-) -> String {
-  // 1. The SDK module building itself.
+/// Locates the installed SDK package directory for a project. A downstream
+/// project must have materialized its declared dependencies with `moon
+/// install`; the CLI deliberately does not depend on Moon's internal cache
+/// directory structure.
+async fn resolve_sdk_package_dir(project : @cli.Project) -> String {
+  // The SDK module building itself uses the checkout's co-versioned host.
   if project.module_name == SDK_MODULE && package_has_host_files(project.root) {
     return "\{project.root}/\{SDK_HOST_DIR}"
   }
-  // 2. Module-local mooncakes resolution.
+  // Downstream projects use the dependency installation selected by Moon.
   let module_local = "\{project.root}/.mooncakes/\{SDK_MODULE}"
   if package_has_host_files(module_local) {
     return "\{module_local}/\{SDK_HOST_DIR}"
   }
-  // 3. User dependency cache, versioned.
-  guard @env.get_env_var("HOME") is Some(home) else {
-    @cli.fail_cli(
-      "cannot locate the \{SDK_MODULE} package (no HOME); run 'moon update' in the project and retry",
-    )
-  }
-  let cache_root = "\{home}/.moon/cache/deps/v1/sources/\{SDK_MODULE}"
-  if @fs.exists(cache_root) {
-    match @cli.sdk_dependency_version(mod_text) {
-      Some(version) => {
-        let candidate = "\{cache_root}/\{version}"
-        if package_has_host_files(candidate) {
-          return "\{candidate}/\{SDK_HOST_DIR}"
-        }
-        @cli.fail_cli(
-          "the pinned SDK dependency \{SDK_MODULE}@\{version} is not resolved yet (missing \{SDK_HOST_DIR} in the dependency cache); run 'moon update' in the project and retry",
-        )
-      }
-      None => {
-        let hits : Array[String] = []
-        for version in @fs.readdir(cache_root) {
-          if package_has_host_files("\{cache_root}/\{version}") {
-            hits.push(version)
-          }
-        }
-        if hits.length() == 1 {
-          return "\{cache_root}/\{hits[0]}/\{SDK_HOST_DIR}"
-        }
-        if hits.length() > 1 {
-          @cli.fail_cli(
-            "ambiguous \{SDK_MODULE} dependency cache (\{hits.length()} versions ship \{SDK_HOST_DIR}); pin the dependency version in moon.mod and retry",
-          )
-        }
-      }
-    }
-  }
   @cli.fail_cli(
-    "the published \{SDK_MODULE} package is not resolved for this project (no .mooncakes entry, no usable dependency cache); run 'moon update' in the project and retry",
+    "the \{SDK_MODULE} dependency is not installed for this project; run 'moon install' in the project and retry",
   )
 }
 
@@ -116,7 +72,7 @@ async fn locate_wasm_artifact(project : @cli.Project) -> String {
     }
   }
   @cli.fail_cli(
-    "no built application wasm for entry \"\{project.contract.entry}\" (expected \{conventional}); build with: moon build --target wasm --release",
+    "no built application wasm for entry \"\{project.contract.entry}\" (expected \{conventional})",
   )
 }
 
@@ -132,28 +88,27 @@ async fn copy_file(from : String, to : String) -> Unit {
 }
 
 ///|
-/// `passport build --host <id>`: the complete generic Web build — resolve
-/// the project, compile the application wasm against the resolved SDK,
-/// assemble `.passport/web/` with the SDK Web Host files and the declared
-/// assets.
+/// `passport build --host <id>`: compile the application entry and assemble
+/// the generic Web Host bundle.
 async fn build_command(sub : @argparse.Matches) -> Unit {
   let host_id = option_value(sub, "host", "web")
-  let descriptor = @cli.require_implemented_host(host_id)
-  let _ = descriptor
+  let _ = @cli.require_implemented_host(host_id)
   let project = load_project(option_value(sub, "project", "."))
-  let mod_text = read_text_file("\{project.root}/moon.mod")
-  // 1. Compile the application entry for the wasm target (release).
+
+  // Compile only the declared entry package instead of rebuilding every
+  // package in a potentially large application module.
+  let entry_dir = @cli.entry_package_dir(project)
   run_step(
     @shell.Cmd::Cmd(
       "moon",
-      ["build", "--target", "wasm", "--release"],
+      ["build", entry_dir, "--target", "wasm", "--release"],
       cwd=project.root,
     ),
-    "building the application (moon --target wasm, release)",
+    "building application entry \"\{project.contract.entry}\" (wasm release)",
   )
   let wasm_artifact = locate_wasm_artifact(project)
-  let sdk_dir = resolve_sdk_package_dir(project, mod_text)
-  // 2. Assemble the bundle.
+  let sdk_dir = resolve_sdk_package_dir(project)
+
   let bundle = @cli.under_root(project.root, @cli.BUNDLE_DIR)
   let bundle_assets = "\{bundle}/assets"
   if !@fs.exists(bundle_assets) {
@@ -185,7 +140,7 @@ async fn build_command(sub : @argparse.Matches) -> Unit {
     copy_file(source, destination)
   }
   // The SDK index.html is the only web entry; a stale generated bootstrap
-  // page from older tooling must never survive into a fresh bundle.
+  // page from older tooling must never survive into the supported bundle.
   let stale = "\{bundle}/app.html"
   if @fs.exists(stale) {
     @fs.remove(stale) catch {
