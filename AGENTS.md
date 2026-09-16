@@ -2,24 +2,26 @@
 
 ## Repository scope
 
-This repository is only the reusable Mooncakes SDK for AI Passport. It contains MoonBit packages, pure runtime logic, public API contracts, graphics, input, music, audio and battery abstractions, tests, and replaceable platform driver interfaces.
+This repository is the `colmugx/ai-passport` Mooncakes application SDK **and its co-versioned Host toolchain**. It owns reusable MoonBit application APIs, runtime logic, the `passport` CLI, Host descriptors, Host runtime assets, tests, and the implementation needed to build/deploy applications to Hosts that this project explicitly supports.
 
-Do not add a permanent Forest Walk starter or demo application, a GitHub Template, Web Canvas or WebAudio preview, raylib preview, ESP-IDF firmware project, FoloToy BSP copy, flashing or monitor tooling, provisioning, project scaffolding, or device GPIO numbers in public APIs. Forest Walk was removed from this SDK; it must be recovered from git history and migrated into the separate `ai-passport-template` repository. Do not recreate it here or claim that migration is already complete.
+Do not add a permanent Forest Walk starter or other application semantics here. Example/starter applications belong in downstream application repositories. Host-specific implementation may contain ESP-IDF, BSP, browser, flashing, provisioning, pin, bus, controller, or toolchain details when they are required to implement that Host; those details must stay behind the Host boundary and must not leak into public application APIs.
 
 ## Architectural rules
 
-1. This repository contains the reusable Mooncakes SDK only.
-2. Do not implement the GitHub Template in this repository.
-3. Host and device backends implement the same SDK semantics.
-4. The v0.1 logical display is 120×160 pixels.
-5. Buttons are semantic `Up`, `Down`, and `Ok` values.
-6. Graphics public APIs do not expose framebuffer, strip-rendering, or device-controller details.
-7. Music supports at most four monophonic voices.
-8. Prefer reusable pure MoonBit logic.
-9. Keep backend glue thin and replaceable.
-10. Do not add QEMU or a hardware emulator to this repository.
+1. **Host is the only backend abstraction.** Do not introduce parallel Product/Board/DeviceTarget vocabularies for backend selection.
+2. A Host is one explicitly supported and validated execution environment. Do not turn the public contract into arbitrary GPIO or board configuration.
+3. Application code depends on semantic SDK capabilities; it must not import Host implementation details such as ESP-IDF, GPIO, ADC, SPI, I2S, I2C, display controllers, codecs, browser DOM, or WebAudio APIs.
+4. Web and physical Hosts execute the same compiled MoonBit application semantics. Host code supplies capabilities and transport; it does not reimplement application behavior.
+5. The v0.1 logical display contract is 120×160 RGB565. Host presentation details remain behind display contracts.
+6. Buttons are semantic `Up`, `Down`, and `Ok` values.
+7. Graphics public APIs do not expose framebuffer, strip-rendering, or device-controller details.
+8. Music supports at most four monophonic voices.
+9. Prefer reusable pure MoonBit logic. Keep Host glue narrow, measurable, and replaceable within the Host implementation.
+10. SDK library, CLI, and Host assets are one release unit. Do not fetch an unpinned "latest" Host implementation at build time.
+11. Do not add QEMU or a hardware emulator unless the project explicitly chooses that direction in a later round.
+12. Generated application artifacts belong under ignored build/workspace directories; do not make generated project output part of the public authoring surface.
 
-Public app code must not import ESP-IDF, raylib, GPIO, ADC, SPI, I2S, I2C, ST7789, ES8311, or CW2017 APIs. Scope changes require updating `docs/PLAN.md`.
+Forest Walk is a downstream reference application, not SDK/tooling semantics. CLI/Host tooling must remain application-generic.
 
 ## MoonBit layout and tooling
 
@@ -27,10 +29,15 @@ Public app code must not import ESP-IDF, raylib, GPIO, ADC, SPI, I2S, I2C, ST778
 
 Use `moon ide` (`peek-def`, `outline`, `find-references`) for code navigation. `moon info` regenerates `pkg.generated.mbti` public interfaces; do not edit those files directly. Review interface diffs after public API work. Use `moon fmt` for formatting and `moon test` for tests; update snapshots only for intended behavior changes. Prefer assertions for stable results and `debug_inspect` with `Debug` for structured diagnostic snapshots. `moon coverage analyze` can identify untested code.
 
+For downstream dependency materialization use the MoonBit command intended to install project dependencies (`moon install`). Do not couple runtime tooling to undocumented global cache directory layouts.
+
 ## Quality gates
 
-- `moon check --output-json` succeeds on native and JS.
-- `moon test --output-json` succeeds on native and JS.
+- `moon check --output-json` and `moon test --output-json` succeed for every target the affected package supports.
+- The Web Host/CLI real-browser integration gate stays mandatory when those paths are touched.
+- Host-specific build gates are required once that Host backend is implemented; never substitute host tests for physical-device evidence.
 - `moon info` produces only intended public interface changes.
 - `moon fmt` leaves the tree clean.
-- Boundary conditions are tested and public API changes are documented.
+- `git diff --exit-code` is clean after generators/formatters.
+- Boundary conditions, failure paths, and filesystem/project-contract inputs are tested.
+- Public API/ABI changes are explicit; do not silently revise Wasm ABI v0 during unrelated refactors.
