@@ -1,8 +1,8 @@
 ///|
-/// Fixture A: the smallest downstream-style application with NO audio — a
-/// graphics/input app for the SDK Web Host. It exists to prove that the
-/// passport CLI is application-generic: nothing in it (nor in the CLI) is
-/// derived from any starter application.
+/// Fixture B: a downstream-style application with one generic looping PCM
+/// asset. The app itself remains ordinary graphics/input code; passport.json
+/// configures the Host audio asset. Together with fixture A this proves the
+/// CLI is application-generic and audio is project data, not app semantics.
 ///
 /// Deterministic frame content:
 /// - an 8x8 block at (0,0): red/green cycling on frame parity, flipping to
@@ -24,8 +24,8 @@ struct AppState {
 let state : AppState = {
   bridge: @hostabi.HostBridge::new(
     store_u16=@hostabi.store_u16,
-    // No streamed PCM in this app: the write hook is a no-op and the module
-    // deliberately does NOT import `passport.host_pcm_write`.
+    // Asset-mode PCM is owned by the Web Host, so this app deliberately does
+    // NOT import `passport.host_pcm_write`.
     pcm_write=fn(_ptr : Int, _samples : Int) { () },
     battery_percent=@hostabi.host_battery_percent,
   ),
