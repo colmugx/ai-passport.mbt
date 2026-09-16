@@ -76,13 +76,10 @@ jobs:
       - name: Passport CLI smoke (hosts)
         run: moon run --target wasm src/cmd/passport hosts
 
-      - name: Install downstream fixture dependencies
-        run: |
-          for fixture in hosts/web/test/fixtures/fixture-a hosts/web/test/fixtures/fixture-b; do
-            (cd "$fixture" && moon install)
-          done
-
-      - name: Passport CLI smoke (doctor on a fixture project)
+      # Run doctor against a clean nested project. doctor uses `moon check` on
+      # the declared entry, which both validates it and lets Moon materialize
+      # declared dependencies without relying on deprecated installer behavior.
+      - name: Passport CLI smoke (doctor on a fresh fixture project)
         run: moon run --target wasm src/cmd/passport doctor --host web --project hosts/web/test/fixtures/fixture-a
 
       - name: Build fixture wasm (release, then debug)
