@@ -75,6 +75,19 @@ jobs:
       - name: Test (wasm)
         run: moon test --target wasm --output-json
 
+      # The passport CLI (src/cmd/passport, wasm-only) gets its unit tests
+      # from `moon test --target wasm` above; these steps prove the exact
+      # local invocation of the executable itself.
+      - name: Passport CLI smoke (hosts)
+        run: moon run --target wasm src/cmd/passport hosts
+
+      - name: Passport CLI smoke (doctor on a fixture project)
+        run: |
+          cd hosts/web/test/fixtures/fixture-a
+          moon update
+          cd -
+          moon run --target wasm src/cmd/passport doctor --host web --project hosts/web/test/fixtures/fixture-a
+
       # The integration suite requires BOTH build profiles as prerequisites
       # (_build/wasm/release/build/fixture/fixture.wasm for the golden and
       # browser suites, _build/wasm/debug/build/fixture/fixture.wasm for the
@@ -100,7 +113,27 @@ jobs:
         run: npx -y playwright@1.63.0 install chromium --with-deps
 
       # Hard gate, no --skip-browser / PASSPORT_SKIP_BROWSER: exits 2 when the
-      # fixture wasm artifacts are missing, 1 when any of the nine suites
-      # fails — including the browser suite, which must run via playwright.
-      - name: Wasm-host integration suites (incl. real browser)
+      # fixture wasm artifacts are missing, 1 when any suite fails — including
+      # the browser suites and the passport-CLI fixture suites, which must run
+      # via playwright.
+      - name: Wasm-host integration suites (incl. real browser + CLI fixtures)
         run: node hosts/web/test/run-tests.mjs
+
+      # Package-list proof: a downstream developer who resolves the published
+      # package must receive the CLI executable sources AND every file the
+      # Web build path materializes.
+      - name: Package-list proof (CLI + Web Host assets)
+        run: |
+          # moon package --list writes the listing to stderr; capture both streams.
+          moon package --list > /tmp/passport-package-list.txt 2>&1
+          for required in \
+            src/cmd/passport/main.mbt \
+            src/cmd/passport/moon.pkg \
+            src/cli/cli_error.mbt \
+            src/hosts/registry.mbt \
+            hosts/web/index.html \
+            hosts/web/passport-host.js \
+            hosts/web/pcm-worklet.js; do
+            grep -x "$required" /tmp/passport-package-list.txt || { echo "MISSING from package: $required"; exit 1; }
+          done
+          echo "package-list proof: all required files present"

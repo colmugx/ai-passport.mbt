@@ -62,6 +62,8 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { registerPcmAssetSuites } from "./pcm-asset-suites.mjs";
+import { registerCliFixtureSuites } from "./cli-fixture-suites.mjs";
+import { BROWSER_LAUNCH_FLAGS, findHeadlessShell, loadPlaywright } from "./browser-common.mjs";
 import { buildMinimalPassportWasm } from "./minimal-wasm.mjs";
 
 // ---------------------------------------------------------------------------
@@ -793,107 +795,19 @@ registerPcmAssetSuites({
   releaseWasmPath: RELEASE_WASM,
 });
 
+// --- Suites 19-24: passport CLI fixtures (assembly + real browser) -----------
+
+registerCliFixtureSuites({
+  suite,
+  ok,
+  eq,
+  eqText,
+  SuiteError,
+  repoRoot,
+  webHostDir,
+});
+
 // --- Suite 9: browser ---------------------------------------------------------
-
-/** Candidate npm cache roots for npx-installed packages. npm's default cache
- *  is `~/.npm` on darwin/linux (so npx installs land in `~/.npm/_npx/<hash>/
- *  node_modules/...`) and `%LocalAppData%\npm-cache` on win32; npm_config_cache
- *  (set by npm itself, e.g. in CI) wins when present. The per-entry layout
- *  under `_npx` is identical on every platform. */
-function npxCacheRoots() {
-  const roots = [];
-  if (process.env.npm_config_cache) roots.push(process.env.npm_config_cache);
-  if (process.platform === "win32") {
-    roots.push(path.join(process.env.LOCALAPPDATA || path.join(os.homedir(), "AppData", "Local"), "npm-cache"));
-  } else {
-    roots.push(path.join(os.homedir(), ".npm"));
-  }
-  return [...new Set(roots)];
-}
-
-/** Resolve playwright without any committed dependency: bare import first
- *  (NODE_PATH-style setups), then the platform's npx cache. Returns null if
- *  absent. */
-async function loadPlaywright() {
-  try {
-    const m = await import("playwright");
-    return m.default ?? m;
-  } catch {
-    // fall through to the npx cache
-  }
-  for (const cacheRoot of npxCacheRoots()) {
-    const npxCache = path.join(cacheRoot, "_npx");
-    let entries = [];
-    try {
-      entries = fs.readdirSync(npxCache);
-    } catch {
-      continue;
-    }
-    for (const entry of entries) {
-      const candidate = path.join(npxCache, entry, "node_modules", "playwright", "index.js");
-      if (!fs.existsSync(candidate)) continue;
-      try {
-        const m = await import(pathToFileURL(candidate));
-        return m.default ?? m;
-      } catch {
-        // try the next cache entry
-      }
-    }
-  }
-  return null;
-}
-
-/** Playwright's browser registry dir (also where `playwright install` puts
- *  the browsers): PLAYWRIGHT_BROWSERS_PATH wins unless it is "0" (playwright
- *  semantics: package-local browsers), else the per-OS default cache. */
-function playwrightBrowsersDir() {
-  const env = process.env.PLAYWRIGHT_BROWSERS_PATH;
-  if (env !== undefined && env !== "" && env !== "0") return env;
-  switch (process.platform) {
-    case "darwin":
-      return path.join(os.homedir(), "Library", "Caches", "ms-playwright");
-    case "win32":
-      return path.join(process.env.LOCALAPPDATA || path.join(os.homedir(), "AppData", "Local"), "ms-playwright");
-    default: // linux and everything else (CI: ~/.cache/ms-playwright)
-      return path.join(os.homedir(), ".cache", "ms-playwright");
-  }
-}
-
-/** Locate the cached chrome-headless-shell binary (playwright cache layout). */
-function findHeadlessShell() {
-  const base = playwrightBrowsersDir();
-  const binName = process.platform === "win32" ? "chrome-headless-shell.exe" : "chrome-headless-shell";
-  // Known per-OS download dir names (fast path; the generic scan below covers
-  // any other layout).
-  const knownDir = {
-    darwin: "chrome-headless-shell-mac-arm64",
-    win32: "chrome-headless-shell-win64",
-    linux: "chrome-headless-shell-linux64",
-  }[process.platform];
-  let dirs = [];
-  try {
-    dirs = fs.readdirSync(base);
-  } catch {
-    return null;
-  }
-  for (const dir of dirs) {
-    if (!dir.startsWith("chromium_headless_shell")) continue;
-    const root = path.join(base, dir);
-    if (knownDir) {
-      const direct = path.join(root, knownDir, binName);
-      if (fs.existsSync(direct)) return direct;
-    }
-    try {
-      for (const sub of fs.readdirSync(root)) {
-        const candidate = path.join(root, sub, binName);
-        if (fs.existsSync(candidate)) return candidate;
-      }
-    } catch {
-      // keep scanning
-    }
-  }
-  return null;
-}
 
 /** Node-side golden for the browser probe: an independent wasm instance
  *  drives the EXACT same frame/input sequence as hosts/web/test/
@@ -958,15 +872,6 @@ function startProbeServer(bundleDir) {
     server.listen(0, "127.0.0.1", () => resolve(server));
   });
 }
-
-/** Chrome flags for BOTH launchers: the probe's AudioContext must start
- *  running without a user gesture (autoplay policy), sandboxing/GPU are off
- *  for hermetic headless runs (same flags as the headless-shell invocation). */
-const BROWSER_LAUNCH_FLAGS = [
-  "--autoplay-policy=no-user-gesture-required",
-  "--no-sandbox",
-  "--disable-gpu",
-];
 
 async function runProbeInPlaywright(url) {
   const pw = await loadPlaywright();

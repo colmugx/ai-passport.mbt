@@ -1,0 +1,68 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "colmugx/ai-passport/cli"
+
+import {
+  "colmugx/ai-passport/hosts",
+  "moonbitlang/core/debug",
+}
+
+// Values
+pub const BUNDLE_DIR : String = ".passport/web"
+
+pub fn entry_package_dir(Project) -> String
+
+pub fn entry_url_path(ProjectContract) -> String
+
+pub fn expected_wasm_artifact(Project) -> String
+
+pub fn[T] fail_cli(String) -> T raise
+
+pub fn known_host_ids() -> String
+
+pub fn moon_mod_scalar(String, String) -> String?
+
+pub fn parse_contract(String) -> ProjectContract raise
+
+pub fn percent_encode(String) -> String
+
+pub fn render_host(@hosts.HostDescriptor) -> String
+
+pub fn require_implemented_host(String) -> @hosts.HostDescriptor raise
+
+pub fn require_known_host(String) -> @hosts.HostDescriptor raise
+
+pub fn sdk_dependency_version(String) -> String?
+
+pub fn sdk_host_files() -> Array[String]
+
+pub fn source_root(Project) -> String
+
+pub fn under_root(String, String) -> String
+
+// Errors
+pub(all) suberror CliError {
+  Fail(String)
+} derive(Eq, @debug.Debug)
+
+// Types and methods
+pub(all) struct AssetEntry {
+  source : String
+  bundle_path : String
+  pcm_loop : Bool
+} derive(Eq, @debug.Debug)
+
+pub(all) struct Project {
+  root : String
+  module_name : String
+  source_dir : String
+  contract : ProjectContract
+} derive(Eq, @debug.Debug)
+
+pub(all) struct ProjectContract {
+  entry : String
+  assets : Array[AssetEntry]
+} derive(Eq, @debug.Debug)
+
+// Type aliases
+
+// Traits

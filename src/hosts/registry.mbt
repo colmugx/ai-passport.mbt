@@ -1,0 +1,81 @@
+///|
+/// The Host registry: every explicitly supported Host of this SDK release is
+/// registered here exactly once, in a stable order. Future Hosts (for example
+/// `zectrix-note4`) are added here without changing the CLI grammar.
+
+///|
+/// The Web Host: the SDK's own application-agnostic wasm host backend. An
+/// application compiles to `app.wasm` (ABI v0) and runs in the browser from a
+/// bundle assembled by the passport CLI (`passport build --host web`).
+fn web_descriptor() -> HostDescriptor {
+  {
+    id: "web",
+    summary: "Browser Web Host: the SDK wasm app in a browser over HTTP.",
+    capabilities: {
+      sdk_exposed: [Display, Input, AudioOutput, Battery, Clock],
+      // The browser runtime really provides display, keyboard input, an
+      // audio output device and clocks; it has no battery gauge, so Battery
+      // is deliberately absent from the hardware plane (the exposed Battery
+      // is a fixture/unavailable state, never a real reading).
+      hardware_known: [Display, Input, AudioOutput, Clock],
+    },
+    facts: [
+      "RGB565 framebuffer presentation of the 120x160 logical canvas", "semantic Up / Down / Ok input translated from the keyboard",
+      "normalized PCM16 LE mono 16000 Hz audio output with volume and mute", "best-effort playback position reporting for normalized PCM",
+      "battery is a fixture/unavailable state, not a real gauge", "frame pacing from the browser animation clock; monotonic now_us",
+      "no microphone, network, or persistent storage capability is exposed",
+    ],
+    backend: Implemented,
+  }
+}
+
+///|
+/// The FoloToy AI Passport wearable. Registered with its factual capability
+/// descriptor; its ESP-IDF device build backend is NOT migrated in this
+/// release, so no SDK application capability is claimed for it yet.
+fn folotoy_descriptor() -> HostDescriptor {
+  {
+    id: "folotoy-ai-passport",
+    summary: "FoloToy AI Passport wearable (ESP32-C3) registered Host.",
+    capabilities: {
+      // Described only: the device backend is not migrated, so the SDK makes
+      // no application-API claims for this Host in this release.
+      sdk_exposed: [],
+      hardware_known: [
+        Display,
+        Input,
+        AudioOutput,
+        AudioInput,
+        Battery,
+        Network,
+        Clock,
+      ],
+    },
+    facts: [
+      "ESP32-C3, 8 MB flash, no PSRAM", "physical ST7789P3 240x320 RGB565 panel; SDK logical framebuffer 120x160",
+      "semantic Up / Down / Ok physical buttons", "audio playback output", "microphone (audio input)",
+      "battery gauge", "Wi-Fi and Bluetooth LE", "timers / monotonic clock",
+    ],
+    backend: NotMigrated("device build is not migrated yet"),
+  }
+}
+
+///|
+/// All registered Hosts in stable, deterministic registry order. The order is
+/// part of the CLI contract: `passport hosts` always lists Hosts exactly in
+/// this sequence.
+pub fn all_hosts() -> Array[HostDescriptor] {
+  [web_descriptor(), folotoy_descriptor()]
+}
+
+///|
+/// Looks up one Host by exact identifier. Unknown identifiers return `None`;
+/// callers decide how to report them (the CLI fails with the known ids).
+pub fn find_host(id : String) -> HostDescriptor? {
+  for descriptor in all_hosts() {
+    if descriptor.id == id {
+      return Some(descriptor)
+    }
+  }
+  None
+}

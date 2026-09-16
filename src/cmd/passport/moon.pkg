@@ -1,0 +1,15 @@
+import {
+  "moonbitlang/async",
+  "moonbitlang/async/fs",
+  "moonbitlang/async/shell",
+  "moonbitlang/async/stdio",
+  "moonbitlang/core/argparse",
+  "moonbitlang/core/env",
+  "moonbitlang/core/encoding/utf8",
+  "colmugx/ai-passport/cli",
+  "colmugx/ai-passport/hosts",
+}
+
+supported_targets = "wasm"
+
+pkgtype(kind: "executable")

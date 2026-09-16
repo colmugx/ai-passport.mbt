@@ -69,10 +69,20 @@ moon build --target wasm --release      # fixture app.wasm, release profile
 moon build --target wasm                # fixture app.wasm, debug profile (the suite pins both)
 node hosts/web/tools/gen-test-pcm.mjs   # once; creates the committed PCM asset
 node hosts/web/tools/make-bundle.mjs    # assembles _build/passport-bundle
-node hosts/web/test/run-tests.mjs       # nine suites; exits 2 if the fixture artifacts are missing
+node hosts/web/test/run-tests.mjs       # 24 suites; exits 2 if the fixture artifacts are missing
 ```
 
-CI runs the same gate in a dedicated `wasm-host` job (`.github/workflows/ci.yml`): `moon check` and `moon test` with `--target wasm`, both fixture build profiles, and the full integration suite — including the real-browser suite through pinned playwright chromium — with no skip flags.
+CI runs the same gate in a dedicated `wasm-host` job (`.github/workflows/ci.yml`): `moon check` and `moon test` with `--target wasm`, both fixture build profiles, `passport hosts` / `passport doctor` smoke runs, the package-list proof, and the full integration suite — including the real-browser suites and the passport-CLI fixture suites through pinned playwright chromium — with no skip flags.
+
+## Passport CLI
+
+The module ships the `passport` CLI: build and serve applications for registered Hosts, with **Host as the only backend abstraction**. This release registers `web` (implemented) and `folotoy-ai-passport` (descriptor only; its device build is not migrated yet). The minimal downstream project contract is a `passport.json` at the project root declaring the wasm entry package and optional bundle assets. See `docs/PASSPORT_CLI.md`.
+
+```sh
+moon run --target wasm src/cmd/passport hosts
+moon run --target wasm src/cmd/passport build --host web --project <app-dir>
+moon run --target wasm src/cmd/passport dev --host web --project <app-dir>
+```
 
 ## Development
 

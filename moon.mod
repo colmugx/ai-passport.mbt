@@ -1,6 +1,6 @@
 name = "colmugx/ai-passport"
 
-version = "0.0.3"
+version = "0.0.4"
 
 readme = "README.mbt.md"
 
@@ -10,6 +10,7 @@ license = "Apache-2.0"
 
 keywords = [
   "moonbit",
+  "cli",
   "game",
   "embedded",
   "graphics",
@@ -23,3 +24,7 @@ preferred_target = "native"
 description = "Reusable MoonBit SDK for the FoloToy AI Passport wearable: 120x160 RGB565 graphics, semantic input, four-voice music engine, battery, and backend driver contracts."
 
 source = "src"
+
+import {
+  "moonbitlang/async@0.22.0",
+}
