@@ -79,10 +79,12 @@ The CLI is the executable package `src/cmd/passport` (package path
   backend status.
 - `passport doctor --host web [--project <dir>]` — checks exactly what web
   work needs: moon toolchain, `passport.json` contract, entry package,
-  installed SDK Web Host assets, python3 (the dev server). Never demands
-  device tooling. `--host folotoy-ai-passport` prints the factual descriptor
-  and fails with `host "folotoy-ai-passport" device build is not migrated
-  yet`.
+  resolvable SDK Web Host assets, python3 (the dev server). For a clean
+  project, doctor runs `moon check` on the declared wasm entry so Moon can
+  resolve/materialize its declared dependencies before Host assets are
+  inspected. It never demands device tooling. `--host folotoy-ai-passport`
+  prints the factual descriptor and fails with `host "folotoy-ai-passport"
+  device build is not migrated yet`.
 - `passport build --host web [--project <dir>]` — the complete generic web
   build: compiles only the project's declared entry package for wasm release,
   then assembles `.passport/web/`:
@@ -90,7 +92,7 @@ The CLI is the executable package `src/cmd/passport` (package path
   ```text
   .passport/web/
     app.wasm             the built application (release)
-    index.html           SDK-owned, byte-for-byte from the installed SDK
+    index.html           SDK-owned, byte-for-byte from the resolved SDK
     passport-host.js     SDK-owned
     pcm-worklet.js       SDK-owned
     assets/...           every asset declared by the project contract
@@ -105,14 +107,15 @@ The CLI is the executable package `src/cmd/passport` (package path
 ### Where the SDK host files come from
 
 The CLI never reaches into MoonBit's private global dependency-cache layout.
-Host files come from the same installed SDK source tree used by the project:
+Host files come from the same SDK source tree Moon resolved for the project:
 
 1. the SDK checkout itself when the project IS `colmugx/ai-passport`;
-2. otherwise the project's `.mooncakes/colmugx/ai-passport/` installation.
+2. otherwise the project's `.mooncakes/colmugx/ai-passport/` materialization.
 
-A downstream project runs `moon install` after creating or changing its
-`moon.mod`. Missing installation fails clearly instead of guessing a cache
-path or downloading files from GitHub.
+Normal project operations (`moon check` / `moon build`) are responsible for
+resolving declared dependencies. The CLI does not rely on the deprecated
+no-argument `moon install` flow, does not guess a private global cache path,
+and does not download Host files from GitHub.
 
 ## The project contract (`passport.json`)
 
@@ -157,12 +160,13 @@ application is. This is enforced, not hoped for:
 - two downstream-style fixtures live under `hosts/web/test/fixtures/` as
   complete nested MoonBit modules depending on the published
   `colmugx/ai-passport` package: fixture A (no audio; plain entry URL) and
-  fixture B (one looping PCM asset; `?pcm=&pcmLoop=1`). CI runs `moon install`
-  for both fixtures before the CLI integration gate. The suites build both
-  with the CLI and boot both in a real chromium through the SDK's own
-  index.html: fixture A proves frames + input with no audio dependency;
-  fixture B proves the http PCM fetch, sample-exact looping through the
-  AudioWorklet, ring health and continued frame presentation.
+  fixture B (one looping PCM asset; `?pcm=&pcmLoop=1`). Doctor is run against
+  a clean fixture so dependency resolution is exercised through `moon check`.
+  The integration suites build both with the CLI and boot both in a real
+  chromium through the SDK's own index.html: fixture A proves frames + input
+  with no audio dependency; fixture B proves the http PCM fetch, sample-exact
+  looping through the AudioWorklet, ring health and continued frame
+  presentation.
 
 ## Scope-change record (R4A1)
 
@@ -175,5 +179,6 @@ registration). `hosts/web/README.md` and `hosts/web/test/README.md` —
 authored for earlier rounds but never committed (they shipped in the
 published zips as untracked-but-not-ignored files, and committed docs
 reference them) — are now tracked. No existing public API changed; ABI v0 is
-unchanged. AGENTS.md wording is unchanged, consistent with the R1 precedent
-(this section is the standing scope record).
+unchanged. This hardening pass also trims repository-only test material from
+the published archive with `.moonignore` while keeping the CLI and Web Host
+runtime assets packaged.
