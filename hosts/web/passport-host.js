@@ -1222,6 +1222,11 @@ async function autoBootFromDom() {
     console.warn("[passport-host] #passport-canvas not found; auto-boot skipped");
     return;
   }
+  // Resolve the page URL parameters HERE: createHost reads them for its own
+  // defaults (battery/scale), but this scope builds the pcmAssetUrl/pcmLoop
+  // options from ?pcm= / ?pcmLoop= itself and previously referenced `params`
+  // without ever defining it (ReferenceError: auto-boot died before createHost).
+  const params = readUrlParams();
   try {
     const hostOptions = { canvas };
     // ?pcm=<url> + ?pcmLoop=1: generic PCM asset configuration through the
@@ -1230,10 +1235,16 @@ async function autoBootFromDom() {
     if (params.pcmLoop === "1" || params.pcmLoop === "true") hostOptions.pcmLoop = true;
     const host = await createHost(hostOptions);
     globalThis.__passportHost = host;
-    setStatusText(
-      host,
-      host.audio.enabled ? `running (audio: ${host.audio.kind})` : `running (${host.audio.reason || "audio unavailable"})`,
-    );
+    // Write the status line through the DOM directly, like the catch handler
+    // below: setStatusText expects the INTERNAL state object, but only the
+    // public host object exists here (it exposes no hud) — passing it made
+    // this call a silent no-op and left the page at "booting…" forever.
+    const statusEl = document.getElementById("passport-status");
+    if (statusEl) {
+      statusEl.textContent = host.audio.enabled
+        ? `running (audio: ${host.audio.kind})`
+        : `running (${host.audio.reason || "audio unavailable"})`;
+    }
     const resume = () => host.resumeAudio(); // unlock the AudioContext on first gesture
     window.addEventListener("keydown", resume);
     window.addEventListener("pointerdown", resume);

@@ -33,6 +33,18 @@
  *                         -> the SAME AudioWorklet transport -> consumption
  *                         past 2 full asset loops, frames continuing while
  *                         audio runs, mute not stopping the position
+ *  18. browser auto-boot  the SDK's OWN hosts/web/index.html (no probe page,
+ *                         no manual createHost): serve the fixture bundle
+ *                         (index.html, passport-host.js, pcm-worklet.js,
+ *                         app.wasm, assets/test.pcm), navigate to
+ *                         /index.html?pcm=./assets/test.pcm&pcmLoop=1 and
+ *                         prove the DOM auto-boot contract end to end — no
+ *                         ReferenceError, globalThis.__passportHost exists,
+ *                         app.wasm starts, the PCM asset loads, samples are
+ *                         consumed, the asset LOOPS, and canvas frames keep
+ *                         running while audio plays (regression: 0.0.2's
+ *                         autoBootFromDom referenced an undefined `params`
+ *                         and killed every DOM boot before createHost)
  *
  * Prerequisites (checked, with the exact commands printed when missing):
  *   moon build --target wasm --release    # _build/wasm/release/build/fixture/fixture.wasm
@@ -1474,6 +1486,253 @@ suite("browser: PCM asset transport (fetch -> bounded chunks -> AudioWorklet)", 
         `waitMs=${payload.audioWaitMs}` +
         (payload.audioWorkletError ? ` workletError=${payload.audioWorkletError}` : ""),
     );
+  } finally {
+    if (server) server.close();
+    fs.rmSync(bundleDir, { recursive: true, force: true });
+  }
+});
+
+// --- Suite 18: browser DOM auto-boot (the SDK's own index.html) ---------------
+
+/** Serve the DOM auto-boot fixture bundle EXACTLY as the distribution contract
+ *  describes it — one directory containing index.html, passport-host.js,
+ *  pcm-worklet.js, app.wasm and assets/test.pcm — with NO probe page and NO
+ *  query routing of its own: the page under test is the unmodified SDK-owned
+ *  hosts/web/index.html, and every URL parameter goes to the host's own
+ *  generic parser. app.wasm is the minimal no-import module (the fixture wasm
+ *  declares passport.host_pcm_write and is rejected by an asset-configured
+ *  host — producer-mode exclusivity). */
+function startAutoBootServer(bundleDir) {
+  const routes = {
+    "/index.html": path.join(webHostDir, "index.html"),
+    "/passport-host.js": HOST_MODULE,
+    "/pcm-worklet.js": path.join(webHostDir, "pcm-worklet.js"),
+    "/app.wasm": path.join(bundleDir, "app.wasm"),
+    "/assets/test.pcm": path.join(bundleDir, "assets", "test.pcm"),
+    "/favicon.ico": null, // 204: keep the console free of favicon-404 noise
+  };
+  const server = http.createServer((req, res) => {
+    const urlPath = decodeURIComponent((req.url || "/").split("?")[0]);
+    if (urlPath === "/favicon.ico") {
+      res.writeHead(204);
+      res.end();
+      return;
+    }
+    const filePath = routes[urlPath] || null;
+    if (!filePath || !fs.existsSync(filePath)) {
+      res.writeHead(404, { "content-type": "text/plain" });
+      res.end("not found");
+      return;
+    }
+    const type = filePath.endsWith(".wasm")
+      ? "application/wasm"
+      : filePath.endsWith(".html")
+        ? "text/html; charset=utf-8"
+        : filePath.endsWith(".js")
+          ? "text/javascript"
+          : "application/octet-stream";
+    res.writeHead(200, { "content-type": type });
+    res.end(fs.readFileSync(filePath));
+  });
+  return new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => resolve(server));
+  });
+}
+
+/** Playwright run of the DOM auto-boot page. Unlike runProbeInPlaywright there
+ *  is no #probe-result element: the page is the untouched SDK index.html, so
+ *  every fact is read back through globalThis.__passportHost (installed by the
+ *  auto-boot itself — its mere existence is the no-ReferenceError proof) and
+ *  through the page's #passport-status element. Returns
+ *  { payload, pageErrors, consoleErrors } or null when playwright is absent. */
+async function runAutoBootInPlaywright(url, waitFor) {
+  const pw = await loadPlaywright();
+  if (!pw) return null;
+  if (!pw.chromium || typeof pw.chromium.launch !== "function") return null;
+  const browser = await pw.chromium.launch({ headless: true, args: BROWSER_LAUNCH_FLAGS });
+  const facts = { payload: null, pageErrors: [], consoleErrors: [] };
+  try {
+    const page = await browser.newPage();
+    page.on("pageerror", (err) => facts.pageErrors.push(String(err)));
+    page.on("console", (msg) => {
+      if (msg.type() === "error") facts.consoleErrors.push(msg.text());
+    });
+    await page.goto(url, { waitUntil: "load", timeout: 30_000 });
+    // Boot proof: __passportHost appears ONLY after autoBootFromDom's own
+    // createHost() resolved. While the 0.0.2 ReferenceError is live this
+    // wait times out: the handler dies before createHost is ever called.
+    await page.waitForFunction(() => globalThis.__passportHost !== undefined, null, { timeout: 45_000 });
+    if (waitFor) {
+      // In-page polling (resumeAudio per poll mirrors the probe pages: the
+      // launcher flag already allows autoplay, this is belt-and-braces).
+      await page.waitForFunction(
+        () => {
+          const host = globalThis.__passportHost;
+          if (!host) return false;
+          host.resumeAudio();
+          return host.audioAssetLoaded && host.audioAssetLoops >= 2;
+        },
+        null,
+        { timeout: 45_000, polling: 100 },
+      );
+    }
+    // Snapshot after a wall-clock beat so "frames continue" has a delta to
+    // observe (rAF loop is running: minimal wasm is always dirty, so every
+    // tick also presented to the canvas).
+    facts.payload = await page.evaluate(
+      () =>
+        new Promise((resolve) => {
+          const host = globalThis.__passportHost;
+          const frames0 = host.frameCount;
+          const canvas = document.getElementById("passport-canvas");
+          setTimeout(() => {
+            resolve({
+              status: document.getElementById("passport-status").textContent,
+              audioKind: host.audio.kind,
+              audioReason: host.audio.reason,
+              audioWorkletError: host.audio.workletError,
+              hasFrameExport: typeof host.exports.passport_frame === "function",
+              hasMemory: host.memory.buffer instanceof ArrayBuffer,
+              frameCountAtSnapshot: frames0,
+              framesDuring: host.frameCount - frames0,
+              fpsText: document.getElementById("passport-fps").textContent,
+              canvasWidth: canvas.width,
+              canvasHeight: canvas.height,
+              assetConfigured: host.audioAsset.configured,
+              assetLoaded: host.audioAssetLoaded,
+              assetSamples: host.audioAssetSamples,
+              assetLooping: host.audioAssetLooping,
+              assetError: host.audioAsset.error,
+              loops: host.audioAssetLoops,
+              posUs: String(host.playbackPosUs()),
+              dropped: host.audio.dropped,
+            });
+          }, 400);
+        }),
+    );
+  } finally {
+    await browser.close().catch(() => {});
+  }
+  return facts;
+}
+
+/** chrome-headless-shell fallback: dump the DOM of the auto-boot page and read
+ *  the #passport-status line the host itself maintains — "running (audio:
+ *  worklet)" after a clean boot, "boot failed: ..." when autoBootFromDom's
+ *  catch handler fired (e.g. the 0.0.2 ReferenceError). Degraded proof: no
+ *  audio-consumption facts, page-load + status text only (never used by CI). */
+function runShellAutoBootStatus(url) {
+  const bin = findHeadlessShell();
+  if (!bin) return null;
+  const res = spawnSync(
+    bin,
+    [
+      ...BROWSER_LAUNCH_FLAGS,
+      "--virtual-time-budget=20000",
+      "--timeout=20000",
+      "--dump-dom",
+      url,
+    ],
+    { encoding: "utf8", timeout: 80_000, maxBuffer: 64 * 1024 * 1024 },
+  );
+  const m = res.stdout ? /<div id="passport-status">([^<]*)<\/div>/.exec(res.stdout) : null;
+  return m ? m[1].trim() : null;
+}
+
+suite("browser: DOM auto-boot PCM asset mode (SDK index.html + ?pcm=&pcmLoop=1)", async () => {
+  if (SKIP_BROWSER) {
+    console.log("  skipped by --skip-browser / PASSPORT_SKIP_BROWSER=1");
+    return;
+  }
+  const bundleDir = fs.mkdtempSync(path.join(os.tmpdir(), "passport-autoboot-"));
+  let server = null;
+  try {
+    // Fixture bundle: make-bundle assembles app.wasm + assets/test.pcm, then
+    // app.wasm is replaced by the minimal no-import module (asset-mode boot:
+    // the streaming fixture wasm would be rejected at boot on purpose).
+    const res = spawnSync(process.execPath, [MAKE_BUNDLE_TOOL, bundleDir], { encoding: "utf8" });
+    eq(res.status, 0, `auto-boot suite bundle assembly must succeed; stderr: ${res.stderr}`);
+    fs.writeFileSync(path.join(bundleDir, "app.wasm"), buildMinimalPassportWasm());
+
+    server = await startAutoBootServer(bundleDir);
+    const base = `http://127.0.0.1:${server.address().port}`;
+    const bootUrl = `${base}/index.html?pcm=./assets/test.pcm&pcmLoop=1`;
+
+    let facts = null;
+    try {
+      facts = await runAutoBootInPlaywright(bootUrl, true);
+    } catch (err) {
+      console.log(`  playwright auto-boot path failed (${err && err.message ? err.message : err}); trying chrome-headless-shell`);
+    }
+    if (facts && facts.payload) {
+      const p = facts.payload;
+      console.log(
+        `  auto-boot path: playwright [kind=${p.audioKind} samples=${p.assetSamples} loops=${p.loops} ` +
+          `pos=${p.posUs}us framesDuring=${p.framesDuring} fps=${p.fpsText}]`,
+      );
+
+      // ---- no ReferenceError / no boot failure (the 0.0.2 regression) ----
+      eq(facts.pageErrors.length, 0, `the page must throw NOTHING (got ${JSON.stringify(facts.pageErrors)})`);
+      const bootFailures = facts.consoleErrors.filter(
+        (line) => line.includes("ReferenceError") || line.includes("[passport-host] boot failed"),
+      );
+      eq(bootFailures.length, 0, `no ReferenceError / boot-failed console errors (got ${JSON.stringify(bootFailures)})`);
+      ok(p.status.startsWith("running"), `#passport-status must say running (got [${p.status}])`);
+
+      // ---- globalThis.__passportHost exists AND app.wasm started ----
+      ok(p.hasFrameExport && p.hasMemory, "the host object exposes the live wasm instance (memory + passport_frame)");
+      ok(p.frameCountAtSnapshot > 0, `app.wasm must have started ticking before the snapshot (${p.frameCountAtSnapshot} frames)`);
+
+      // ---- PCM asset configured from the URL, loaded, looping ----
+      eq(p.assetConfigured, true, "?pcm= must configure PCM asset mode through the URL");
+      eq(p.assetLoaded, true, "the PCM asset at ./assets/test.pcm must be fetched and resident");
+      eq(p.assetSamples, 4000, "asset sample count (8000-byte test.pcm / 2)");
+      eq(p.assetLooping, true, "?pcmLoop=1 must enable sample-exact looping");
+      ok(!p.assetError, `no asset error (got ${JSON.stringify(p.assetError)})`);
+
+      // ---- AudioWorklet transport (the CI mechanism gets the real one) ----
+      eq(p.audioKind, "worklet", "the DOM auto-boot must reach the real AudioWorklet transport");
+
+      // ---- PCM samples consumed AND the asset LOOPS ----
+      ok(Number(p.posUs) > 0, `playback position must be consumption-driven and > 0 (got ${p.posUs})`);
+      ok(p.loops >= 2, `consumption must pass 2 full asset passes (loops=${p.loops} >= 2)`);
+      eq(p.dropped, 0, "worklet ring must never overflow while looping");
+
+      // ---- canvas frames continue while audio plays ----
+      eq(p.canvasWidth, 120, "canvas backing-store width");
+      eq(p.canvasHeight, 160, "canvas backing-store height");
+      ok(p.framesDuring > 0, `canvas frames must continue during the 400 ms audio snapshot (got ${p.framesDuring})`);
+
+      // ---- regression guard: the NO-QUERY DOM boot must stay clean too
+      //      (the 0.0.2 ReferenceError fired before createHost on EVERY DOM
+      //      boot, with or without ?pcm) ----
+      const plain = await runAutoBootInPlaywright(`${base}/index.html`, false);
+      ok(plain && plain.payload, "the no-query auto-boot page must also produce a host");
+      if (plain && plain.payload) {
+        const q = plain.payload;
+        ok(q.status.startsWith("running"), `no-query boot status must be running (got [${q.status}])`);
+        eq(q.assetConfigured, false, "no ?pcm -> streamed mode (no asset configured)");
+        ok(q.frameCountAtSnapshot > 0, "no-query boot keeps ticking frames");
+        eq(
+          plain.pageErrors.length,
+          0,
+          `the no-query page must throw NOTHING (got ${JSON.stringify(plain.pageErrors)})`,
+        );
+      }
+    } else {
+      // Local fallback ONLY (never CI): the status line the host itself
+      // renders is the whole proof — "running (audio: ...)" after a clean
+      // auto-boot, "boot failed: ReferenceError: ..." while 0.0.2 is live.
+      const status = runShellAutoBootStatus(bootUrl);
+      ok(status !== null, "chrome-headless-shell produced no auto-boot DOM to inspect");
+      ok(
+        status !== null && status.startsWith("running"),
+        `auto-boot must complete without the boot-failed handler (status [${status}])`,
+      );
+      ok(status !== null && !status.includes("ReferenceError"), `no ReferenceError in the status line (got [${status}])`);
+      console.log("  auto-boot fallback (chrome-headless-shell): status-line proof only, no audio-consumption proof");
+    }
   } finally {
     if (server) server.close();
     fs.rmSync(bundleDir, { recursive: true, force: true });
