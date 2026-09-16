@@ -1,6 +1,6 @@
 # The passport CLI and the Host contract (R4A1)
 
-> **Status: shipped in this release (R4A1), unpublished.** The release unit
+> **Status: implemented for the next release, unpublished.** The release unit
 > remains the whole `colmugx/ai-passport` Mooncakes module: the SDK libraries,
 > the Web Host assets, and the `passport` CLI are co-versioned — a downstream
 > project never fetches host files from GitHub and never installs a separate
@@ -31,7 +31,7 @@ split into two planes so hardware facts never impersonate SDK APIs:
   application APIs (`Display`, `Input`, `AudioOutput`, `Battery`, `Clock` for
   the web host).
 - `hardware_known` — capabilities confirmed on the Host's real hardware or
-  runtime, whether or not the SDK reaches them yet. The FoloTy AI Passport
+  runtime, whether or not the SDK reaches them yet. The FoloToy AI Passport
   wearable is described factually (ESP32-C3, 8 MB flash, no PSRAM, ST7789P3
   240x320 RGB565 panel at the 120x160 logical framebuffer, Up/Down/Ok, audio
   output, **microphone (audio input)**, battery gauge, Wi-Fi, Bluetooth LE,
@@ -69,11 +69,9 @@ The CLI is the executable package `src/cmd/passport` (package path
   moonx colmugx/ai-passport/cmd/passport build --host web
   ```
 
-  `moonx` runs a prebuilt wasm asset of the executable package
-  (`download.mooncakes.io/prebuild/colmugx/ai-passport@<version>/cmd/passport/passport.wasm`).
-  The mechanism is proven on this machine with other published CLI modules
-  (`moonx bobzhang/jq`); it cannot be exercised for THIS module until a
-  release containing the CLI is actually published.
+  `moonx` runs the executable package's prebuilt wasm. This repository does
+  not claim the unpublished ai-passport CLI path as release-proven until a
+  release containing the executable has actually been published and tested.
 
 ### Commands
 
@@ -81,18 +79,18 @@ The CLI is the executable package `src/cmd/passport` (package path
   backend status.
 - `passport doctor --host web [--project <dir>]` — checks exactly what web
   work needs: moon toolchain, `passport.json` contract, entry package,
-  resolvable SDK Web Host assets, python3 (the dev server). Never demands
+  installed SDK Web Host assets, python3 (the dev server). Never demands
   device tooling. `--host folotoy-ai-passport` prints the factual descriptor
   and fails with `host "folotoy-ai-passport" device build is not migrated
   yet`.
 - `passport build --host web [--project <dir>]` — the complete generic web
-  build: compiles the project's entry package (`moon build --target wasm
-  --release`), then assembles `.passport/web/`:
+  build: compiles only the project's declared entry package for wasm release,
+  then assembles `.passport/web/`:
 
   ```text
   .passport/web/
     app.wasm             the built application (release)
-    index.html           SDK-owned, byte-for-byte from the resolved SDK
+    index.html           SDK-owned, byte-for-byte from the installed SDK
     passport-host.js     SDK-owned
     pcm-worklet.js       SDK-owned
     assets/...           every asset declared by the project contract
@@ -106,14 +104,15 @@ The CLI is the executable package `src/cmd/passport` (package path
 
 ### Where the SDK host files come from
 
-The CLI materializes host files only from the SDK release the project builds
-against, in order:
+The CLI never reaches into MoonBit's private global dependency-cache layout.
+Host files come from the same installed SDK source tree used by the project:
 
-1. the SDK module itself, when the project IS `colmugx/ai-passport`;
-2. the project's module-local `.mooncakes/colmugx/ai-passport/` (what `moon
-   build` resolved);
-3. the versioned user dependency cache, pinned by the project's moon.mod
-   import (ambiguity fails loudly).
+1. the SDK checkout itself when the project IS `colmugx/ai-passport`;
+2. otherwise the project's `.mooncakes/colmugx/ai-passport/` installation.
+
+A downstream project runs `moon install` after creating or changing its
+`moon.mod`. Missing installation fails clearly instead of guessing a cache
+path or downloading files from GitHub.
 
 ## The project contract (`passport.json`)
 
@@ -138,6 +137,11 @@ project root:
   parameters `?pcm=<bundlePath>&pcmLoop=1`; the host configuration stays
   exactly the SDK's own URL-parameter mechanism.
 
+Contract paths are forward-slash relative paths. Absolute paths, traversal
+components (`.` / `..`), duplicate bundle destinations, and attempts to
+replace Host-owned files (`app.wasm`, `index.html`, `passport-host.js`,
+`pcm-worklet.js`) are rejected before filesystem access.
+
 The contract cannot express GPIO, ESP-IDF settings, frame rate, or anything
 application-specific — later rounds extend it without renaming these fields.
 
@@ -151,13 +155,14 @@ application is. This is enforced, not hoped for:
   on any user-facing backend synonym (product/board) and on any starter-app
   vocabulary (which must never appear in tooling);
 - two downstream-style fixtures live under `hosts/web/test/fixtures/` as
-  complete nested MoonBit modules depending on the **published**
+  complete nested MoonBit modules depending on the published
   `colmugx/ai-passport` package: fixture A (no audio; plain entry URL) and
-  fixture B (one looping PCM asset; `?pcm=&pcmLoop=1`). The integration
-  suites build both with the CLI and boot both in a real chromium through
-  the SDK's own index.html: fixture A proves frames + input with no audio
-  dependency; fixture B proves the http PCM fetch, sample-exact looping
-  through the AudioWorklet, ring health and continued frame presentation.
+  fixture B (one looping PCM asset; `?pcm=&pcmLoop=1`). CI runs `moon install`
+  for both fixtures before the CLI integration gate. The suites build both
+  with the CLI and boot both in a real chromium through the SDK's own
+  index.html: fixture A proves frames + input with no audio dependency;
+  fixture B proves the http PCM fetch, sample-exact looping through the
+  AudioWorklet, ring health and continued frame presentation.
 
 ## Scope-change record (R4A1)
 
