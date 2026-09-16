@@ -1,0 +1,10 @@
+# Repository-only guidance and CI fixtures are not part of the SDK runtime.
+/AGENTS.md
+/hosts/web/test/
+/hosts/web/tools/
+/hosts/web/assets/test.pcm
+/src/fixture/
+
+# Consumers do not need the SDK's own test sources in the published archive.
+**/*_test.mbt
+**/*_wbtest.mbt
