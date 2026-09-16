@@ -1,16 +1,16 @@
 # ai-passport.mbt
 
-Reusable MoonBit SDK for the [FoloToy AI Passport](https://github.com/FoloToy/ai-passport) wearable.
+MoonBit application SDK and co-versioned Host toolchain. The first physical Host is the [FoloToy AI Passport](https://github.com/FoloToy/ai-passport); additional Hosts are added only when this project explicitly implements and validates them.
 
 Mooncakes module: `colmugx/ai-passport`.
 
-The SDK defines portable MoonBit application contracts. Host and device backends must implement the same semantics through thin platform adapters. Native, JS, and wasm (web host backend, see below) are supported and tested targets.
+The SDK defines portable MoonBit application contracts. **Host is the only backend abstraction**: each Host owns the platform-specific runtime/build/deployment integration needed to implement the same application semantics. Native, JS, and wasm are tested where supported by the relevant packages.
 
 ## Repository scope
 
-This repository is **only** the reusable SDK. Forest Walk was removed from this repository and must be recovered from git history into the separate `ai-passport-template` repository. That template is also the place for a starter application, browser preview, device integration, and flashing/provisioning tooling; their migration and release validation are still pending.
+This repository owns both reusable SDK code and the tooling/runtime assets for registered Hosts. It does **not** own application semantics or starter applications: Forest Walk and other reference apps belong in downstream application repositories.
 
-No raylib, ESP-IDF, BSP, or browser APIs appear in SDK MoonBit code or its public API. The web host's browser code lives entirely in the `hosts/web/*.js` assets (see "Web host" below).
+Platform details such as browser APIs, ESP-IDF, BSPs, GPIO, buses, codecs, and flashing may exist inside a Host implementation when required, but they must stay behind the Host boundary and out of public application APIs. The Web Host browser code lives in `hosts/web/*.js`; the FoloToy physical Host backend is registered but its device build migration is the next architecture wave.
 
 ## Packages
 
@@ -47,16 +47,16 @@ Buttons are semantic values — `Up`, `Down`, `Ok` — never GPIO or ADC channel
 
 `BatterySource::percent` and `millivolts` return `Int?` to represent unavailable readings. `Battery` caches readings behind an explicit `refresh()`; construction performs no source I/O. `Battery::fixture(percent~)` supplies a test value.
 
-## Driver contracts (for backend authors)
+## Driver contracts (for Host authors)
 
-A platform backend implements the relevant `pub(open)` traits:
+A Host implements the relevant `pub(open)` traits:
 
 - `Clock` — `monotonic_ms()` and `sleep_ms()` for frame pacing.
 - `DisplaySink` — `present(frame~ : @graphics.FrameView)` receives a synchronous, read-only view of the finished RGB565 canvas.
 - `PcmSink` (in `audio`) — `write(samples~ : FixedArray[Int])` receives signed PCM16 mono sample blocks.
 - `BatterySource` (in `battery`) — `percent()` and `millivolts()` return optional readings.
 
-Backend glue stays thin and replaceable; all reusable logic is pure MoonBit in the packages above.
+Host glue stays behind the Host boundary; reusable application semantics remain MoonBit SDK/application code.
 
 ## Web host (wasm backend)
 
