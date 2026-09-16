@@ -22,7 +22,7 @@ async fn doctor_command(sub : @argparse.Matches) -> Unit {
     @hosts.Implemented => ()
   }
   let failures : Array[String] = []
-  // 1. MoonBit toolchain.
+
   let moon_out = @shell.Cmd::Cmd("moon", ["version"]).output()
   if moon_out.exit_code() == 0 {
     let stdout = moon_out.stdout()
@@ -35,7 +35,7 @@ async fn doctor_command(sub : @argparse.Matches) -> Unit {
     println("FAIL: the moon toolchain is unavailable")
     failures.push("moon toolchain")
   }
-  // 2..4. Project contract, entry package, SDK host assets.
+
   let project_dir = option_value(sub, "project", ".")
   let mut loaded : @cli.Project? = None
   try {
@@ -64,9 +64,8 @@ async fn doctor_command(sub : @argparse.Matches) -> Unit {
         failures.push("entry package")
       }
       let mut sdk_dir : String? = None
-      let mod_text = read_text_file("\{project.root}/moon.mod")
       try {
-        sdk_dir = Some(resolve_sdk_package_dir(project, mod_text))
+        sdk_dir = Some(resolve_sdk_package_dir(project))
       } catch {
         @cli.Fail(message) => {
           println("FAIL: \{message}")
@@ -86,7 +85,7 @@ async fn doctor_command(sub : @argparse.Matches) -> Unit {
     }
     None => ()
   }
-  // 5. The dev server dependency.
+
   let python_out = @shell.Cmd::Cmd("python3", ["--version"]).output()
   if python_out.exit_code() == 0 {
     println("ok: python3 static server (\{python_out.stdout().trim()})")
