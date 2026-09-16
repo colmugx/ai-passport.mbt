@@ -139,3 +139,114 @@ jobs:
             exit 1
           fi
           echo "package-list proof: runtime surface present and test-only files excluded"
+
+  template-integration:
+    # Pre-release compatibility gate: the public template as a fixture,
+    # built against THIS checkout of the private SDK. The SDK is the actor,
+    # so the public template keeps no private-repo coupling.
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    container:
+      image: espressif/idf:v5.5.3
+    env:
+      AI_PASSPORT_SDK: ${{ github.workspace }}/sdk
+    steps:
+      - name: Set up MoonBit and host tools
+        run: |
+          curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash
+          echo "$HOME/.moon/bin" >> "$GITHUB_PATH"
+          apt-get update -qq
+          apt-get install -y -qq --no-install-recommends ffmpeg rsync > /dev/null
+          "$HOME/.moon/bin/moon" version --all
+
+      - name: Check out the SDK
+        uses: actions/checkout@v5
+        with:
+          path: sdk
+
+      - name: Check out the public template with its FoloToy submodule
+        uses: actions/checkout@v5
+        with:
+          repository: colmugx/ai-passport-template.mbt
+          ref: 8e9cf6ce0e9bbea68475e15d61ded3f8af0fd1f9
+          path: template
+          submodules: recursive
+
+      - name: Assert the FoloToy submodule revision
+        run: |
+          rev="$(git -C template/external/folotoy-ai-passport rev-parse HEAD)"
+          echo "external/folotoy-ai-passport @ $rev"
+          test "$rev" = "c21a015d44f2bcc02b4d859532d74cd7aefe69be"
+
+      # Fresh containers have no Moon registry state; materialize both
+      # modules' declared dependencies BEFORE the overlay, so the registry
+      # can never re-materialize the published package over it afterwards.
+      - name: Bootstrap the Moon registry for both modules
+        run: |
+          (cd sdk && moon update)
+          (cd template && moon update)
+
+      - name: Overlay the current SDK into the template
+        run: ./tools/sync-dev-sdk.sh "$AI_PASSPORT_SDK"
+        working-directory: template
+
+      - name: Template checks against the current SDK
+        run: |
+          moon check --target native --output-json
+          moon test --target native --output-json
+        working-directory: template
+
+      - name: Web build through the current SDK CLI
+        run: |
+          moon run tools/passport.mbtx build web
+          test -f .passport/web/app.wasm
+          test -f .passport/web/index.html
+          test -f .passport/web/passport-host.js
+          test -f .passport/web/pcm-worklet.js
+          cmp .passport/assets/forest_walk.pcm .passport/web/assets/forest_walk.pcm
+          python3 tools/verify_pcm_identity.py
+        working-directory: template
+
+      - name: Set up Node 24
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24
+
+      - name: Install pinned playwright and its chromium
+        run: npx -y playwright@1.63.0 install chromium --with-deps
+
+      - name: Browser integration over the built bundle
+        run: node tools/web-integration/run.mjs
+        working-directory: template
+
+      # Container steps default to plain sh; IDF's export.sh and pipefail
+      # need bash (present in the image).
+      - name: Real device build (ESP-IDF 5.5.3, no flash)
+        shell: bash
+        run: |
+          set -eo pipefail
+          . /opt/esp/idf/export.sh
+          moon run tools/passport.mbtx build device | tee /tmp/device-build.log
+          test -f .passport/folotoy-ai-passport/build/ai_passport_app.bin
+          grep -q "dependency: .*/external/folotoy-ai-passport @ c21a015d44f2bcc02b4d859532d74cd7aefe69be (project-provided)" /tmp/device-build.log
+          size=$(stat -c %s .passport/folotoy-ai-passport/build/ai_passport_app.bin)
+          test "$size" -gt 0 -a "$size" -le 3670016
+          margin="$(grep -oE 'app partition margin: [0-9]+ bytes' /tmp/device-build.log | head -n1 || true)"
+          test -n "$margin"
+          echo "firmware size: $size / 3670016 bytes (0x380000 app partition)"
+          echo "passport: $margin"
+        working-directory: template
+
+      # The whole gate is only meaningful if Moon never re-materialized the
+      # published package over the overlay: the template must have compiled
+      # against THIS commit (moon.mod differs only by the version stamp).
+      - name: The overlay still mirrors this SDK commit
+        run: |
+          diff -r \
+            --exclude=moon.mod --exclude=cmd --exclude=external \
+            --exclude=_build --exclude=.mooncakes --exclude=.git \
+            --exclude=.agents --exclude=.github --exclude=.githooks \
+            "$AI_PASSPORT_SDK" .mooncakes/colmugx/ai-passport
+          echo "overlay still mirrors the current SDK commit (moon.mod stamped to the published pin)"
+        working-directory: template
