@@ -11,9 +11,16 @@ const SDK_MODULE : String = "colmugx/ai-passport"
 const SDK_HOST_DIR : String = "hosts/web"
 
 ///|
-async fn package_has_host_files(package_dir : String) -> Bool {
-  for file in @cli.sdk_host_files() {
-    if !@fs.exists("\{package_dir}/\{SDK_HOST_DIR}/\{file}") {
+const HOST_DIR_FOLOTOY : String = "hosts/folotoy/ai-passport"
+
+///|
+async fn package_has_host_files(
+  module_dir : String,
+  host_dir : String,
+  files : Array[String],
+) -> Bool {
+  for file in files {
+    if !@fs.exists("\{module_dir}/\{host_dir}/\{file}") {
       return false
     }
   }
@@ -26,15 +33,20 @@ async fn package_has_host_files(package_dir : String) -> Bool {
 /// Moon itself to resolve and materialize declared dependencies. The CLI then
 /// consumes the resulting module-local `.mooncakes` tree instead of depending
 /// on any undocumented global cache layout.
-async fn resolve_sdk_package_dir(project : @cli.Project) -> String {
+async fn resolve_sdk_host_dir(
+  project : @cli.Project,
+  host_dir : String,
+  files : Array[String],
+) -> String {
   // The SDK module building itself uses the checkout's co-versioned host.
-  if project.module_name == SDK_MODULE && package_has_host_files(project.root) {
-    return "\{project.root}/\{SDK_HOST_DIR}"
+  if project.module_name == SDK_MODULE &&
+    package_has_host_files(project.root, host_dir, files) {
+    return "\{project.root}/\{host_dir}"
   }
   // Downstream projects use the dependency materialized by Moon.
   let module_local = "\{project.root}/.mooncakes/\{SDK_MODULE}"
-  if package_has_host_files(module_local) {
-    return "\{module_local}/\{SDK_HOST_DIR}"
+  if package_has_host_files(module_local, host_dir, files) {
+    return "\{module_local}/\{host_dir}"
   }
   @cli.fail_cli(
     "Moon did not materialize \{SDK_MODULE} for this project; verify moon.mod and run a normal moon check/build before retrying",
@@ -89,9 +101,20 @@ async fn copy_file(from : String, to : String) -> Unit {
 }
 
 ///|
-/// `passport build --host <id>`: compile the application entry and assemble
-/// the generic Web Host bundle.
+/// `passport build --host <id>`: route to the Host's build backend. Unknown
+/// hosts fail inside the backend entry (no silent web fallback).
 async fn build_command(sub : @argparse.Matches) -> Unit {
+  let host_id = option_value(sub, "host", "web")
+  match host_id {
+    "folotoy-ai-passport" => device_build_command(sub)
+    _ => web_bundle_build(sub)
+  }
+}
+
+///|
+/// The Web Host build backend: compile the application entry and assemble
+/// the generic bundle.
+async fn web_bundle_build(sub : @argparse.Matches) -> Unit {
   let host_id = option_value(sub, "host", "web")
   let _ = @cli.require_implemented_host(host_id)
   let project = load_project(option_value(sub, "project", "."))
@@ -108,7 +131,11 @@ async fn build_command(sub : @argparse.Matches) -> Unit {
     "building application entry \"\{project.contract.entry}\" (wasm release)",
   )
   let wasm_artifact = locate_wasm_artifact(project)
-  let sdk_dir = resolve_sdk_package_dir(project)
+  let sdk_dir = resolve_sdk_host_dir(
+    project,
+    SDK_HOST_DIR,
+    @cli.sdk_host_files(),
+  )
 
   let bundle = @cli.under_root(project.root, @cli.BUNDLE_DIR)
   let bundle_assets = "\{bundle}/assets"

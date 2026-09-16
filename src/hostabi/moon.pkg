@@ -8,5 +8,19 @@ import {
 }
 
 options(
-  targets: { "wasm_ffi.mbt": [ "wasm" ] },
+  "native-stub": [ "native_stub.c" ],
+  targets: {
+    "wasm_ffi.mbt": [ "wasm" ],
+    "native_ffi.mbt": [ "native" ],
+    "device_sink.mbt": [ "native" ],
+    "device_clock.mbt": [ "native" ],
+    "device_battery.mbt": [ "native" ],
+    "device_input.mbt": [ "native" ],
+    "device_audio.mbt": [ "native" ],
+    "device_battery_wbtest.mbt": [ "native" ],
+    "device_clock_wbtest.mbt": [ "native" ],
+    "device_audio_wbtest.mbt": [ "native" ],
+    "device_input_wbtest.mbt": [ "native" ],
+    "device_sink_wbtest.mbt": [ "native" ],
+  },
 )

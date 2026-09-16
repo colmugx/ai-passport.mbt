@@ -56,10 +56,7 @@ pub fn require_implemented_host(
   }
   match descriptor.backend {
     @hosts.Implemented => descriptor
-    @hosts.NotMigrated(reason) =>
-      fail_cli(
-        "host \"\{host_id}\" \{reason} (this release implements the web backend only)",
-      )
+    @hosts.NotMigrated(reason) => fail_cli("host \"\{host_id}\" \{reason}")
   }
 }
 

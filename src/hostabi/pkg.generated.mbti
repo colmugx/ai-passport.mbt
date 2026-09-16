@@ -32,6 +32,14 @@ pub const PCM_STAGE_PTR : Int = 42496
 
 pub fn clamp_pcm16(Int) -> Int
 
+pub fn device_battery_percent() -> Int?
+
+pub fn device_button(Int) -> @input.Button?
+
+pub fn device_now_us() -> Int64
+
+pub fn device_playback_position_us() -> Int64?
+
 pub fn pcm16_le_bits(Int) -> Int
 
 pub fn to_button(Int) -> @input.Button?
@@ -39,6 +47,19 @@ pub fn to_button(Int) -> @input.Button?
 // Errors
 
 // Types and methods
+pub struct DeviceAudioMirror {
+  mut applied_volume : Int
+  mut applied_muted : Bool
+}
+pub fn DeviceAudioMirror::new(initial_volume~ : Int, initial_muted~ : Bool) -> Self
+pub fn DeviceAudioMirror::sync(Self, Int, muted~ : Bool) -> Unit
+
+pub struct DeviceDisplaySink {
+  row : FixedArray[Int]
+}
+pub fn DeviceDisplaySink::new() -> Self
+pub impl @driver.DisplaySink for DeviceDisplaySink
+
 pub struct HostBridge {
   // private fields
 }

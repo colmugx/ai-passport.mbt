@@ -9,8 +9,9 @@
  *  2. fixture A          — a downstream-style NO-AUDIO app builds into the
  *                          full bundle contract (app.wasm + the three SDK
  *                          host files, no app.html, plain index.html URL),
- *                          and the unmigrated device Host fails clearly
- *                          instead of falling back to web;
+ *                          and the device Host refuses a project that
+ *                          declares no deviceEntry instead of falling back
+ *                          to web;
  *  3. fixture B          — a downstream-style PCM-asset app builds with the
  *                          asset materialized byte-identically and the
  *                          generic URL parameters on the printed entry;
@@ -231,14 +232,16 @@ export function registerCliFixtureSuites({ suite, ok, eq, eqText, SuiteError, re
     const url = printedEntryUrl(res.stdout);
     eq(url, "/index.html", `the printed entry must be the plain page (got ${JSON.stringify(url)})`);
 
-    // The registered-but-unmigrated device Host fails clearly: no silent web
-    // fallback, no invented device build.
+    // The device Host is implemented but refuses a project that declares no
+    // device entry: no silent web fallback, no invented device build. (A real
+    // ESP-IDF device build is not exercised here — CI has no device
+    // toolchain; the physical build is proven out of band.)
     const refused = runCli(repoRoot, ["build", "--host", "folotoy-ai-passport", "--project", project]);
-    ok(refused.status !== 0, "device build must fail while unmigrated");
+    ok(refused.status !== 0, "device build must fail for a project without a device entry");
     const text = `${refused.stdout}\n${refused.stderr}`;
     ok(
-      text.includes('host "folotoy-ai-passport" device build is not migrated yet'),
-      `device refusal must name the boundary; got: ${text.trim().split("\n")[0]}`,
+      text.includes('host "folotoy-ai-passport" requires a "deviceEntry" package in passport.json'),
+      `device refusal must name the deviceEntry contract error; got: ${text.trim().split("\n")[0]}`,
     );
   });
 

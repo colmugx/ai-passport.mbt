@@ -1,0 +1,6 @@
+dependencies:
+  idf: ">=5.5.3,<5.6.0"
+  espressif/esp_codec_dev: "1.6.2"
+  # Required only by the upstream bsp_button.c ADC driver. Pinned to the
+  # same version upstream's own manifest uses; LVGL/esp_lvgl_port stay out.
+  espressif/button: "4.2.0"

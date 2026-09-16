@@ -19,13 +19,45 @@ pub(all) struct AssetEntry {
 } derive(Eq, Debug)
 
 ///|
+/// One external dependency a Host build consumes outside the SDK release
+/// (for example a pinned hardware vendor checkout). The SDK never carries
+/// or publishes this code; the path is project-provided and points at a
+/// checkout the project owns (a git submodule in the reference template).
+pub(all) struct HostDependency {
+  /// Host id this dependency is declared for (a registered Host).
+  host_id : String
+  /// Checkout location, relative to the project root.
+  path : String
+} derive(Eq, Debug)
+
+///|
 pub(all) struct ProjectContract {
   /// Application entry package path, relative to the module source root
   /// (the package whose moon.pkg exports the passport_* wasm symbols).
   entry : String
+  /// Optional device entry package path, relative to the module source root
+  /// (the native foreign-library package a physical Host builds). Absent
+  /// means the project declares no device entry yet.
+  device_entry : String?
   /// Files to materialize into the bundle; may be empty.
   assets : Array[AssetEntry]
+  /// Project-provided external Host dependencies; may be empty.
+  host_dependencies : Array[HostDependency]
 } derive(Eq, Debug)
+
+///|
+/// Location of the project-provided checkout for `host_id`, when declared.
+pub fn host_dependency_path(
+  contract : ProjectContract,
+  host_id : String,
+) -> String? {
+  for dep in contract.host_dependencies {
+    if dep.host_id == host_id {
+      return Some(dep.path)
+    }
+  }
+  None
+}
 
 ///|
 /// An application project: its root, its module facts, and its contract.
@@ -86,6 +118,14 @@ pub fn parse_contract(text : String) -> ProjectContract raise {
       )
   }
   validate_relative_path(entry, "\"entry\"")
+  let device_entry = match root.get("deviceEntry") {
+    Some(String(device_entry)) => {
+      validate_relative_path(device_entry, "\"deviceEntry\"")
+      Some(device_entry)
+    }
+    Some(_) => fail_cli("passport.json: \"deviceEntry\" must be a string")
+    None => None
+  }
   let assets : Array[AssetEntry] = []
   match root.get("assets") {
     Some(Array(list)) =>
@@ -109,7 +149,34 @@ pub fn parse_contract(text : String) -> ProjectContract raise {
       "passport.json: at most one asset may set \"pcmLoop\": true (found \{pcm_assets.length()})",
     )
   }
-  { entry, assets, }
+  let host_dependencies : Array[HostDependency] = []
+  match root.get("hostDependencies") {
+    Some(Object(map)) =>
+      for (key, raw) in map {
+        guard raw is Object(dep) else {
+          fail_cli(
+            "passport.json: hostDependencies[\"\{key}\"] must be an object",
+          )
+        }
+        guard dep.get("path") is Some(String(path)) else {
+          fail_cli(
+            "passport.json: hostDependencies[\"\{key}\"] is missing required field \"path\"",
+          )
+        }
+        validate_relative_path(path, "hostDependencies[\"\{key}\"].\"path\"")
+        for existing in host_dependencies {
+          if existing.host_id == key {
+            fail_cli(
+              "passport.json: duplicate hostDependencies entry \"\{key}\"",
+            )
+          }
+        }
+        host_dependencies.push({ host_id: key, path, })
+      }
+    Some(_) => fail_cli("passport.json: \"hostDependencies\" must be an object")
+    None => ()
+  }
+  { entry, device_entry, assets, host_dependencies, }
 }
 
 ///|

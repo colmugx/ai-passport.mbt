@@ -30,17 +30,15 @@ fn web_descriptor() -> HostDescriptor {
 }
 
 ///|
-/// The FoloToy AI Passport wearable. Registered with its factual capability
-/// descriptor; its ESP-IDF device build backend is NOT migrated in this
-/// release, so no SDK application capability is claimed for it yet.
+/// The FoloToy AI Passport wearable. Its ESP-IDF device build backend is
+/// implemented: the SDK application capabilities exposed on the web Host are
+/// also exposed here, over the physical hardware described factually below.
 fn folotoy_descriptor() -> HostDescriptor {
   {
     id: "folotoy-ai-passport",
-    summary: "FoloToy AI Passport wearable (ESP32-C3) registered Host.",
+    summary: "FoloToy AI Passport wearable (ESP32-C3): the SDK app on the physical device.",
     capabilities: {
-      // Described only: the device backend is not migrated, so the SDK makes
-      // no application-API claims for this Host in this release.
-      sdk_exposed: [],
+      sdk_exposed: [Display, Input, AudioOutput, Battery, Clock],
       hardware_known: [
         Display,
         Input,
@@ -53,10 +51,11 @@ fn folotoy_descriptor() -> HostDescriptor {
     },
     facts: [
       "ESP32-C3, 8 MB flash, no PSRAM", "physical ST7789P3 240x320 RGB565 panel; SDK logical framebuffer 120x160",
-      "semantic Up / Down / Ok physical buttons", "audio playback output", "microphone (audio input)",
-      "battery gauge", "Wi-Fi and Bluetooth LE", "timers / monotonic clock",
+      "semantic Up / Down / Ok physical buttons", "audio playback output", "normalized PCM16 LE mono 16000 Hz playback asset",
+      "microphone (audio input)", "CW2017 battery gauge", "Wi-Fi and Bluetooth LE",
+      "timers / monotonic clock",
     ],
-    backend: NotMigrated("device build is not migrated yet"),
+    backend: Implemented,
   }
 }
 

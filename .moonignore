@@ -3,6 +3,7 @@
 /hosts/web/test/
 /hosts/web/tools/
 /hosts/web/assets/test.pcm
+/hosts/folotoy/ai-passport/test/
 /src/fixture/
 
 # Consumers do not need the SDK's own test sources in the published archive.

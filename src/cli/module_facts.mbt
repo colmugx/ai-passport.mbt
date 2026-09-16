@@ -83,7 +83,29 @@ pub fn expected_wasm_artifact(project : Project) -> String {
 pub const BUNDLE_DIR : String = ".passport/web"
 
 ///|
+/// The device workspace directory contract: the materialized physical-Host
+/// build tree, assembled under the project root's generated `.passport`
+/// tree. The project's source tree is never written by a device build.
+pub const DEVICE_BUNDLE_DIR : String = ".passport/folotoy-ai-passport"
+
+///|
 /// The three files a Web Host bundle needs from the SDK.
 pub fn sdk_host_files() -> Array[String] {
   ["index.html", "passport-host.js", "pcm-worklet.js"]
+}
+
+///|
+/// The files that identify a resolved physical Host implementation.
+pub fn sdk_device_host_files() -> Array[String] {
+  ["main/app_main.c", "components/moonbit_device/CMakeLists.txt"]
+}
+
+///|
+/// Filesystem path of the device entry package directory (the contract's
+/// `deviceEntry`, relative to the module source root).
+pub fn device_entry_package_dir(
+  project : Project,
+  device_entry : String,
+) -> String {
+  under_root(source_root(project), device_entry)
 }

@@ -30,7 +30,13 @@ fn parse_port(text : String) -> Int? {
 async fn dev_command(sub : @argparse.Matches) -> Unit {
   let host_id = option_value(sub, "host", "web")
   let descriptor = @cli.require_implemented_host(host_id)
-  let _ = descriptor
+  // The dev server serves the Web Host bundle; other implemented Hosts are
+  // built, not served.
+  guard descriptor.id == "web" else {
+    @cli.fail_cli(
+      "host \"\{host_id}\" has no dev server; use `passport build --host \{host_id}`",
+    )
+  }
   let port_text = option_value(sub, "port", DEV_DEFAULT_PORT)
   let port = match parse_port(port_text) {
     Some(value) => value

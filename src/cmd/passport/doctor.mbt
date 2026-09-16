@@ -21,6 +21,10 @@ async fn doctor_command(sub : @argparse.Matches) -> Unit {
     }
     @hosts.Implemented => ()
   }
+  if host_id == "folotoy-ai-passport" {
+    doctor_device(sub)
+    return
+  }
   let failures : Array[String] = []
 
   let moon_out = @shell.Cmd::Cmd("moon", ["version"]).output()
@@ -88,7 +92,9 @@ async fn doctor_command(sub : @argparse.Matches) -> Unit {
       if dependencies_ready {
         let mut sdk_dir : String? = None
         try {
-          sdk_dir = Some(resolve_sdk_package_dir(project))
+          sdk_dir = Some(
+            resolve_sdk_host_dir(project, SDK_HOST_DIR, @cli.sdk_host_files()),
+          )
         } catch {
           @cli.Fail(message) => {
             println("FAIL: \{message}")
@@ -121,4 +127,228 @@ async fn doctor_command(sub : @argparse.Matches) -> Unit {
     @cli.fail_cli("doctor found \{failures.length()} failing check(s)")
   }
   println("doctor: all checks passed")
+}
+
+///|
+/// Device doctor: verifies the pinned physical-Host toolchain and the
+/// project's device contract. Every failed check is recorded and reported at
+/// the end; nothing aborts early.
+async fn doctor_device(sub : @argparse.Matches) -> Unit {
+  let failures : Array[String] = []
+  match try_output(@shell.Cmd::Cmd("moon", ["version"])) {
+    None => {
+      println("FAIL: the moon toolchain is unavailable")
+      failures.push("moon toolchain")
+    }
+    Some(out) => {
+      let first = first_line(out.stdout()).trim()
+      if first == MOON_VERSION_PIN {
+        println("ok: moon toolchain (\{first})")
+      } else {
+        println(
+          "FAIL: the device build pins \{MOON_VERSION_PIN} (got \{first})",
+        )
+        failures.push("moon version pin")
+      }
+    }
+  }
+  match try_output(@shell.Cmd::Cmd("idf.py", ["--version"])) {
+    None => {
+      println(
+        "FAIL: idf.py is unavailable; source the \{IDF_VERSION_PIN} export.sh",
+      )
+      failures.push("ESP-IDF toolchain")
+    }
+    Some(out) => {
+      let first = first_line(out.stdout()).trim()
+      if first.contains(IDF_VERSION_PIN) {
+        println("ok: ESP-IDF toolchain (\{first})")
+      } else {
+        println(
+          "FAIL: expected \{IDF_VERSION_PIN}; source the matching export.sh (got \{first})",
+        )
+        failures.push("ESP-IDF toolchain")
+      }
+    }
+  }
+  let mut loaded : @cli.Project? = None
+  try {
+    loaded = Some(load_project(option_value(sub, "project", ".")))
+  } catch {
+    @cli.Fail(message) => {
+      println("FAIL: \{message}")
+      failures.push("project contract")
+    }
+    _ => {
+      println("FAIL: unexpected error while reading the project")
+      failures.push("project contract")
+    }
+  }
+  match loaded {
+    Some(project) =>
+      match project.contract.device_entry {
+        Some(entry) => doctor_device_project(project, entry, failures)
+        None => {
+          println(
+            "FAIL: host \"folotoy-ai-passport\" requires a \"deviceEntry\" package in passport.json",
+          )
+          failures.push("device entry")
+        }
+      }
+    None => ()
+  }
+  if failures.length() > 0 {
+    @cli.fail_cli("doctor found \{failures.length()} failing check(s)")
+  }
+  println("doctor: all checks passed")
+}
+
+///|
+async fn verify_bsp_checkout(
+  path : String,
+  manifest : String,
+  origin : String,
+  failures : Array[String],
+) -> Unit {
+  match verify_sha256_manifest(manifest, "\{path}/components/bsp") {
+    None =>
+      println(
+        "ok: FoloToy dependency (\{origin}) matches the pinned manifest at \{path}",
+      )
+    Some(problem) => {
+      println(
+        "FAIL: the FoloToy checkout at \{path} does not match \{manifest}: \{problem}",
+      )
+      failures.push("FoloToy dependency manifest")
+    }
+  }
+}
+
+///|
+/// Side-effect free report on the external FoloToy dependency: which
+/// checkout a build would use (project-provided or CLI-managed), whether it
+/// matches the pinned manifest, and — when neither exists — where the
+/// device build will clone the pinned revision. Doctor never downloads.
+async fn report_bsp_dependency(
+  project : @cli.Project,
+  sdk_host : String,
+  failures : Array[String],
+) -> Unit {
+  let manifest = "\{sdk_host}/components/folotoy_bsp/bsp.sha256"
+  let declared = match
+    @cli.host_dependency_path(project.contract, "folotoy-ai-passport") {
+    Some(rel) => Some(@cli.under_root(project.root, rel))
+    None => None
+  }
+  let managed_dir = managed_bsp_dir(project)
+  match
+    plan_bsp_resolution(
+      declared,
+      match declared {
+        Some(path) => @fs.exists("\{path}/components/bsp/include")
+        None => false
+      },
+      managed_dir,
+      @fs.exists("\{managed_dir}/components/bsp/include"),
+    ) {
+    ProjectProvided(path) =>
+      verify_bsp_checkout(path, manifest, "project-provided", failures)
+    ManagedReady(path) =>
+      verify_bsp_checkout(path, manifest, "CLI-managed", failures)
+    DeclaredMissing(path) => {
+      println(
+        "FAIL: passport.json declares hostDependencies[\"folotoy-ai-passport\"] but no checkout exists at \{path}; fix the path, or remove the field to let the CLI manage the dependency",
+      )
+      failures.push("FoloToy dependency")
+    }
+    MaterializeManaged(path) =>
+      println(
+        "ok: FoloToy dependency not present yet; the device build clones \{BSP_COMMIT} into \{path}",
+      )
+  }
+}
+
+///|
+/// Device checks that need a loaded contract with a device entry.
+async fn doctor_device_project(
+  project : @cli.Project,
+  device_entry : String,
+  failures : Array[String],
+) -> Unit {
+  println("ok: deviceEntry \"\{device_entry}\" declared")
+  let entry_dir = @cli.device_entry_package_dir(project, device_entry)
+  if @fs.exists("\{entry_dir}/moon.pkg") {
+    println(
+      "ok: device entry package \"\{device_entry}\" found under the module source root",
+    )
+  } else {
+    println(
+      "FAIL: device entry package \"\{device_entry}\" has no moon.pkg (\{entry_dir})",
+    )
+    failures.push("device entry package")
+  }
+  match pcm_loop_asset(project) {
+    Some(asset) => {
+      let source = @cli.under_root(project.root, asset.source)
+      if @fs.exists(source) {
+        println("ok: looping PCM music asset (\{asset.source})")
+      } else {
+        println(
+          "FAIL: looping PCM music asset source is missing: \{asset.source}",
+        )
+        failures.push("looping PCM music asset")
+      }
+    }
+    None => {
+      println(
+        "FAIL: host \"folotoy-ai-passport\" requires exactly one looping PCM music asset (pcmLoop: true)",
+      )
+      failures.push("looping PCM music asset")
+    }
+  }
+  let mut host_dir : String? = None
+  try {
+    host_dir = Some(
+      resolve_sdk_host_dir(
+        project,
+        HOST_DIR_FOLOTOY,
+        @cli.sdk_device_host_files(),
+      ),
+    )
+  } catch {
+    @cli.Fail(message) => {
+      println("FAIL: \{message}")
+      failures.push("SDK device Host assets")
+    }
+    _ => {
+      println(
+        "FAIL: unexpected error while locating the SDK device Host assets",
+      )
+      failures.push("SDK device Host assets")
+    }
+  }
+  match host_dir {
+    Some(dir) => {
+      println("ok: SDK device Host assets at \{dir}")
+      report_bsp_dependency(project, dir, failures)
+      let manifest = "\{dir}/moonbit-runtime.sha256"
+      if @fs.exists(manifest) {
+        match verify_runtime_sha256(manifest) {
+          Some(problem) => {
+            println(
+              "FAIL: the MOON_HOME runtime does not match \{manifest}: \{problem}",
+            )
+            failures.push("MoonBit runtime manifest")
+          }
+          None => println("ok: the MOON_HOME runtime matches \{manifest}")
+        }
+      } else {
+        println(
+          "FAIL: the SDK device Host has no runtime manifest (\{manifest})",
+        )
+        failures.push("MoonBit runtime manifest")
+      }
+    }
+    None => ()
+  }
 }

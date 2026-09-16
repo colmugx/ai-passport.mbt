@@ -6,6 +6,7 @@
 test "parse_contract accepts the minimal contract" {
   let contract = @cli.parse_contract("{ \"entry\": \"main\" }")
   inspect(contract.entry, content="main")
+  debug_inspect(contract.device_entry, content="None")
   inspect(contract.assets.length(), content="0")
 }
 
@@ -76,6 +77,74 @@ test "parse_contract rejects broken documents with clear messages" {
 }
 
 ///|
+test "parse_contract accepts a device entry with the same path rules as entry" {
+  let contract = @cli.parse_contract(
+    "{ \"entry\": \"runtime_wasm\", \"deviceEntry\": \"runtime_native\" }",
+  )
+  debug_inspect(contract.device_entry, content="Some(\"runtime_native\")")
+  try
+    @cli.parse_contract(
+      "{ \"entry\": \"main\", \"deviceEntry\": \"../escape\" }",
+    )
+  catch {
+    @cli.Fail(_) => ()
+    _ => fail("expected an unsafe deviceEntry to fail")
+  } noraise {
+    _ => fail("expected an unsafe deviceEntry to fail")
+  }
+  try @cli.parse_contract("{ \"entry\": \"main\", \"deviceEntry\": 7 }") catch {
+    @cli.Fail(message) =>
+      inspect(
+        message,
+        content="passport.json: \"deviceEntry\" must be a string",
+      )
+    _ => fail("expected a CliError failure")
+  } noraise {
+    _ => fail("expected a non-string deviceEntry to fail")
+  }
+}
+
+///|
+test "parse_contract reads hostDependencies as host-id to path entries" {
+  let contract = @cli.parse_contract(
+    "{ \"entry\": \"main\", \"hostDependencies\": { \"folotoy-ai-passport\": { \"path\": \"external/folotoy-ai-passport\" } } }",
+  )
+  debug_inspect(
+    @cli.host_dependency_path(contract, "folotoy-ai-passport"),
+    content="Some(\"external/folotoy-ai-passport\")",
+  )
+  debug_inspect(@cli.host_dependency_path(contract, "web"), content="None")
+  try
+    @cli.parse_contract(
+      "{ \"entry\": \"main\", \"hostDependencies\": { \"folotoy-ai-passport\": { \"path\": \"../escape\" } } }",
+    )
+  catch {
+    @cli.Fail(message) =>
+      inspect(
+        message,
+        content="passport.json: hostDependencies[\"folotoy-ai-passport\"].\"path\" contains an unsafe path component",
+      )
+    _ => fail("expected an unsafe hostDependency path to fail")
+  } noraise {
+    _ => fail("expected an unsafe hostDependency path to fail")
+  }
+  try
+    @cli.parse_contract(
+      "{ \"entry\": \"main\", \"hostDependencies\": { \"folotoy-ai-passport\": {} } }",
+    )
+  catch {
+    @cli.Fail(message) =>
+      inspect(
+        message,
+        content="passport.json: hostDependencies[\"folotoy-ai-passport\"] is missing required field \"path\"",
+      )
+    _ => fail("expected a hostDependency without path to fail")
+  } noraise {
+    _ => fail("expected a hostDependency without path to fail")
+  }
+}
+
+///|
 test "entry_url_path derives the generic host parameters" {
   // No audio: the plain entry page.
   inspect(
@@ -123,7 +192,11 @@ test "render_host is deterministic and names the microphone for the wearable" {
   let text = @cli.render_host(@hosts.find_host("folotoy-ai-passport").unwrap())
   inspect(text.contains("folotoy-ai-passport"), content="true")
   inspect(text.contains("audio_input"), content="true")
-  inspect(text.contains("device build is not migrated yet"), content="true")
+  inspect(text.contains("backend: implemented"), content="true")
+  inspect(
+    text.contains("normalized PCM16 LE mono 16000 Hz playback asset"),
+    content="true",
+  )
   // The user-facing backend vocabulary is Host, everywhere. The forbidden
   // terms are assembled from parts so this structural gate never sees them
   // as literals in CLI/host sources.
@@ -139,17 +212,11 @@ test "known host ids are exact and ordered" {
 }
 
 ///|
-test "require_implemented_host fails clearly for the unmigrated device backend" {
-  try @cli.require_implemented_host("folotoy-ai-passport") catch {
-    @cli.Fail(message) =>
-      inspect(
-        message,
-        content="host \"folotoy-ai-passport\" device build is not migrated yet (this release implements the web backend only)",
-      )
-    _ => fail("expected a CliError failure")
-  } noraise {
-    _ => fail("expected the unmigrated device backend to fail")
-  }
+test "require_implemented_host accepts both implemented backends and rejects unknown hosts" {
+  inspect(
+    @cli.require_implemented_host("folotoy-ai-passport").id,
+    content="folotoy-ai-passport",
+  )
   try @cli.require_implemented_host("zectrix-note4") catch {
     @cli.Fail(message) =>
       inspect(
@@ -196,7 +263,12 @@ test "expected_wasm_artifact follows the moon build layout" {
     root: "/work/app",
     module_name: "colmugx/app",
     source_dir: "src",
-    contract: { entry: "main", assets: [], },
+    contract: {
+      entry: "main",
+      device_entry: None,
+      assets: [],
+      host_dependencies: [],
+    },
   }
   inspect(
     @cli.expected_wasm_artifact(project),
@@ -206,7 +278,12 @@ test "expected_wasm_artifact follows the moon build layout" {
     root: "/work/app",
     module_name: "colmugx/app",
     source_dir: "src",
-    contract: { entry: "cmd/greeter", assets: [], },
+    contract: {
+      entry: "cmd/greeter",
+      device_entry: None,
+      assets: [],
+      host_dependencies: [],
+    },
   }
   inspect(
     @cli.expected_wasm_artifact(nested),

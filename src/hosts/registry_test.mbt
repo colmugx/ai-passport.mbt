@@ -48,7 +48,7 @@ test "web host does not overclaim capabilities" {
 }
 
 ///|
-test "folotoy host registers the microphone and claims no SDK APIs yet" {
+test "folotoy host registers the microphone and the implemented device backend" {
   let f = @hosts.find_host("folotoy-ai-passport").unwrap()
   // Factual hardware, including the microphone.
   inspect(
@@ -73,14 +73,22 @@ test "folotoy host registers the microphone and claims no SDK APIs yet" {
     content="true",
   )
   inspect(f.capabilities.hardware_known.contains(@hosts.Clock), content="true")
-  // Descriptor-only staging: no SDK application API is claimed.
-  inspect(f.capabilities.sdk_exposed.length(), content="0")
-  match f.backend {
-    @hosts.NotMigrated(reason) =>
-      inspect(reason, content="device build is not migrated yet")
-    @hosts.Implemented =>
-      fail("folotoy-ai-passport must not claim an implemented backend")
-  }
+  // The implemented device backend exposes the same SDK application
+  // capabilities as the web Host — no more, no less.
+  inspect(f.capabilities.sdk_exposed.contains(@hosts.Display), content="true")
+  inspect(f.capabilities.sdk_exposed.contains(@hosts.Input), content="true")
+  inspect(
+    f.capabilities.sdk_exposed.contains(@hosts.AudioOutput),
+    content="true",
+  )
+  inspect(f.capabilities.sdk_exposed.contains(@hosts.Battery), content="true")
+  inspect(f.capabilities.sdk_exposed.contains(@hosts.Clock), content="true")
+  inspect(
+    f.capabilities.sdk_exposed.contains(@hosts.AudioInput),
+    content="false",
+  )
+  inspect(f.capabilities.sdk_exposed.contains(@hosts.Network), content="false")
+  inspect(f.backend is @hosts.Implemented, content="true")
 }
 
 ///|

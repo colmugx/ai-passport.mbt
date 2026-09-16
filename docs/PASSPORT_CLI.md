@@ -17,7 +17,7 @@ release:
 | Host id | Backend status |
 |---|---|
 | `web` | implemented (build + dev) |
-| `folotoy-ai-passport` | registered, descriptor only — device build is not migrated yet (next wave) |
+| `folotoy-ai-passport` | implemented (device build; requires the ESP-IDF toolchain) |
 
 Future Hosts (for example `zectrix-note4`) are added to the registry without
 any change to the CLI grammar.
@@ -29,14 +29,15 @@ split into two planes so hardware facts never impersonate SDK APIs:
 
 - `sdk_exposed` — capabilities reachable **today** through public SDK
   application APIs (`Display`, `Input`, `AudioOutput`, `Battery`, `Clock` for
-  the web host).
+  both implemented Hosts).
 - `hardware_known` — capabilities confirmed on the Host's real hardware or
   runtime, whether or not the SDK reaches them yet. The FoloToy AI Passport
   wearable is described factually (ESP32-C3, 8 MB flash, no PSRAM, ST7789P3
-  240x320 RGB565 panel at the 120x160 logical framebuffer, Up/Down/Ok, audio
-  output, **microphone (audio input)**, battery gauge, Wi-Fi, Bluetooth LE,
-  timers/monotonic clock) while claiming **no** SDK application APIs until the
-  device backend is migrated.
+  240x320 RGB565 panel at the 120x160 logical framebuffer, Up/Down/Ok,
+  normalized PCM16 LE mono 16000 Hz playback asset, audio output,
+  **microphone (audio input)**, CW2017 battery gauge, Wi-Fi, Bluetooth LE,
+  timers/monotonic clock). The microphone and network are hardware facts the
+  SDK does not expose as application APIs.
 
 Descriptors carry facts, never wiring-level configuration: no GPIO numbers,
 no bus maps. `passport hosts` renders them deterministically, and the
@@ -82,9 +83,19 @@ The CLI is the executable package `src/cmd/passport` (package path
   resolvable SDK Web Host assets, python3 (the dev server). For a clean
   project, doctor runs `moon check` on the declared wasm entry so Moon can
   resolve/materialize its declared dependencies before Host assets are
-  inspected. It never demands device tooling. `--host folotoy-ai-passport`
-  prints the factual descriptor and fails with `host "folotoy-ai-passport"
-  device build is not migrated yet`.
+  inspected. It never demands device tooling.
+- `passport doctor --host folotoy-ai-passport [--project <dir>]` — checks
+  exactly what a device build needs, reporting every failure without
+  aborting early: the pinned moon toolchain
+  (`moon 0.1.20260915 (2e1a46d 2026-09-15)`), `idf.py` reporting ESP-IDF
+  v5.5.3 (source the matching `export.sh` first), the project contract with
+  a `deviceEntry` package, the device entry package and its `moon.pkg`, the
+  looping PCM music asset source, the resolvable SDK device Host assets, the
+  `$MOON_HOME` runtime files against the Host's `moonbit-runtime.sha256`
+  manifest, and the external FoloToy dependency — which checkout a build
+  would use, whether it matches the pinned content manifest, or (when
+  absent) where the build would clone the pinned revision. Doctor never
+  downloads anything.
 - `passport build --host web [--project <dir>]` — the complete generic web
   build: compiles only the project's declared entry package for wasm release,
   then assembles `.passport/web/`:
@@ -100,9 +111,49 @@ The CLI is the executable package `src/cmd/passport` (package path
 
   A stale `app.html` is removed. Unimplemented Hosts fail clearly; there is
   no silent fallback to web.
+- `passport build --host folotoy-ai-passport [--project <dir>]` — the device
+  build. Preconditions: the ESP-IDF v5.5.3 environment must be sourced
+  (`export.sh`), and `$MOON_HOME` (default `~/.moon`) must hold the pinned
+  MoonBit installation whose runtime files match the Host's
+  `moonbit-runtime.sha256` manifest. The project's `passport.json` must
+  declare a `deviceEntry` package and exactly one `pcmLoop: true` asset. The
+  flow, in order:
+
+  1. load and validate the project contract;
+  2. refuse clearly when `deviceEntry` or the looping PCM asset is missing;
+  3. resolve the SDK's `hosts/folotoy/ai-passport` implementation;
+  4. materialize the device workspace
+     `<project>/.passport/folotoy-ai-passport/` (host files copied
+     copy-over — the idf `build/` tree stays incremental; the SDK's own
+     `test/` tree and `README.md` are never copied);
+  5. copy the looping PCM asset to `<workspace>/passport_music.pcm`;
+  6. resolve the external FoloToy dependency — the contract's
+     `hostDependencies` checkout when declared, else the CLI-managed clone
+     of the single pinned revision under
+     `.passport/deps/folotoy-ai-passport/<revision>/` — verify it against
+     the Host's content manifest, log its path/revision/origin, and connect
+     it via a generated `upstream.cmake` (upstream source is compiled in
+     place, never copied into the SDK or the workspace);
+  7. capture the device entry's generated C: the capture cc is copied into
+     the workspace, injected into the entry package's `moon.pkg` for exactly
+     one `moon build <deviceEntry> --target native --release` invocation
+     (`MOON_CC_CAPTURE_DIR` + `MOONBIT_NEW_NATIVE=0`), and the original
+     `moon.pkg` bytes are restored on success and failure alike — the
+     project source tree is never left modified;
+  8. verify the pinned toolchain (ESP-IDF v5.5.3, moon version, runtime
+     manifest);
+  9. `idf.py reconfigure` in the workspace and verify the device baselines
+     in the effective `sdkconfig` (`CONFIG_FREERTOS_HZ=1000`, custom
+     partition table `partitions.csv`);
+  10. `idf.py build` and report the firmware path, size and app-partition
+      margin (partition size `0x380000`).
+
+  The workspace accumulates `<workspace>/build/` output; the project's
+  source tree is untouched.
 - `passport dev --host web [--project <dir>] [--port N]` — build, then serve
   `.passport/web/` with an unmodified `python3 -m http.server` bound to
-  127.0.0.1, and print the final URL (Ctrl-C exits cleanly).
+  127.0.0.1, and print the final URL (Ctrl-C exits cleanly). Other Hosts are
+  built, not served: `dev` is a Web Host command.
 
 ### Where the SDK host files come from
 
@@ -125,20 +176,41 @@ project root:
 ```json
 {
   "entry": "main",
+  "deviceEntry": "runtime_native",
   "assets": [
     { "source": "assets/tone.pcm", "bundlePath": "assets/tone.pcm", "pcmLoop": true }
-  ]
+  ],
+  "hostDependencies": {
+    "folotoy-ai-passport": { "path": "external/folotoy-ai-passport" }
+  }
 }
 ```
 
 - `entry` (required) — the application wasm entry package path relative to
   the module source root; its moon.pkg exports the six `passport_*` symbols
   with `heap-start-address = 65536`.
+- `deviceEntry` (optional) — the device entry package path relative to the
+  module source root: the native foreign-library package a physical Host
+  builds and links. Same path rules as `entry` (relative, forward slashes,
+  no traversal). A device build requires it and fails clearly without it;
+  web builds ignore it.
 - `assets` (optional) — files to materialize into the bundle. `source` is
   project-relative, `bundlePath` is bundle-relative. `pcmLoop: true` marks
   the (single) Host audio asset and produces the generic entry URL
   parameters `?pcm=<bundlePath>&pcmLoop=1`; the host configuration stays
-  exactly the SDK's own URL-parameter mechanism.
+  exactly the SDK's own URL-parameter mechanism. For a device build, the
+  `pcmLoop: true` asset's source is the firmware's music file (copied to
+  `passport_music.pcm` in the device workspace), so a project must declare
+  exactly one looping PCM asset to be device-buildable.
+- `hostDependencies` (optional) — project-provided checkouts of external
+  Host dependencies (third-party hardware code the SDK itself never
+  carries). Each entry maps a registered host id to a `path` relative to
+  the project root. A declared path is authoritative: the build fails
+  clearly when no checkout exists there instead of downloading behind the
+  project's back. Without an entry the CLI manages the dependency itself,
+  cloning the Host's single pinned revision under
+  `.passport/deps/<host-id>/<revision>/` (never a moving ref) and
+  verifying the content against the Host's tracked manifest before use.
 
 Contract paths are forward-slash relative paths. Absolute paths, traversal
 components (`.` / `..`), duplicate bundle destinations, and attempts to

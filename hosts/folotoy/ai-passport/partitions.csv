@@ -1,0 +1,8 @@
+# AI Passport flash layout (8 MB flash, no PSRAM).
+# The factory app embeds the application's music as flash-resident PCM16
+# next to the program image, so it is sized far above the IDF default 1 MB
+# while leaving the remaining flash unused. Keep sizes 64 KB aligned.
+# Name,   Type, SubType,  Offset,  Size,     Flags
+nvs,      data, nvs,     0x9000,  0x6000,
+phy_init, data, phy,     0xf000,  0x1000,
+factory,  app,  factory, 0x10000, 0x380000,
