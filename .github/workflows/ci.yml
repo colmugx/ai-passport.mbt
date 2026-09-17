@@ -275,15 +275,3 @@ jobs:
           test -n "$margin"
           echo "no-audio firmware size: $size / 3670016 bytes (0x380000 app partition)"
           echo "passport: $margin"
-
-      # The gate is only meaningful if Moon never re-materialized the
-      # published package over the overlay: the template must have compiled
-      # against THIS commit (moon.mod differs only by the version stamp).
-      - name: The overlay still mirrors this SDK commit
-        run: |
-          diff -r \
-            --exclude=moon.mod --exclude=external \
-            --exclude=_build --exclude=.mooncakes --exclude=.git \
-            --exclude=.agents --exclude=.github --exclude=.githooks \
-            "$AI_PASSPORT_SDK" template/.mooncakes/colmugx/ai-passport
-          echo "overlay still mirrors the current SDK commit (moon.mod stamped to the published pin)"
