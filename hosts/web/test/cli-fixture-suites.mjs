@@ -15,18 +15,31 @@
  *  3. fixture B          — a downstream-style PCM-asset app builds with the
  *                          asset materialized byte-identically and the
  *                          generic URL parameters on the printed entry;
- *  4. doctor             — the doctor passes for a resolvable project;
- *  5. real browsers      — BOTH CLI-produced bundles boot through the SDK's
+ *  4. fixture C          — a downstream-style SINGLE-ENTRY application (the
+ *                          application contract: display, input, battery,
+ *                          audio output state, playback position) builds
+ *                          through the CLI-GENERATED Web entry adapter
+ *                          under passport-generated/, keeps the ABI v0
+ *                          export/import surface, and boots in a real
+ *                          browser rendering the host facts;
+ *  5. doctor             — the doctor passes for a resolvable project;
+ *  6. real browsers      — the CLI-produced bundles boot through the SDK's
  *                          own index.html DOM auto-boot from the printed
  *                          URL: fixture A renders and answers input with no
  *                          audio requirement; fixture B fetches its PCM
  *                          asset over http, loops it sample-exactly through
- *                          the AudioWorklet, and keeps presenting frames.
+ *                          the AudioWorklet, and keeps presenting frames;
+ *                          fixture C drives the whole application contract
+ *                          end to end (input queue → bars/markers move).
  *
  * The fixtures are complete nested MoonBit modules under
  * hosts/web/test/fixtures/ (their own moon.mod depending on the PUBLISHED
  * colmugx/ai-passport package) — the strongest pre-publish proof that the
  * CLI works for a downstream project, not just for the SDK checkout.
+ * Fixture C consumes the unpublished application contract, so its suite
+ * first overlays THIS checkout into its .mooncakes at the fixture's
+ * registry pin (the same CI-internal dev overlay the template-integration
+ * job performs; the fixture itself stays coupled only to its pin).
  */
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
@@ -176,6 +189,62 @@ function runShellBundleStatus(url) {
   return m ? m[1].trim() : null;
 }
 
+/** Copies the SDK tree into `dest`, skipping the CI overlay excludes.
+ *  Manual recursion because fs.cpSync refuses to copy a directory into its
+ *  own subtree and the fixture lives inside the checkout. */
+function copySdkTree(src, dest, excluded) {
+  fs.mkdirSync(dest, { recursive: true });
+  for (const entry of fs.readdirSync(src, { withFileTypes: true })) {
+    if (excluded.has(entry.name)) continue;
+    const from = path.join(src, entry.name);
+    const to = path.join(dest, entry.name);
+    if (entry.isDirectory()) copySdkTree(from, to, excluded);
+    else if (entry.isFile()) fs.copyFileSync(from, to);
+    // Symlinks in the checkout are dev-environment noise, not module facts.
+  }
+}
+
+/** Overlays THIS SDK checkout into fixture-c's .mooncakes, stamped at the
+ *  fixture's registry pin, so the unpublished application contract resolves.
+ *  Mirrors the CI template-integration overlay excludes exactly. Returns the
+ *  stamped pin. */
+// One overlay per run-tests invocation: re-copying the tree after a build
+// inside it invalidates module metadata moon derived from the previous
+// copy, so the second build's package discovery fails intermittently.
+let fixtureCOverlaid = false;
+
+function overlayCurrentSdkIntoFixtureC(repoRoot) {
+  if (fixtureCOverlaid) return;
+  fixtureCOverlaid = true;
+  const project = fixtureDir(repoRoot, "fixture-c");
+  const pin = /"colmugx\/ai-passport@([0-9.]+)"/.exec(
+    fs.readFileSync(path.join(project, "moon.mod"), "utf8"),
+  )[1];
+  // Stamp from the SOURCE module text — never read the copied tree back.
+  const sdkMod = fs.readFileSync(path.join(repoRoot, "moon.mod"), "utf8");
+  const dest = path.join(project, ".mooncakes", "colmugx", "ai-passport");
+  fs.rmSync(dest, { recursive: true, force: true });
+  // A lock recorded against the published tree would make moon re-materialize
+  // it over the overlay; a fresh resolution accepts the overlaid module.
+  fs.rmSync(path.join(project, ".mooncakes", ".moon-lock"), { force: true });
+  copySdkTree(repoRoot, dest, new Set([
+    ".git",
+    "_build",
+    ".mooncakes",
+    ".agents",
+    ".github",
+    ".githooks",
+    ".passport",
+    "passport-generated",
+    "external",
+  ]));
+  fs.writeFileSync(
+    path.join(dest, "moon.mod"),
+    sdkMod.replace(/^version = ".*"$/m, `version = "${pin}"`),
+  );
+  return pin;
+}
+
 export function registerCliFixtureSuites({ suite, ok, eq, eqText, SuiteError, repoRoot, webHostDir }) {
   const passportCli = path.join(repoRoot, CLI_PACKAGE);
 
@@ -183,7 +252,7 @@ export function registerCliFixtureSuites({ suite, ok, eq, eqText, SuiteError, re
 
   suite("cli: structural gates — Host-only vocabulary, zero application semantics", () => {
     const scanned = [];
-    for (const rel of ["src/hosts", "src/cli", "src/cmd/passport"]) {
+    for (const rel of ["src/hosts", "src/cli", "src/cmd/passport", "src/application", "src/runtime"]) {
       const root = path.join(repoRoot, rel);
       const walk = (dir) => {
         for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -362,6 +431,195 @@ export function registerCliFixtureSuites({ suite, ok, eq, eqText, SuiteError, re
         ok(status !== null, "no browser path produced a bundle page to inspect");
         ok(status !== null && status.startsWith("running"), `bundle status must be running (got [${status}])`);
         console.log("  fixture-b fallback (chrome-headless-shell): status-line proof only, no audio-consumption proof");
+      }
+    } finally {
+      server.close();
+    }
+  });
+
+  // --- Suite: fixture C bundle assembly (single-entry application contract) ----
+
+  suite("cli: fixture-c (single-entry application contract) builds through the generated entry", async () => {
+    const project = fixtureDir(repoRoot, "fixture-c");
+    const pin = overlayCurrentSdkIntoFixtureC(repoRoot);
+    const res = runCli(repoRoot, ["build", "--host", "web", "--project", project]);
+    eq(res.status, 0, `passport build must succeed for fixture-c; stderr: ${res.stderr}`);
+    const bundle = path.join(project, ".passport", "web");
+    ok(fs.existsSync(path.join(bundle, "app.wasm")), "bundle/app.wasm must exist");
+    for (const file of ["index.html", "passport-host.js", "pcm-worklet.js"]) {
+      ok(
+        fs.readFileSync(path.join(bundle, file)).equals(fs.readFileSync(path.join(webHostDir, file))),
+        `bundle/${file} must be byte-identical to the SDK's own host file`,
+      );
+    }
+    ok(
+      fs.readFileSync(path.join(bundle, "assets", "tone.pcm")).equals(
+        fs.readFileSync(path.join(project, "assets", "tone.pcm")),
+      ),
+      "bundle/assets/tone.pcm must be byte-identical to the project asset",
+    );
+    const url = printedEntryUrl(res.stdout);
+    eq(
+      url,
+      "/index.html?pcm=./assets/tone.pcm&pcmLoop=1",
+      `the printed entry must carry the generic PCM parameters (got ${JSON.stringify(url)})`,
+    );
+    // The entry adapter is the CLI's generated build product.
+    const generated = path.join(project, "passport-generated", "web");
+    ok(fs.existsSync(path.join(generated, "moon.pkg")), "passport-generated/web/moon.pkg must exist");
+    ok(fs.existsSync(path.join(generated, "adapter.mbt")), "passport-generated/web/adapter.mbt must exist");
+    ok(
+      res.stdout.includes("generated the Web entry adapter"),
+      "the build must log the generated entry adapter",
+    );
+    // ABI v0 surface: every passport_* export present, and PCM asset mode
+    // never declares the streamed host_pcm_write import.
+    const module = await WebAssembly.compile(fs.readFileSync(path.join(bundle, "app.wasm")));
+    const exported = WebAssembly.Module.exports(module).map((entry) => entry.name);
+    for (const name of [
+      "passport_frame",
+      "passport_input",
+      "passport_fb_ptr",
+      "passport_fb_len",
+      "passport_frame_dirty",
+      "passport_frame_consume",
+    ]) {
+      ok(exported.includes(name), `app.wasm must export ${name}`);
+    }
+    const imported = WebAssembly.Module.imports(module).map((entry) => entry.name);
+    ok(
+      !imported.includes("host_pcm_write"),
+      "the generated entry must keep the streamed PCM import out of the module (PCM asset mode)",
+    );
+    console.log(`  fixture-c: SDK overlaid at registry pin ${pin}; generated entry carries ABI v0`);
+  });
+
+  // --- Suite: browser, fixture C --------------------------------------------------
+
+  /** Reads the fixture-c panel rows straight off the blitted canvas:
+   *  battery bar length (row 0), volume bar length (row 8), mute row on/off
+   *  (row 16), playback marker x (row 24, -1 = dark), time marker x
+   *  (row 32). */
+  async function samplePanelRows(page) {
+    return page.evaluate(
+      () =>
+        new Promise((resolve) => {
+          const canvas = document.getElementById("passport-canvas");
+          const ctx = canvas.getContext("2d");
+          const rowFacts = (y, matches) => {
+            const data = ctx.getImageData(0, y, 120, 1).data;
+            let count = 0;
+            let at = -1;
+            for (let x = 0; x < 120; x++) {
+              const r = data[x * 4];
+              const g = data[x * 4 + 1];
+              const b = data[x * 4 + 2];
+              if (matches(r, g, b)) {
+                count += 1;
+                if (at < 0) at = x;
+              }
+            }
+            return { count, at };
+          };
+          setTimeout(() => {
+            resolve({
+              battery: rowFacts(0, (r, g, b) => g > 200 && r < 80 && b < 80),
+              volume: rowFacts(8, (r, g, b) => r > 200 && g > 200 && b > 200),
+              mute: rowFacts(16, (r, g, b) => r > 200 && g > 200 && b < 80),
+              playback: rowFacts(24, (r, g, b) => r > 200 && g > 200 && b > 200),
+              time: rowFacts(32, (r, g, b) => g > 200 && b > 200 && r < 80),
+            });
+          }, 350);
+        }),
+    );
+  }
+
+  suite("browser: CLI fixture-c single-entry bundle renders host facts and answers input", async () => {
+    const project = fixtureDir(repoRoot, "fixture-c");
+    overlayCurrentSdkIntoFixtureC(repoRoot);
+    const build = runCli(repoRoot, ["build", "--host", "web", "--project", project]);
+    eq(build.status, 0, `fixture-c CLI build must succeed; stderr: ${build.stderr}`);
+    const entry = printedEntryUrl(build.stdout);
+    ok(entry !== null && entry.includes("pcm=./assets/tone.pcm"), "the CLI must print the PCM-configured entry URL");
+    const server = await startStaticServer(path.join(project, ".passport", "web"));
+    try {
+      const url = `http://127.0.0.1:${server.address().port}${entry}`;
+      const pw = await loadPlaywright();
+      if (!pw || !pw.chromium || typeof pw.chromium.launch !== "function") {
+        const status = runShellBundleStatus(url);
+        ok(status !== null && status.startsWith("running"), `bundle status must be running (got [${status}])`);
+        console.log("  fixture-c fallback (chrome-headless-shell): status-line proof only");
+        return;
+      }
+      const browser = await pw.chromium.launch({ headless: true, args: BROWSER_LAUNCH_FLAGS });
+      const pageErrors = [];
+      const consoleErrors = [];
+      try {
+        const page = await browser.newPage();
+        page.on("pageerror", (err) => pageErrors.push(String(err)));
+        page.on("console", (msg) => {
+          if (msg.type() === "error") consoleErrors.push(msg.text());
+        });
+        await page.goto(url, { waitUntil: "load", timeout: 30_000 });
+        await page.waitForFunction(
+          () => {
+            const host = globalThis.__passportHost;
+            if (!host) return false;
+            host.resumeAudio();
+            return host.audioAssetLoaded && host.audioAssetLoops >= 2;
+          },
+          null,
+          { timeout: 45_000, polling: 100 },
+        );
+        // The battery import (default 82) and the startup audio state (80)
+        // both reached the application: their bars are drawn to scale.
+        const before = await samplePanelRows(page);
+        eq(pageErrors.length, 0, `the page must throw nothing (got ${JSON.stringify(pageErrors)})`);
+        ok(before.battery.count > 90 && before.battery.count < 110,
+          `battery bar must render the host reading ~82% (got ${before.battery.count}px)`);
+        ok(before.volume.count > 90 && before.volume.count < 110,
+          `volume bar must render the startup volume 80 (got ${before.volume.count}px)`);
+        ok(before.mute.count === 0, "mute row must start dark");
+        // Semantic input through the host input queue: three Up presses
+        // clamp the volume to 100 (full bar), Ok toggles the mute row on.
+        await page.evaluate(() => {
+          const host = globalThis.__passportHost;
+          for (const _ of [0, 1, 2]) {
+            host.queueInput(0, 1);
+            host.queueInput(0, 0);
+          }
+          host.queueInput(2, 1);
+          host.queueInput(2, 0);
+        });
+        await page.waitForFunction(
+          () => globalThis.__passportHost.frameCount > 0,
+          null,
+          { timeout: 10_000, polling: 50 },
+        );
+        await page.waitForTimeout(400);
+        const after = await samplePanelRows(page);
+        eq(after.volume.count, 120, `three Up presses must clamp the volume bar to full (got ${after.volume.count}px)`);
+        eq(after.mute.count, 120, `Ok must switch the mute row on (got ${after.mute.count}px)`);
+        // Playback position and monotonic time keep flowing: both markers
+        // move between two samples.
+        const later = await samplePanelRows(page);
+        ok(later.playback.at >= 0, `playback marker must be lit once audio loops (got x=${later.playback.at})`);
+        const moved = later.playback.at !== before.playback.at || later.time.at !== before.time.at;
+        ok(moved, `playback/time markers must move (playback ${before.playback.at}->${later.playback.at}, time ${before.time.at}->${later.time.at})`);
+        const running = await page.evaluate(() => ({
+          status: document.getElementById("passport-status").textContent,
+          frames: globalThis.__passportHost.frameCount,
+          loops: globalThis.__passportHost.audioAssetLoops,
+        }));
+        ok(running.status.startsWith("running"), `#passport-status must say running (got [${running.status}])`);
+        ok(running.frames > 0, "frames must keep ticking");
+        ok(running.loops >= 2, `the PCM asset must keep looping (got ${running.loops})`);
+        eq(consoleErrors.length, 0, `no console errors (got ${JSON.stringify(consoleErrors)})`);
+        console.log(
+          `  fixture-c: playwright [battery=${before.battery.count}px volume=${before.volume.count}->${after.volume.count}px mute=on playback@${later.playback.at} time@${later.time.at} loops=${running.loops}]`,
+        );
+      } finally {
+        await browser.close().catch(() => {});
       }
     } finally {
       server.close();

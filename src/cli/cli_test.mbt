@@ -271,7 +271,7 @@ test "expected_wasm_artifact follows the moon build layout" {
     },
   }
   inspect(
-    @cli.expected_wasm_artifact(project),
+    @cli.expected_wasm_artifact(project, project.contract.entry),
     content="/work/app/_build/wasm/release/build/main/main.wasm",
   )
   let nested : @cli.Project = {
@@ -286,7 +286,7 @@ test "expected_wasm_artifact follows the moon build layout" {
     },
   }
   inspect(
-    @cli.expected_wasm_artifact(nested),
+    @cli.expected_wasm_artifact(nested, nested.contract.entry),
     content="/work/app/_build/wasm/release/build/cmd/greeter/greeter.wasm",
   )
 }

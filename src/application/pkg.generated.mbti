@@ -1,0 +1,34 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "colmugx/ai-passport/application"
+
+import {
+  "colmugx/ai-passport/graphics",
+  "colmugx/ai-passport/input",
+  "moonbitlang/core/debug",
+}
+
+// Values
+
+// Errors
+
+// Types and methods
+pub(all) struct AudioOutput {
+  volume : Int
+  muted : Bool
+} derive(Eq, @debug.Debug)
+
+pub(all) struct FrameContext {
+  now_us : Int64
+  playback_position_us : Int64?
+  presentation_lead_us : Int64
+} derive(Eq, @debug.Debug)
+
+// Type aliases
+
+// Traits
+pub(open) trait Application {
+  fn update(Self, FrameContext) -> Unit
+  fn button(Self, @input.Button, Bool) -> Unit
+  fn render(Self, Int?) -> @graphics.FrameView
+  fn audio_output(Self) -> AudioOutput?
+}

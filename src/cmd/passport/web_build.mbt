@@ -65,16 +65,17 @@ async fn run_step(cmd : @shell.Cmd, what : String) -> Unit {
 }
 
 ///|
-/// Locates the built application wasm: the conventional artifact first, then
-/// exactly one `.wasm` file in the entry's build directory.
-async fn locate_wasm_artifact(project : @cli.Project) -> String {
-  let conventional = @cli.expected_wasm_artifact(project)
+/// Locates the built application wasm for one built entry package path:
+/// the conventional artifact first, then exactly one `.wasm` file in the
+/// entry's build directory.
+async fn locate_wasm_artifact(project : @cli.Project, entry : String) -> String {
+  let conventional = @cli.expected_wasm_artifact(project, entry)
   if @fs.exists(conventional) {
     return conventional
   }
   let entry_build_dir = @cli.under_root(
     project.root,
-    "_build/wasm/release/build/\{project.contract.entry}",
+    "_build/wasm/release/build/\{entry}",
   )
   if @fs.exists(entry_build_dir) {
     let wasm_files = @fs.readdir(entry_build_dir).filter(fn(name) {
@@ -85,7 +86,7 @@ async fn locate_wasm_artifact(project : @cli.Project) -> String {
     }
   }
   @cli.fail_cli(
-    "no built application wasm for entry \"\{project.contract.entry}\" (expected \{conventional})",
+    "no built application wasm for entry \"\{entry}\" (expected \{conventional})",
   )
 }
 
@@ -119,18 +120,38 @@ async fn web_bundle_build(sub : @argparse.Matches) -> Unit {
   let _ = @cli.require_implemented_host(host_id)
   let project = load_project(option_value(sub, "project", "."))
 
-  // Compile only the declared entry package instead of rebuilding every
-  // package in a potentially large application module.
-  let entry_dir = @cli.entry_package_dir(project)
+  // Compile only the entry package instead of rebuilding every package in a
+  // potentially large application module. An executable entry is the legacy
+  // (published 0.0.5) contract and builds directly; a library entry is the
+  // application contract and builds through the generated Web adapter.
+  let entry_moon_pkg = "\{@cli.entry_package_dir(project)}/moon.pkg"
+  guard @fs.exists(entry_moon_pkg) else {
+    @cli.fail_cli(
+      "entry package \"\{project.contract.entry}\" has no moon.pkg (\{entry_moon_pkg})",
+    )
+  }
+  let legacy_entry = @cli.entry_is_executable_package(
+    read_text_file(entry_moon_pkg),
+  )
+  let build_target : String = if legacy_entry {
+    @cli.entry_package_dir(project)
+  } else {
+    generate_web_entry(project)
+  }
+  let artifact_entry : String = if legacy_entry {
+    project.contract.entry
+  } else {
+    @cli.generated_web_entry()
+  }
   run_step(
     @shell.Cmd::Cmd(
       "moon",
-      ["build", entry_dir, "--target", "wasm", "--release"],
+      ["build", build_target, "--target", "wasm", "--release"],
       cwd=project.root,
     ),
     "building application entry \"\{project.contract.entry}\" (wasm release)",
   )
-  let wasm_artifact = locate_wasm_artifact(project)
+  let wasm_artifact = locate_wasm_artifact(project, artifact_entry)
   let sdk_dir = resolve_sdk_host_dir(
     project,
     SDK_HOST_DIR,

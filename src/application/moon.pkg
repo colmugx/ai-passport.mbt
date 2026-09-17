@@ -1,0 +1,8 @@
+import {
+  "colmugx/ai-passport/graphics",
+  "colmugx/ai-passport/input",
+}
+
+import {
+  "colmugx/ai-passport/core",
+} for "test"

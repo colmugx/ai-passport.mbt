@@ -11,15 +11,25 @@ pub const BUNDLE_DIR : String = ".passport/web"
 
 pub const DEVICE_BUNDLE_DIR : String = ".passport/folotoy-ai-passport"
 
+pub const GENERATED_ENTRY_DIR : String = "passport-generated"
+
+pub fn application_package_import(Project) -> String
+
 pub fn device_entry_package_dir(Project, String) -> String
+
+pub fn entry_is_executable_package(String) -> Bool
 
 pub fn entry_package_dir(Project) -> String
 
 pub fn entry_url_path(ProjectContract) -> String
 
-pub fn expected_wasm_artifact(Project) -> String
+pub fn expected_wasm_artifact(Project, String) -> String
 
 pub fn[T] fail_cli(String) -> T raise
+
+pub fn generated_device_entry() -> String
+
+pub fn generated_web_entry() -> String
 
 pub fn host_dependency_path(ProjectContract, String) -> String?
 

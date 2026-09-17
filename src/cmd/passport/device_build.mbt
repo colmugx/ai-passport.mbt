@@ -428,6 +428,26 @@ fn inject_capture_cc(
 }
 
 ///|
+/// The native capture build of one device entry package. MOONBIT_NEW_NATIVE=0
+/// keeps the proven legacy native pipeline that the capture cc and the
+/// ESP-IDF runtime were validated against.
+async fn run_capture_build(
+  project : @cli.Project,
+  entry_dir : String,
+  capture_dir : String,
+) -> Unit {
+  run_step(
+    @shell.Cmd::Cmd(
+      "moon",
+      ["build", entry_dir, "--target", "native", "--release"],
+      cwd=project.root,
+      env={ "MOON_CC_CAPTURE_DIR": capture_dir, "MOONBIT_NEW_NATIVE": "0" },
+    ),
+    "capturing the device entry C (native release)",
+  )
+}
+
+///|
 /// The capture is valid only when its manifest exists, lists at least one C
 /// source, and every listed source was actually captured.
 async fn validate_capture(capture_dir : String) -> Unit {
@@ -470,14 +490,27 @@ fn config_has_line(text : String, expected : String) -> Bool {
 /// reconfigure and build pair inside the workspace.
 async fn device_build_command(sub : @argparse.Matches) -> Unit {
   let project = load_project(option_value(sub, "project", "."))
-  // A project without a device entry refuses before any host files are
-  // touched (this failure is the CI fixture gate).
-  let device_entry = match project.contract.device_entry {
-    Some(entry) => entry
-    None =>
-      @cli.fail_cli(
-        "host \"folotoy-ai-passport\" requires a \"deviceEntry\" package in passport.json",
-      )
+  // A declared `deviceEntry` is the legacy (published 0.0.5) contract: that
+  // native package builds directly. Without one, a library application
+  // entry gets the generated FoloToy adapter — and an executable entry
+  // (the legacy wasm runtime) refuses before any host files are touched
+  // (this refusal is the CI fixture gate).
+  let legacy_device_entry = match project.contract.device_entry {
+    Some(entry) => Some(entry)
+    None => {
+      let entry_moon_pkg = "\{@cli.entry_package_dir(project)}/moon.pkg"
+      guard @fs.exists(entry_moon_pkg) else {
+        @cli.fail_cli(
+          "entry package \"\{project.contract.entry}\" has no moon.pkg (\{entry_moon_pkg})",
+        )
+      }
+      if @cli.entry_is_executable_package(read_text_file(entry_moon_pkg)) {
+        @cli.fail_cli(
+          "host \"folotoy-ai-passport\" requires a \"deviceEntry\" package in passport.json",
+        )
+      }
+      None
+    }
   }
   let sdk_host = resolve_sdk_host_dir(
     project,
@@ -539,13 +572,6 @@ async fn device_build_command(sub : @argparse.Matches) -> Unit {
   @fs.symlink(target=system_ar, ar_link) catch {
     _ => @cli.fail_cli("cannot symlink \{system_ar} as \{ar_link}")
   }
-  let entry_dir = @cli.device_entry_package_dir(project, device_entry)
-  let moon_pkg_path = "\{entry_dir}/moon.pkg"
-  guard @fs.exists(moon_pkg_path) else {
-    @cli.fail_cli(
-      "device entry package \"\{device_entry}\" has no moon.pkg (\{moon_pkg_path})",
-    )
-  }
   // A stale native build tree would skip compilation entirely and leave the
   // capture empty; the proven template flow resets it the same way.
   if @fs.exists("\{project.root}/_build/native") {
@@ -557,40 +583,59 @@ async fn device_build_command(sub : @argparse.Matches) -> Unit {
     }
   }
   ensure_dir(capture_dir)
-  // The injected capture cc is temporary state only: the saved bytes go back
-  // no matter how the build ends, so the project source tree is
-  // byte-identical after this command on success and failure alike.
-  let moon_pkg_original = @fs.read_file(moon_pkg_path).binary()
-  let injected = inject_capture_cc(
-    read_text_file(moon_pkg_path),
-    cc_path,
-    moon_pkg_path,
-  )
-  @fs.write_file(moon_pkg_path, @utf8.encode(injected)) catch {
-    _ => @cli.fail_cli("cannot write \{moon_pkg_path}")
-  }
-  let outcome : Result[Unit, Error] = try {
-    // MOONBIT_NEW_NATIVE=0 keeps the proven legacy native pipeline that the
-    // capture cc and the ESP-IDF runtime were validated against.
-    run_step(
-      @shell.Cmd::Cmd(
-        "moon",
-        ["build", entry_dir, "--target", "native", "--release"],
-        cwd=project.root,
-        env={ "MOON_CC_CAPTURE_DIR": capture_dir, "MOONBIT_NEW_NATIVE": "0" },
-      ),
-      "capturing the device entry C (native release)",
-    )
-    Ok(())
-  } catch {
-    err => Err(err)
-  }
-  @fs.write_file(moon_pkg_path, moon_pkg_original) catch {
-    _ => @cli.fail_cli("cannot restore \{moon_pkg_path}")
-  }
-  match outcome {
-    Err(err) => raise err
-    Ok(_) => ()
+  match legacy_device_entry {
+    Some(device_entry) => {
+      let entry_dir = @cli.device_entry_package_dir(project, device_entry)
+      let moon_pkg_path = "\{entry_dir}/moon.pkg"
+      guard @fs.exists(moon_pkg_path) else {
+        @cli.fail_cli(
+          "device entry package \"\{device_entry}\" has no moon.pkg (\{moon_pkg_path})",
+        )
+      }
+      // The injected capture cc is temporary state only: the saved bytes go
+      // back no matter how the build ends, so the project source tree is
+      // byte-identical after this command on success and failure alike.
+      let moon_pkg_original = @fs.read_file(moon_pkg_path).binary()
+      let injected = inject_capture_cc(
+        read_text_file(moon_pkg_path),
+        cc_path,
+        moon_pkg_path,
+      )
+      @fs.write_file(moon_pkg_path, @utf8.encode(injected)) catch {
+        _ => @cli.fail_cli("cannot write \{moon_pkg_path}")
+      }
+      let outcome : Result[Unit, Error] = try {
+        run_capture_build(project, entry_dir, capture_dir)
+        Ok(())
+      } catch {
+        err => Err(err)
+      }
+      @fs.write_file(moon_pkg_path, moon_pkg_original) catch {
+        _ => @cli.fail_cli("cannot restore \{moon_pkg_path}")
+      }
+      match outcome {
+        Err(err) => raise err
+        Ok(_) => ()
+      }
+    }
+    None => {
+      // The generated adapter is CLI-owned, so its moon.pkg is written with
+      // the capture cc already wired — nothing to inject or restore.
+      let entry_dir = generate_device_entry(project, Some(cc_path))
+      let outcome : Result[Unit, Error] = try {
+        run_capture_build(project, entry_dir, capture_dir)
+        Ok(())
+      } catch {
+        err => Err(err)
+      }
+      // The capture cc path is machine-specific build state; restore the
+      // plain CLI-owned package so later moon commands stay valid.
+      ignore(generate_device_entry(project, None))
+      match outcome {
+        Err(err) => raise err
+        Ok(_) => ()
+      }
+    }
   }
   validate_capture(capture_dir)
   match try_output(@shell.Cmd::Cmd("idf.py", ["--version"])) {

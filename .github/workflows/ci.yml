@@ -105,6 +105,9 @@ jobs:
             src/cmd/passport/moon.pkg \
             src/cli/cli_error.mbt \
             src/hosts/registry.mbt \
+            src/application/application.mbt \
+            src/runtime/web.mbt \
+            src/runtime/device.mbt \
             hosts/web/index.html \
             hosts/web/passport-host.js \
             hosts/web/pcm-worklet.js \
@@ -186,12 +189,14 @@ jobs:
           test "$(sha256sum template/assets/forest_walk.pcm | cut -d' ' -f1)" = "a848e82fa15266fc474ccc2d9656e30ab24081d690d4944767c332fb7866010a"
 
       # Materialize registry state BEFORE the overlay so Moon never
-      # re-materializes the published package over it afterwards.
-      - name: Materialize Moon dependencies for the SDK and both fixtures
+      # re-materializes the published package over it afterwards. The
+      # no-audio fixture is NOT materialized here: it consumes the
+      # unpublished application contract, so its dependency exists only as
+      # the overlay below (a fresh lock, never the published tree).
+      - name: Materialize Moon dependencies for the SDK and template
         run: |
           (cd sdk && moon update && moon check --target wasm src/cmd/passport)
           (cd template && moon update && moon check --target native)
-          (cd sdk/hosts/folotoy/ai-passport/test/fixtures/no-audio && moon update && moon check --target native)
 
       # CI-internal dev overlay: replace the materialized published package
       # with THIS checkout in each downstream fixture, keeping moon.mod
@@ -201,6 +206,7 @@ jobs:
         run: |
           for project in template sdk/hosts/folotoy/ai-passport/test/fixtures/no-audio; do
             dest="$project/.mooncakes/colmugx/ai-passport"
+            mkdir -p "$(dirname "$dest")"
             rsync -a --delete --delete-excluded \
               --exclude='.git' \
               --exclude='_build' \
@@ -209,11 +215,13 @@ jobs:
               --exclude='.github' \
               --exclude='.githooks' \
               --exclude='/external' \
+              --exclude='/passport-generated' \
               "$AI_PASSPORT_SDK/" "$dest/"
             pin="$(sed -n 's/.*"colmugx\/ai-passport@\([0-9.]*\)".*/\1/p' "$project/moon.mod" | head -n 1)"
             test -n "$pin"
             sed -i.bak "s/^version = \".*\"/version = \"$pin\"/" "$dest/moon.mod"
             rm -f "$dest/moon.mod.bak"
+            rm -f "$project/.mooncakes/.moon-lock"
             echo "overlay: $project carries the current SDK stamped as colmugx/ai-passport@$pin"
           done
 
@@ -252,16 +260,55 @@ jobs:
           echo "firmware size: $size / 3670016 bytes (0x380000 app partition)"
           echo "passport: $margin"
 
+      # Pre-release migration proof: a CI-side copy of the current template
+      # with ONLY its runtime-adapter boundary replaced by the single-entry
+      # contract (the transform lives in this repo, never in the template).
+      # Green means the published template is ready to migrate to 0.0.6.
+      - name: Single-entry transform of the current template (web + device)
+        shell: bash
+        run: |
+          set -eo pipefail
+          bash "$AI_PASSPORT_SDK/.github/scripts/template-single-entry.sh" \
+            "$GITHUB_WORKSPACE/template" "$GITHUB_WORKSPACE/template-single"
+          cd "$GITHUB_WORKSPACE/template-single"
+          test ! -d src/runtime_wasm -a ! -d src/runtime_native
+          grep -q '"entry": "src/app"' passport.json
+          grep -q '"deviceEntry"' passport.json && exit 1 || true
+          moon check --target native --output-json
+          moon test --target native --output-json
+          (cd "$AI_PASSPORT_SDK" && moon run --target wasm src/cmd/passport -- \
+            build --host web --project "$GITHUB_WORKSPACE/template-single")
+          test -f "$GITHUB_WORKSPACE/template-single/.passport/web/app.wasm"
+          test -f "$GITHUB_WORKSPACE/template-single/passport-generated/web/moon.pkg"
+          cmp "$GITHUB_WORKSPACE/template-single/assets/forest_walk.pcm" \
+            "$GITHUB_WORKSPACE/template-single/.passport/web/assets/forest_walk.pcm"
+          . /opt/esp/idf/export.sh
+          (cd "$AI_PASSPORT_SDK" && moon run --target wasm src/cmd/passport -- \
+            build --host folotoy-ai-passport --project "$GITHUB_WORKSPACE/template-single") | tee /tmp/single-entry-device.log
+          grep -q "generated the FoloToy entry adapter" /tmp/single-entry-device.log
+          test -f "$GITHUB_WORKSPACE/template-single/.passport/folotoy-ai-passport/build/ai_passport_app.bin"
+          grep -q "dependency: .*/external/folotoy-ai-passport @ c21a015d44f2bcc02b4d859532d74cd7aefe69be (project-provided)" /tmp/single-entry-device.log
+          size=$(stat -c %s "$GITHUB_WORKSPACE/template-single/.passport/folotoy-ai-passport/build/ai_passport_app.bin")
+          test "$size" -gt 0 -a "$size" -le 3670016
+          echo "single-entry template firmware size: $size / 3670016 bytes"
+
       # Release invariant for optional PCM: an application with no audio
       # asset is a valid FoloToy application. The fixture declares no
       # hostDependencies, so this also exercises the CLI-managed pinned
-      # FoloToy clone. No asset generation, no flash.
-      - name: No-audio device fixture (no pcmLoop asset => valid firmware)
+      # FoloToy clone. No asset generation, no flash. The same fixture also
+      # proves the single-entry contract on the Web Host.
+      - name: No-audio fixture (single entry, web bundle + ESP-IDF firmware)
         shell: bash
         run: |
           set -eo pipefail
           fixture="$AI_PASSPORT_SDK/hosts/folotoy/ai-passport/test/fixtures/no-audio"
           (cd "$fixture" && moon check --target native --output-json && moon check --target wasm --output-json)
+          (cd "$AI_PASSPORT_SDK" && moon run --target wasm src/cmd/passport -- \
+            build --host web --project "$fixture") | tee /tmp/no-audio-web.log
+          test -f "$fixture/.passport/web/app.wasm"
+          test -f "$fixture/.passport/web/index.html"
+          test -f "$fixture/passport-generated/web/moon.pkg"
+          grep -q "generated the Web entry adapter" /tmp/no-audio-web.log
           . /opt/esp/idf/export.sh
           (cd "$AI_PASSPORT_SDK" && moon run --target wasm src/cmd/passport -- \
             build --host folotoy-ai-passport --project "$fixture") | tee /tmp/no-audio-build.log

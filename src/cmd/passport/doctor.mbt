@@ -189,10 +189,38 @@ async fn doctor_device(sub : @argparse.Matches) -> Unit {
       match project.contract.device_entry {
         Some(entry) => doctor_device_project(project, entry, failures)
         None => {
-          println(
-            "FAIL: host \"folotoy-ai-passport\" requires a \"deviceEntry\" package in passport.json",
-          )
-          failures.push("device entry")
+          // Without a declared `deviceEntry`, a library application entry
+          // gets the generated FoloToy adapter; a legacy executable entry
+          // (the published 0.0.5 contract) still requires one.
+          let entry_moon_pkg = "\{@cli.entry_package_dir(project)}/moon.pkg"
+          let generated_ok = if @fs.exists(entry_moon_pkg) {
+            if @cli.entry_is_executable_package(read_text_file(entry_moon_pkg)) {
+              println(
+                "FAIL: host \"folotoy-ai-passport\" requires a \"deviceEntry\" package in passport.json",
+              )
+              false
+            } else if project.source_dir != "" {
+              println(
+                "FAIL: the application entry contract requires the module source root to be the project root; remove `source = \"\{project.source_dir}\"` from moon.mod",
+              )
+              false
+            } else {
+              println(
+                "ok: device entry generated from application entry \"\{project.contract.entry}\" at build time",
+              )
+              true
+            }
+          } else {
+            println(
+              "FAIL: entry package \"\{project.contract.entry}\" has no moon.pkg (\{entry_moon_pkg})",
+            )
+            false
+          }
+          if generated_ok {
+            doctor_device_common(project, failures)
+          } else {
+            failures.push("device entry")
+          }
         }
       }
     None => ()
@@ -287,6 +315,17 @@ async fn doctor_device_project(
     )
     failures.push("device entry package")
   }
+  doctor_device_common(project, failures)
+}
+
+///|
+/// Device checks shared by the declared-entry and generated-entry contracts:
+/// the PCM music plan, the SDK device Host assets, the FoloToy dependency
+/// and the pinned MoonBit runtime manifest.
+async fn doctor_device_common(
+  project : @cli.Project,
+  failures : Array[String],
+) -> Unit {
   match pcm_loop_asset(project) {
     Some(asset) => {
       let source = @cli.under_root(project.root, asset.source)

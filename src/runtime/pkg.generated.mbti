@@ -1,0 +1,45 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "colmugx/ai-passport/runtime"
+
+import {
+  "colmugx/ai-passport/application",
+  "colmugx/ai-passport/hostabi",
+}
+
+// Values
+pub const DEVICE_PROBE : Int = 0xA17E
+
+pub fn device_audio_muted() -> Int
+
+pub fn device_audio_volume() -> Int
+
+pub fn device_boot(() -> &@application.Application) -> Unit
+
+pub fn device_draw() -> Unit
+
+pub fn device_input(Int) -> Unit
+
+pub fn device_present() -> Unit
+
+pub fn device_update() -> Unit
+
+// Errors
+
+// Types and methods
+pub struct DeviceRuntime {
+  // private fields
+}
+
+pub struct WebRuntime {
+  // private fields
+}
+pub fn WebRuntime::frame(Self, Int64) -> Unit
+pub fn WebRuntime::frame_consume(Self) -> Unit
+pub fn WebRuntime::frame_dirty(Self) -> Int
+pub fn WebRuntime::input(Self, Int, Int) -> Unit
+pub fn WebRuntime::new(app~ : &@application.Application, bridge~ : @hostabi.HostBridge, playback_pos_us~ : () -> Int64, set_volume~ : (Int) -> Unit, set_muted~ : (Bool) -> Unit) -> Self
+pub fn WebRuntime::start(Self) -> Unit
+
+// Type aliases
+
+// Traits

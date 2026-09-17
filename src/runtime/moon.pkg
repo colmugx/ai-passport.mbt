@@ -1,0 +1,22 @@
+import {
+  "colmugx/ai-passport/application",
+  "colmugx/ai-passport/battery",
+  "colmugx/ai-passport/driver",
+  "colmugx/ai-passport/graphics",
+  "colmugx/ai-passport/hostabi",
+}
+
+import {
+  "colmugx/ai-passport/application",
+  "colmugx/ai-passport/graphics",
+  "colmugx/ai-passport/hostabi",
+  "colmugx/ai-passport/input",
+} for "test"
+
+options(
+  targets: {
+    "web_wasm.mbt": [ "wasm" ],
+    "device.mbt": [ "native" ],
+    "device_wbtest.mbt": [ "native" ],
+  },
+)

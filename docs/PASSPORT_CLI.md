@@ -88,8 +88,10 @@ The CLI is the executable package `src/cmd/passport` (package path
   exactly what a device build needs, reporting every failure without
   aborting early: the pinned moon toolchain
   (`moon 0.1.20260915 (2e1a46d 2026-09-15)`), `idf.py` reporting ESP-IDF
-  v5.5.3 (source the matching `export.sh` first), the project contract with
-  a `deviceEntry` package, the device entry package and its `moon.pkg`, the
+  v5.5.3 (source the matching `export.sh` first), the project contract
+  (a `deviceEntry` package for the legacy 0.0.5 layout, or a library
+  application entry whose device adapter the build generates), the entry
+  package and its `moon.pkg`, the
   looping PCM music asset source when one is declared (a project with no
   audio asset is a valid state), the resolvable SDK device Host assets, the
   `$MOON_HOME` runtime files against the Host's `moonbit-runtime.sha256`
@@ -116,12 +118,17 @@ The CLI is the executable package `src/cmd/passport` (package path
   build. Preconditions: the ESP-IDF v5.5.3 environment must be sourced
   (`export.sh`), and `$MOON_HOME` (default `~/.moon`) must hold the pinned
   MoonBit installation whose runtime files match the Host's
-  `moonbit-runtime.sha256` manifest. The project's `passport.json` must
-  declare a `deviceEntry` package; a `pcmLoop: true` asset is optional (at
-  most one). The flow, in order:
+  `moonbit-runtime.sha256` manifest. The project must either declare a
+  `deviceEntry` package (the legacy 0.0.5 layout) or use the single-entry
+  application contract, whose FoloToy entry adapter the CLI generates
+  (a legacy executable entry without `deviceEntry` is refused); a
+  `pcmLoop: true` asset is optional (at most one). The flow, in order:
 
-  1. load and validate the project contract;
-  2. refuse clearly when `deviceEntry` or a declared looping PCM asset is
+  1. load and validate the project contract and resolve the device entry:
+     the declared `deviceEntry` package, or the generated
+     `passport-generated/folotoy-ai-passport` adapter for a single-entry
+     application;
+  2. refuse clearly when neither applies or a declared looping PCM asset is
      missing;
   3. resolve the SDK's `hosts/folotoy/ai-passport` implementation;
   4. materialize the device workspace
@@ -173,13 +180,13 @@ and does not download Host files from GitHub.
 
 ## The project contract (`passport.json`)
 
-Deliberately minimal (R4A1); a machine-readable `passport.json` at the
-project root:
+Deliberately minimal; a machine-readable `passport.json` at the project
+root. The current contract has ONE application entry — the same application
+package is the semantic source for every Host:
 
 ```json
 {
-  "entry": "main",
-  "deviceEntry": "runtime_native",
+  "entry": "src/app",
   "assets": [
     { "source": "assets/tone.pcm", "bundlePath": "assets/tone.pcm", "pcmLoop": true }
   ],
@@ -189,14 +196,14 @@ project root:
 }
 ```
 
-- `entry` (required) — the application wasm entry package path relative to
-  the module source root; its moon.pkg exports the six `passport_*` symbols
-  with `heap-start-address = 65536`.
-- `deviceEntry` (optional) — the device entry package path relative to the
-  module source root: the native foreign-library package a physical Host
-  builds and links. Same path rules as `entry` (relative, forward slashes,
-  no traversal). A device build requires it and fails clearly without it;
-  web builds ignore it.
+- `entry` (required) — the application package path relative to the module
+  source root. The package implements the SDK application contract
+  (`colmugx/ai-passport/application`): a type implementing
+  `Application` exposed through one `pub fn passport_main() -> &Application`
+  function. Every platform detail — Wasm ABI exports, C ABI exports,
+  bridges, wiring, startup glue — lives in SDK runtime code and in the Host
+  entry adapters the CLI generates under `passport-generated/`; the
+  application package must not import Host implementation packages.
 - `assets` (optional) — files to materialize into the bundle. `source` is
   project-relative, `bundlePath` is bundle-relative. `pcmLoop: true` marks
   the (single) Host audio asset and produces the generic entry URL
@@ -208,9 +215,9 @@ project root:
   reports playback unavailable, while the audio hardware capability stays.
 - `hostDependencies` (optional) — project-provided checkouts of external
   Host dependencies (third-party hardware code the SDK itself never
-  carries). Each entry maps a registered host id to a `path` relative to
-  the project root. A declared path is authoritative: the build fails
-  clearly when no checkout exists there instead of downloading behind the
+  carries). Each entry maps a registered host id to a `path` relative to the
+  project root. A declared path is authoritative: the build fails clearly
+  when no checkout exists there instead of downloading behind the
   project's back. Without an entry the CLI manages the dependency itself,
   cloning the Host's single pinned revision under
   `.passport/deps/<host-id>/<revision>/` (never a moving ref) and
@@ -224,25 +231,64 @@ replace Host-owned files (`app.wasm`, `index.html`, `passport-host.js`,
 The contract cannot express GPIO, ESP-IDF settings, frame rate, or anything
 application-specific — later rounds extend it without renaming these fields.
 
+### Generated Host entries (`passport-generated/`)
+
+A `passport build` regenerates the target-specific entry adapter packages
+under the project root's `passport-generated/` tree — build output the CLI
+owns completely (gitignored, never edited):
+
+- `passport-generated/web` — the Wasm executable exporting the six frozen
+  ABI v0 `passport_*` symbols, wrapping the application in the SDK Web
+  runtime;
+- `passport-generated/folotoy-ai-passport` — the native foreign library
+  exporting the eight `ai_passport_mbt_*` C symbols `app_main` calls,
+  wrapping the application in the SDK FoloToy runtime (including its
+  measured presentation-lead calibration).
+
+Because moon discovers generated entries as project packages, the
+single-entry contract requires the module source root to be the project
+root (no `source = "..."` in `moon.mod`). Moon skips dot-directories during
+package discovery, which is why the tree is not hidden under `.passport/`.
+
+### Legacy entry layout (published 0.0.5 projects)
+
+Projects published against 0.0.5 keep working unchanged: an `entry` whose
+package is itself a Wasm executable (the old runtime package exporting the
+`passport_*` symbols) builds directly, and `deviceEntry` (optional for
+them) names the native foreign-library package a physical Host builds. The
+CLI detects the legacy shape from the entry package's `moon.pkg` (an
+executable entry is never an application-contract entry) and keeps the two
+layouts strictly separate; new projects must not use `deviceEntry`. A
+legacy executable entry without a `deviceEntry` is still refused by device
+builds with the 0.0.5 error.
+
 ## Application-generality gates
 
 The CLI contains zero application semantics — it cannot know what the user's
 application is. This is enforced, not hoped for:
 
 - suite `cli: structural gates` (hosts/web/test/cli-fixture-suites.mjs) scans
-  every `src/hosts`, `src/cli` and `src/cmd/passport` source file and fails
-  on any user-facing backend synonym (product/board) and on any starter-app
-  vocabulary (which must never appear in tooling);
-- two downstream-style fixtures live under `hosts/web/test/fixtures/` as
+  every `src/hosts`, `src/cli`, `src/cmd/passport`, `src/application` and
+  `src/runtime` source file and fails on any user-facing backend synonym
+  (product/board) and on any starter-app vocabulary (which must never appear
+  in tooling);
+- downstream-style fixtures live under `hosts/web/test/fixtures/` as
   complete nested MoonBit modules depending on the published
   `colmugx/ai-passport` package: fixture A (no audio; plain entry URL) and
-  fixture B (one looping PCM asset; `?pcm=&pcmLoop=1`). Doctor is run against
-  a clean fixture so dependency resolution is exercised through `moon check`.
-  The integration suites build both with the CLI and boot both in a real
-  chromium through the SDK's own index.html: fixture A proves frames + input
-  with no audio dependency; fixture B proves the http PCM fetch, sample-exact
-  looping through the AudioWorklet, ring health and continued frame
-  presentation.
+  fixture B (one looping PCM asset; `?pcm=&pcmLoop=1`) use the legacy 0.0.5
+  entry layout; fixture C is a single-entry application-contract project
+  (display, input, battery, audio output state, playback position) whose
+  suite overlays the current SDK checkout into its `.mooncakes` at the
+  registry pin and builds through the generated Web entry. Doctor is run
+  against a clean fixture so dependency resolution is exercised through
+  `moon check`. The integration suites build each fixture with the CLI and
+  boot them in a real chromium through the SDK's own index.html: fixture A
+  proves frames + input with no audio dependency; fixture B proves the http
+  PCM fetch, sample-exact looping through the AudioWorklet, ring health and
+  continued frame presentation; fixture C proves the whole application
+  contract end to end — the battery bar renders the host reading, the
+  volume bar answers the input queue, the mute row toggles, and the
+  playback/time markers move.
 
 ## Scope-change record (R4A1)
 
@@ -258,3 +304,12 @@ reference them) — are now tracked. No existing public API changed; ABI v0 is
 unchanged. This hardening pass also trims repository-only test material from
 the published archive with `.moonignore` while keeping the CLI and Web Host
 runtime assets packaged.
+
+## Scope-change record (R5A)
+
+Round R5A added the SDK application contract (`src/application`), the SDK
+Host runtimes (`src/runtime`), and CLI-generated Host entry adapters under
+each project's `passport-generated/` tree. The public project contract
+gained the single-entry form (`entry` = application package); the 0.0.5
+entry/deviceEntry layout remains supported unchanged for already-published
+projects. Wasm ABI v0 is unchanged.

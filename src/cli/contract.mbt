@@ -101,6 +101,18 @@ fn reserved_bundle_path(path : String) -> Bool {
 }
 
 ///|
+/// Whether an entry package's `moon.pkg` text declares an executable
+/// package. That is the legacy (published 0.0.5) entry contract: the entry
+/// itself is the Wasm executable exporting the `passport_*` ABI symbols and
+/// `deviceEntry` names a separate native entry. A library entry instead
+/// implements the application contract and the CLI generates every Host
+/// entry around it.
+pub fn entry_is_executable_package(pkg_text : String) -> Bool {
+  (pkg_text.contains("pkgtype(") && pkg_text.contains("executable")) ||
+  pkg_text.contains("is-main")
+}
+
+///|
 /// Parses the contract JSON text. Pure (no filesystem access).
 pub fn parse_contract(text : String) -> ProjectContract raise {
   let value = @json.parse(text) catch {
