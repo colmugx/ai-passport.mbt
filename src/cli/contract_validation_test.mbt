@@ -45,3 +45,16 @@ test "contract rejects duplicate bundle destinations" {
     _ => fail("expected duplicate destination to fail")
   }
 }
+
+///|
+test "contract parses a no-audio project without an assets field" {
+  let contract = @cli.parse_contract("{ \"entry\": \"main\" }")
+  inspect(contract.assets.length(), content="0")
+  inspect(contract.entry, content="main")
+}
+
+///|
+test "contract parses an explicitly empty asset list" {
+  let contract = @cli.parse_contract("{ \"entry\": \"main\", \"assets\": [] }")
+  inspect(contract.assets.length(), content="0")
+}

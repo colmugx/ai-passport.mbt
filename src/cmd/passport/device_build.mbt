@@ -331,6 +331,24 @@ fn pcm_loop_asset(project : @cli.Project) -> @cli.AssetEntry? {
 }
 
 ///|
+/// The application music decision for a device build. A project declares at
+/// most one looping PCM asset (the contract rejects more); declaring none is
+/// a valid no-audio application, so firmware builds without a music blob and
+/// the Host reports playback unavailable.
+enum DeviceMusicPlan {
+  Music(@cli.AssetEntry)
+  NoMusic
+} derive(Eq, Debug)
+
+///|
+fn plan_device_music(project : @cli.Project) -> DeviceMusicPlan {
+  match pcm_loop_asset(project) {
+    Some(asset) => Music(asset)
+    None => NoMusic
+  }
+}
+
+///|
 /// Host material never copied into a device workspace: the Host's own test
 /// tree and README are SDK development material.
 fn device_workspace_skip(name : String) -> Bool {
@@ -447,9 +465,9 @@ fn config_has_line(text : String, expected : String) -> Bool {
 
 ///|
 /// The physical Host build flow, in order: contract device entry, SDK host
-/// resolution, workspace materialization, looping PCM asset, native C
-/// capture, pinned toolchain verification, then the idf.py reconfigure and
-/// build pair inside the workspace.
+/// resolution, workspace materialization, the optional looping PCM asset,
+/// native C capture, pinned toolchain verification, then the idf.py
+/// reconfigure and build pair inside the workspace.
 async fn device_build_command(sub : @argparse.Matches) -> Unit {
   let project = load_project(option_value(sub, "project", "."))
   // A project without a device entry refuses before any host files are
@@ -482,18 +500,26 @@ async fn device_build_command(sub : @argparse.Matches) -> Unit {
       _ => @cli.fail_cli("cannot clear the stale capture at \{generated_dir}")
     }
   }
-  let pcm_asset = match pcm_loop_asset(project) {
-    Some(asset) => asset
-    None =>
-      @cli.fail_cli(
-        "host \"folotoy-ai-passport\" requires exactly one looping PCM music asset (pcmLoop: true)",
+  match plan_device_music(project) {
+    Music(asset) => {
+      let pcm_path = @cli.under_root(project.root, asset.source)
+      guard @fs.exists(pcm_path) else {
+        @cli.fail_cli("contract asset source is missing: \{asset.source}")
+      }
+      copy_file(pcm_path, "\{workspace}/\{MUSIC_ASSET_NAME}")
+    }
+    NoMusic => {
+      // A no-audio application is valid: the firmware embeds no music and
+      // the Host reports playback unavailable. A stale blob from an earlier
+      // build of the same workspace must never survive into it.
+      @fs.remove("\{workspace}/\{MUSIC_ASSET_NAME}") catch {
+        _ => ()
+      }
+      println(
+        "passport: no pcmLoop asset declared; firmware embeds no application music",
       )
+    }
   }
-  let pcm_path = @cli.under_root(project.root, pcm_asset.source)
-  guard @fs.exists(pcm_path) else {
-    @cli.fail_cli("contract asset source is missing: \{pcm_asset.source}")
-  }
-  copy_file(pcm_path, "\{workspace}/\{MUSIC_ASSET_NAME}")
   connect_bsp(project, sdk_host, workspace)
   let capture_dir = "\{generated_dir}/moonbit"
   let toolchain_dir = "\{workspace}/\{CAPTURE_TOOLCHAIN_DIR}"

@@ -90,7 +90,8 @@ The CLI is the executable package `src/cmd/passport` (package path
   (`moon 0.1.20260915 (2e1a46d 2026-09-15)`), `idf.py` reporting ESP-IDF
   v5.5.3 (source the matching `export.sh` first), the project contract with
   a `deviceEntry` package, the device entry package and its `moon.pkg`, the
-  looping PCM music asset source, the resolvable SDK device Host assets, the
+  looping PCM music asset source when one is declared (a project with no
+  audio asset is a valid state), the resolvable SDK device Host assets, the
   `$MOON_HOME` runtime files against the Host's `moonbit-runtime.sha256`
   manifest, and the external FoloToy dependency — which checkout a build
   would use, whether it matches the pinned content manifest, or (when
@@ -116,17 +117,19 @@ The CLI is the executable package `src/cmd/passport` (package path
   (`export.sh`), and `$MOON_HOME` (default `~/.moon`) must hold the pinned
   MoonBit installation whose runtime files match the Host's
   `moonbit-runtime.sha256` manifest. The project's `passport.json` must
-  declare a `deviceEntry` package and exactly one `pcmLoop: true` asset. The
-  flow, in order:
+  declare a `deviceEntry` package; a `pcmLoop: true` asset is optional (at
+  most one). The flow, in order:
 
   1. load and validate the project contract;
-  2. refuse clearly when `deviceEntry` or the looping PCM asset is missing;
+  2. refuse clearly when `deviceEntry` or a declared looping PCM asset is
+     missing;
   3. resolve the SDK's `hosts/folotoy/ai-passport` implementation;
   4. materialize the device workspace
      `<project>/.passport/folotoy-ai-passport/` (host files copied
      copy-over — the idf `build/` tree stays incremental; the SDK's own
      `test/` tree and `README.md` are never copied);
-  5. copy the looping PCM asset to `<workspace>/passport_music.pcm`;
+  5. copy the looping PCM asset to `<workspace>/passport_music.pcm` when
+     declared; without one the firmware embeds no application music;
   6. resolve the external FoloToy dependency — the contract's
      `hostDependencies` checkout when declared, else the CLI-managed clone
      of the single pinned revision under
@@ -200,8 +203,9 @@ project root:
   parameters `?pcm=<bundlePath>&pcmLoop=1`; the host configuration stays
   exactly the SDK's own URL-parameter mechanism. For a device build, the
   `pcmLoop: true` asset's source is the firmware's music file (copied to
-  `passport_music.pcm` in the device workspace), so a project must declare
-  exactly one looping PCM asset to be device-buildable.
+  `passport_music.pcm` in the device workspace). Declaring no audio asset is
+  a valid application: the device firmware then embeds no music and the Host
+  reports playback unavailable, while the audio hardware capability stays.
 - `hostDependencies` (optional) — project-provided checkouts of external
   Host dependencies (third-party hardware code the SDK itself never
   carries). Each entry maps a registered host id to a `path` relative to

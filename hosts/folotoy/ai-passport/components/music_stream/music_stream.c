@@ -12,8 +12,12 @@
 #include "freertos/task.h"
 
 // The canonical asset is embedded as raw PCM16 little-endian mono 16 kHz.
+// Present only when the build declared a music asset (see the component's
+// CMakeLists): a playback-free firmware must not reference the binary.
+#if PASSPORT_HAS_MUSIC_ASSET
 extern const uint8_t passport_music_pcm_start[] asm("_binary_passport_music_pcm_start");
 extern const uint8_t passport_music_pcm_end[] asm("_binary_passport_music_pcm_end");
+#endif
 
 #define PCM_CHUNK_SAMPLES 240        // 15 ms of audio; a few hundred samples
 #define PCM_CHUNK_BYTES (PCM_CHUNK_SAMPLES * (MUSIC_BITS_PER_SAMPLE / 8))
@@ -55,9 +59,10 @@ static int output_codec_volume(unsigned packed) {
     return muted ? 0 : (int)(packed & MUSIC_OUTPUT_VOLUME_MASK);
 }
 
-// Applies the desired output when it changed. Runs in the music task
-// between PCM writes, so the codec volume change and its log never execute
-// in the render task; a redundant identical state writes nothing.
+// Applies the desired output when it changed. With a music asset this runs
+// in the music task between PCM writes; without one it runs in the caller's
+// context because there is no music task. A redundant identical state
+// writes nothing.
 static void apply_desired_output(void) {
     const unsigned desired = atomic_load(&s_desired);
     if (desired == s_applied) {
@@ -70,6 +75,7 @@ static void apply_desired_output(void) {
     s_applied = desired;
 }
 
+#if PASSPORT_HAS_MUSIC_ASSET
 // Streams bounded chunks straight from flash-mapped memory into the codec.
 // bsp_audio_write blocks until the DMA queue accepts the chunk, which paces
 // the loop at real time. At end of stream the offset restarts at zero: the
@@ -104,6 +110,7 @@ static void music_task(void *arg) {
         vTaskDelay(pdMS_TO_TICKS(MUSIC_RETRY_DELAY_MS));
     }
 }
+#endif  // PASSPORT_HAS_MUSIC_ASSET
 
 esp_err_t ai_passport_music_start(int initial_volume, bool initial_muted) {
     if (s_started) {
@@ -122,6 +129,7 @@ esp_err_t ai_passport_music_start(int initial_volume, bool initial_muted) {
     // facts are published here and the task below applies them from the
     // audio-owning context. No second startup-volume constant lives here.
     ai_passport_music_set_output(initial_volume, initial_muted);
+#if PASSPORT_HAS_MUSIC_ASSET
     if (xTaskCreate(music_task, "music_stream", MUSIC_TASK_STACK, NULL,
                     MUSIC_TASK_PRIORITY, NULL) != pdPASS) {
         return ESP_ERR_NO_MEM;
@@ -131,6 +139,12 @@ esp_err_t ai_passport_music_start(int initial_volume, bool initial_muted) {
     ESP_LOGI(TAG,
              "Music streaming %u bytes of PCM16/%dHz/mono in %u-sample chunks",
              (unsigned)total, MUSIC_SAMPLE_RATE_HZ, PCM_CHUNK_SAMPLES);
+#else
+    // No application music asset: the Host audio hardware stays up (the App's
+    // output states keep reaching the codec), but there is nothing to stream,
+    // so no task runs and playback stays unavailable for the App.
+    ESP_LOGI(TAG, "No application PCM asset; playback unavailable");
+#endif
     return ESP_OK;
 }
 
@@ -140,6 +154,11 @@ void ai_passport_music_set_output(int volume, bool muted) {
         packed |= MUSIC_OUTPUT_MUTED_BIT;
     }
     atomic_store(&s_desired, packed);
+#if !PASSPORT_HAS_MUSIC_ASSET
+    // Without a music task somebody must still apply the state to the codec:
+    // this runs in the App's context, one bounded I2C write per real change.
+    apply_desired_output();
+#endif
 }
 
 int32_t ai_passport_music_available(void) {

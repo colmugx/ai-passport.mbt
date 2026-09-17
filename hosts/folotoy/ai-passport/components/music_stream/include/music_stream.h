@@ -1,7 +1,11 @@
 // Device background music transport: streams the flash-embedded application
-// PCM into the BSP audio codec. One FreeRTOS task uniquely owns every PCM
-// write and every codec volume change; the application render loop, the
-// button callback and MoonBit code never touch audio transport.
+// PCM into the BSP audio codec when the build declared a music asset
+// (PASSPORT_HAS_MUSIC_ASSET, set by the component's CMakeLists). Without one
+// the audio output still comes up, but no streaming task runs and playback
+// stays unavailable (ai_passport_music_available() == 0). One FreeRTOS task
+// uniquely owns every PCM write and every codec volume change; the
+// application render loop, the button callback and MoonBit code never touch
+// audio transport.
 //
 // The transport holds no control semantics. It receives the ABSOLUTE desired
 // output state (volume 0..100, muted) that the portable App decided, stored

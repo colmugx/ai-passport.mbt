@@ -299,12 +299,10 @@ async fn doctor_device_project(
         failures.push("looping PCM music asset")
       }
     }
-    None => {
+    None =>
       println(
-        "FAIL: host \"folotoy-ai-passport\" requires exactly one looping PCM music asset (pcmLoop: true)",
+        "ok: no looping PCM music asset declared (device playback will be unavailable)",
       )
-      failures.push("looping PCM music asset")
-    }
   }
   let mut host_dir : String? = None
   try {
