@@ -1,0 +1,4 @@
+{
+  "entry": "runtime_wasm",
+  "deviceEntry": "runtime_native"
+}
