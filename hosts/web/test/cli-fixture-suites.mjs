@@ -217,9 +217,26 @@ let fixtureCOverlayPin = null;
 function overlayCurrentSdkIntoFixtureC(repoRoot) {
   if (fixtureCOverlayPin !== null) return fixtureCOverlayPin;
   const project = fixtureDir(repoRoot, "fixture-c");
-  const pin = /"colmugx\/ai-passport@([0-9.]+)"/.exec(
-    fs.readFileSync(path.join(project, "moon.mod"), "utf8"),
-  )[1];
+  const projectMoonMod = path.join(project, "moon.mod");
+  const originalProjectMoonMod = fs.readFileSync(projectMoonMod, "utf8");
+  const pin = /"colmugx\/ai-passport@([0-9.]+)"/.exec(originalProjectMoonMod)[1];
+  const expose = spawnSync(
+    "python3",
+    [
+      path.join(repoRoot, ".github", "scripts", "sync-overlay-dependencies.py"),
+      path.join(repoRoot, "moon.mod"),
+      projectMoonMod,
+    ],
+    { encoding: "utf8", timeout: 30_000, maxBuffer: 4 * 1024 * 1024 },
+  );
+  if (expose.status !== 0) {
+    throw new Error(
+      `fixture-c overlay dependency preparation failed: ${expose.stderr || expose.stdout}`,
+    );
+  }
+  process.once("exit", () => {
+    fs.writeFileSync(projectMoonMod, originalProjectMoonMod);
+  });
   const sdkMod = fs.readFileSync(path.join(repoRoot, "moon.mod"), "utf8");
   const dest = path.join(project, ".mooncakes", "colmugx", "ai-passport");
   const excluded = new Set([
