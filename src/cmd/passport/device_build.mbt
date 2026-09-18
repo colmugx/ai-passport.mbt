@@ -240,7 +240,7 @@ async fn ensure_bsp_checkout(project : @cli.Project) -> (String, Bool) {
     ProjectProvided(path) => (path, true)
     DeclaredMissing(path) =>
       @cli.fail_cli(
-        "passport.json declares hostDependencies[\"folotoy-ai-passport\"] but no checkout exists at \{path}; fix the path, or remove the field to let the CLI manage the dependency",
+        "passport.toml declares hostDependencies[\"folotoy-ai-passport\"] but no checkout exists at \{path}; fix the path, or remove the field to let the CLI manage the dependency",
       )
     ManagedReady(dir) => {
       if git_head(dir) != Some(BSP_COMMIT) {
@@ -506,7 +506,7 @@ async fn device_build_command(sub : @argparse.Matches) -> Unit {
       }
       if @cli.entry_is_executable_package(read_text_file(entry_moon_pkg)) {
         @cli.fail_cli(
-          "host \"folotoy-ai-passport\" requires a \"deviceEntry\" package in passport.json",
+          "host \"folotoy-ai-passport\" requires a \"deviceEntry\" package in passport.toml",
         )
       }
       None

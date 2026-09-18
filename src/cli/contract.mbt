@@ -1,5 +1,5 @@
 ///|
-/// The minimal downstream project contract (machine-readable `passport.json`
+/// The minimal downstream project contract (machine-readable `passport.toml`
 /// at the project root). It answers exactly what generic tooling needs to
 /// build a Host bundle: which application package is the wasm entry, and
 /// which project files to materialize into the bundle. Deliberately small —
@@ -77,17 +77,17 @@ pub(all) struct Project {
 /// traversal and platform-specific separators before any filesystem access.
 fn validate_relative_path(value : String, field : String) -> Unit raise {
   guard value != "" else {
-    fail_cli("passport.json: \{field} must not be empty")
+    fail_cli("passport.toml: \{field} must not be empty")
   }
   guard !value.has_prefix("/") else {
-    fail_cli("passport.json: \{field} must be relative")
+    fail_cli("passport.toml: \{field} must be relative")
   }
   guard value.find("\\") is None else {
-    fail_cli("passport.json: \{field} must use forward slashes")
+    fail_cli("passport.toml: \{field} must use forward slashes")
   }
   for part in value.split("/").to_array() {
     if part == "" || part == "." || part == ".." {
-      fail_cli("passport.json: \{field} contains an unsafe path component")
+      fail_cli("passport.toml: \{field} contains an unsafe path component")
     }
   }
 }
@@ -113,106 +113,100 @@ pub fn entry_is_executable_package(pkg_text : String) -> Bool {
 }
 
 ///|
-/// Parses the contract JSON text. Pure (no filesystem access).
+/// Parses the project contract TOML text. Pure (no filesystem access).
 pub fn parse_contract(text : String) -> ProjectContract raise {
-  let value = @json.parse(text) catch {
-    _ => fail_cli("passport.json: not valid JSON")
+  let value = @toml.parse(text) catch {
+    _ => fail_cli("passport.toml: not valid TOML")
   }
-  guard value is Object(root) else {
-    fail_cli("passport.json: the top level must be a JSON object")
+  guard value is @toml.TomlTable(root) else {
+    fail_cli("passport.toml: the top level must be a TOML table")
   }
   let entry = match root.get("entry") {
-    Some(String(entry)) => entry
-    Some(_) => fail_cli("passport.json: \"entry\" must be a string")
+    Some(@toml.TomlString(entry)) => entry
+    Some(_) => fail_cli("passport.toml: \"entry\" must be a string")
     None =>
       fail_cli(
-        "passport.json: missing required field \"entry\" (the application wasm entry package)",
+        "passport.toml: missing required field \"entry\" (the application wasm entry package)",
       )
   }
   validate_relative_path(entry, "\"entry\"")
   let device_entry = match root.get("deviceEntry") {
-    Some(String(device_entry)) => {
+    Some(@toml.TomlString(device_entry)) => {
       validate_relative_path(device_entry, "\"deviceEntry\"")
       Some(device_entry)
     }
-    Some(_) => fail_cli("passport.json: \"deviceEntry\" must be a string")
+    Some(_) => fail_cli("passport.toml: \"deviceEntry\" must be a string")
     None => None
   }
   let assets : Array[AssetEntry] = []
   match root.get("assets") {
-    Some(Array(list)) =>
+    Some(@toml.TomlArray(list)) =>
       for raw in list {
         let asset = parse_asset(raw)
         for existing in assets {
           if existing.bundle_path == asset.bundle_path {
             fail_cli(
-              "passport.json: duplicate asset \"bundlePath\" \"\{asset.bundle_path}\"",
+              "passport.toml: duplicate asset \"bundlePath\" \"\{asset.bundle_path}\"",
             )
           }
         }
         assets.push(asset)
       }
-    Some(_) => fail_cli("passport.json: \"assets\" must be an array")
+    Some(_) => fail_cli("passport.toml: \"assets\" must be an array")
     None => ()
   }
   let pcm_assets = assets.filter(fn(a) { a.pcm_loop })
   if pcm_assets.length() > 1 {
     fail_cli(
-      "passport.json: at most one asset may set \"pcmLoop\": true (found \{pcm_assets.length()})",
+      "passport.toml: at most one asset may set \"pcmLoop\": true (found \{pcm_assets.length()})",
     )
   }
   let host_dependencies : Array[HostDependency] = []
   match root.get("hostDependencies") {
-    Some(Object(map)) =>
+    Some(@toml.TomlTable(map)) =>
       for (key, raw) in map {
-        guard raw is Object(dep) else {
+        guard raw is @toml.TomlTable(dep) else {
           fail_cli(
-            "passport.json: hostDependencies[\"\{key}\"] must be an object",
+            "passport.toml: hostDependencies[\"\{key}\"] must be a table",
           )
         }
-        guard dep.get("path") is Some(String(path)) else {
+        guard dep.get("path") is Some(@toml.TomlString(path)) else {
           fail_cli(
-            "passport.json: hostDependencies[\"\{key}\"] is missing required field \"path\"",
+            "passport.toml: hostDependencies[\"\{key}\"] is missing required string field \"path\"",
           )
         }
         validate_relative_path(path, "hostDependencies[\"\{key}\"].\"path\"")
-        for existing in host_dependencies {
-          if existing.host_id == key {
-            fail_cli(
-              "passport.json: duplicate hostDependencies entry \"\{key}\"",
-            )
-          }
-        }
         host_dependencies.push({ host_id: key, path, })
       }
-    Some(_) => fail_cli("passport.json: \"hostDependencies\" must be an object")
+    Some(_) => fail_cli("passport.toml: \"hostDependencies\" must be a table")
     None => ()
   }
   { entry, device_entry, assets, host_dependencies, }
 }
 
 ///|
-fn parse_asset(value : Json) -> AssetEntry raise {
-  guard value is Object(obj) else {
-    fail_cli("passport.json: each asset must be an object")
+fn parse_asset(value : @toml.TomlValue) -> AssetEntry raise {
+  guard value is @toml.TomlTable(obj) else {
+    fail_cli("passport.toml: each asset must be a table")
   }
-  guard obj.get("source") is Some(String(source)) else {
-    fail_cli("passport.json: asset is missing required field \"source\"")
+  guard obj.get("source") is Some(@toml.TomlString(source)) else {
+    fail_cli("passport.toml: asset is missing required string field \"source\"")
   }
-  guard obj.get("bundlePath") is Some(String(bundle_path)) else {
-    fail_cli("passport.json: asset is missing required field \"bundlePath\"")
+  guard obj.get("bundlePath") is Some(@toml.TomlString(bundle_path)) else {
+    fail_cli(
+      "passport.toml: asset is missing required string field \"bundlePath\"",
+    )
   }
   validate_relative_path(source, "asset \"source\"")
   validate_relative_path(bundle_path, "asset \"bundlePath\"")
   guard !reserved_bundle_path(bundle_path) else {
     fail_cli(
-      "passport.json: asset \"bundlePath\" \"\{bundle_path}\" is reserved by the Web Host",
+      "passport.toml: asset \"bundlePath\" \"\{bundle_path}\" is reserved by the Web Host",
     )
   }
   let pcm_loop = match obj.get("pcmLoop") {
-    Some(True) => true
-    Some(False) => false
-    Some(_) => fail_cli("passport.json: asset \"pcmLoop\" must be a boolean")
+    Some(@toml.TomlBoolean(value)) => value
+    Some(_) => fail_cli("passport.toml: asset \"pcmLoop\" must be a boolean")
     None => false
   }
   { source, bundle_path, pcm_loop, }

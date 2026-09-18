@@ -1,6 +1,6 @@
 ///|
 /// Fixture B: a downstream-style application with one generic looping PCM
-/// asset. The app itself remains ordinary graphics/input code; passport.json
+/// asset. The app itself remains ordinary graphics/input code; passport.toml
 /// configures the Host audio asset. Together with fixture A this proves the
 /// CLI is application-generic and audio is project data, not app semantics.
 ///

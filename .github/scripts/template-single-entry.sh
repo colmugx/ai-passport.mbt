@@ -67,7 +67,7 @@ EOF
 # The app package gains the SDK application contract import; all existing
 # imports stay as authored.
 python3 - "$dst" <<'EOF'
-import json, sys
+import re, sys
 
 root = sys.argv[1]
 
@@ -76,13 +76,18 @@ text = open(pkg_path).read()
 text = text.replace("import {", 'import {\n  "colmugx/ai-passport/application",', 1)
 open(pkg_path, "w").write(text)
 
-contract_path = f"{root}/passport.json"
-contract = json.load(open(contract_path))
-contract["entry"] = "app"
-contract.pop("deviceEntry", None)
+contract_path = f"{root}/passport.toml"
+contract = open(contract_path).read()
+contract, count = re.subn(r'^entry\\s*=.*
+EOF
+
+echo "single-entry transform: $dst (entry app, runtime adapters removed)"
+, 'entry = "app"', contract, count=1, flags=re.MULTILINE)
+if count != 1:
+    raise SystemExit("passport.toml must contain exactly one top-level entry assignment")
+contract = re.sub(r'^deviceEntry\\s*=.*\\n?', '', contract, count=1, flags=re.MULTILINE)
 with open(contract_path, "w") as handle:
-    json.dump(contract, handle, indent=2)
-    handle.write("\n")
+    handle.write(contract)
 EOF
 
 echo "single-entry transform: $dst (entry app, runtime adapters removed)"

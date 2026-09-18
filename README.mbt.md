@@ -76,7 +76,7 @@ CI runs the same gate in a dedicated `wasm-host` job (`.github/workflows/ci.yml`
 
 ## Passport CLI
 
-The module ships the `passport` CLI: build and serve applications for registered Hosts, with **Host as the only backend abstraction**. Registered Hosts: `web` (implemented) and `folotoy-ai-passport` (implemented; ESP-IDF device build, no flash). A downstream project is any MoonBit module with a `passport.json` at its root declaring ONE application entry — the same application package serves every Host:
+The module ships the `passport` CLI: build and serve applications for registered Hosts, with **Host as the only backend abstraction**. Registered Hosts: `web` (implemented) and `folotoy-ai-passport` (implemented; ESP-IDF device build, no flash). A downstream project is any MoonBit module with a `passport.toml` at its root declaring ONE application entry — the same application package serves every Host:
 
 ```json
 { "entry": "app" }

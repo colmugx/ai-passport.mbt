@@ -196,7 +196,7 @@ async fn doctor_device(sub : @argparse.Matches) -> Unit {
           let generated_ok = if @fs.exists(entry_moon_pkg) {
             if @cli.entry_is_executable_package(read_text_file(entry_moon_pkg)) {
               println(
-                "FAIL: host \"folotoy-ai-passport\" requires a \"deviceEntry\" package in passport.json",
+                "FAIL: host \"folotoy-ai-passport\" requires a \"deviceEntry\" package in passport.toml",
               )
               false
             } else {
@@ -280,7 +280,7 @@ async fn report_bsp_dependency(
       verify_bsp_checkout(path, manifest, "CLI-managed", failures)
     DeclaredMissing(path) => {
       println(
-        "FAIL: passport.json declares hostDependencies[\"folotoy-ai-passport\"] but no checkout exists at \{path}; fix the path, or remove the field to let the CLI manage the dependency",
+        "FAIL: passport.toml declares hostDependencies[\"folotoy-ai-passport\"] but no checkout exists at \{path}; fix the path, or remove the field to let the CLI manage the dependency",
       )
       failures.push("FoloToy dependency")
     }
