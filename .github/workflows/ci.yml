@@ -200,11 +200,10 @@ jobs:
         run: |
           test "$(sha256sum template/assets/forest_walk.pcm | cut -d' ' -f1)" = "a848e82fa15266fc474ccc2d9656e30ab24081d690d4944767c332fb7866010a"
 
-      # Materialize registry state BEFORE the overlay so Moon never
-      # re-materializes the published package over it afterwards. The
-      # no-audio fixture is NOT materialized here: it consumes the
-      # unpublished application contract, so its dependency exists only as
-      # the overlay below (a fresh lock, never the published tree).
+      # Materialize the published dependency graph first. The overlay step
+      # below then exposes THIS SDK's dependency graph, resolves any newly
+      # introduced transitive modules, and restores this checkout over the
+      # registry-pinned package before compilation.
       - name: Materialize Moon dependencies for the SDK and template
         run: |
           (cd sdk && moon update && moon check --target wasm src/cmd/passport)
@@ -218,22 +217,30 @@ jobs:
         run: |
           for project in template sdk/hosts/folotoy/ai-passport/test/fixtures/no-audio; do
             dest="$project/.mooncakes/colmugx/ai-passport"
-            mkdir -p "$(dirname "$dest")"
-            rsync -a --delete --delete-excluded \
-              --exclude='.git' \
-              --exclude='_build' \
-              --exclude='.mooncakes' \
-              --exclude='.agents' \
-              --exclude='.github' \
-              --exclude='.githooks' \
-              --exclude='/external' \
-              --exclude='passport-generated' \
-              "$AI_PASSPORT_SDK/" "$dest/"
             pin="$(sed -n 's/.*"colmugx\/ai-passport@\([0-9.]*\)".*/\1/p' "$project/moon.mod" | head -n 1)"
             test -n "$pin"
-            sed -i.bak "s/^version = \".*\"/version = \"$pin\"/" "$dest/moon.mod"
-            rm -f "$dest/moon.mod.bak"
+            overlay_current_sdk() {
+              mkdir -p "$(dirname "$dest")"
+              rsync -a --delete --delete-excluded \
+                --exclude='.git' \
+                --exclude='_build' \
+                --exclude='.mooncakes' \
+                --exclude='.agents' \
+                --exclude='.github' \
+                --exclude='.githooks' \
+                --exclude='/external' \
+                --exclude='passport-generated' \
+                "$AI_PASSPORT_SDK/" "$dest/"
+              sed -i.bak "s/^version = \".*\"/version = \"$pin\"/" "$dest/moon.mod"
+              rm -f "$dest/moon.mod.bak"
+            }
+            overlay_current_sdk
             rm -f "$project/.mooncakes/.moon-lock"
+            (cd "$project" && moon update)
+            # moon update may rematerialize the published package at this pin;
+            # restore the current checkout while keeping the freshly-resolved
+            # lock and transitive dependencies.
+            overlay_current_sdk
             echo "overlay: $project carries the current SDK stamped as colmugx/ai-passport@$pin"
           done
 
