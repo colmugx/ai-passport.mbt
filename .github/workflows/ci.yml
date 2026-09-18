@@ -122,6 +122,12 @@ jobs:
             echo "THIRD-PARTY source leaked into package"
             exit 1
           fi
+          # CLI-generated Host entry adapters are downstream build output;
+          # they never ship in the SDK archive.
+          if grep -q 'passport-generated/' /tmp/passport-package-list.txt; then
+            echo "generated entry adapter leaked into package"
+            exit 1
+          fi
           for forbidden in \
             hosts/web/test/run-tests.mjs \
             hosts/web/tools/make-bundle.mjs \
@@ -215,7 +221,7 @@ jobs:
               --exclude='.github' \
               --exclude='.githooks' \
               --exclude='/external' \
-              --exclude='/passport-generated' \
+              --exclude='passport-generated' \
               "$AI_PASSPORT_SDK/" "$dest/"
             pin="$(sed -n 's/.*"colmugx\/ai-passport@\([0-9.]*\)".*/\1/p' "$project/moon.mod" | head -n 1)"
             test -n "$pin"
@@ -272,14 +278,19 @@ jobs:
             "$GITHUB_WORKSPACE/template" "$GITHUB_WORKSPACE/template-single"
           cd "$GITHUB_WORKSPACE/template-single"
           test ! -d src/runtime_wasm -a ! -d src/runtime_native
-          grep -q '"entry": "src/app"' passport.json
+          # The migrated project stays a normal MoonBit project: the source
+          # root and every authored import are untouched.
+          grep -qx 'source = "src"' moon.mod
+          grep -q '"entry": "app"' passport.json
           grep -q '"deviceEntry"' passport.json && exit 1 || true
+          grep -q '"colmugx/ai-passport-template/forest_walk"' src/app/moon.pkg
           moon check --target native --output-json
           moon test --target native --output-json
           (cd "$AI_PASSPORT_SDK" && moon run --target wasm src/cmd/passport -- \
             build --host web --project "$GITHUB_WORKSPACE/template-single")
           test -f "$GITHUB_WORKSPACE/template-single/.passport/web/app.wasm"
-          test -f "$GITHUB_WORKSPACE/template-single/passport-generated/web/moon.pkg"
+          test -f "$GITHUB_WORKSPACE/template-single/src/passport-generated/web/moon.pkg"
+          test -f "$GITHUB_WORKSPACE/template-single/src/passport-generated/web/adapter.mbt"
           cmp "$GITHUB_WORKSPACE/template-single/assets/forest_walk.pcm" \
             "$GITHUB_WORKSPACE/template-single/.passport/web/assets/forest_walk.pcm"
           . /opt/esp/idf/export.sh
@@ -307,7 +318,7 @@ jobs:
             build --host web --project "$fixture") | tee /tmp/no-audio-web.log
           test -f "$fixture/.passport/web/app.wasm"
           test -f "$fixture/.passport/web/index.html"
-          test -f "$fixture/passport-generated/web/moon.pkg"
+          test -f "$fixture/src/passport-generated/web/moon.pkg"
           grep -q "generated the Web entry adapter" /tmp/no-audio-web.log
           . /opt/esp/idf/export.sh
           (cd "$AI_PASSPORT_SDK" && moon run --target wasm src/cmd/passport -- \

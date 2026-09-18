@@ -290,3 +290,46 @@ test "expected_wasm_artifact follows the moon build layout" {
     content="/work/app/_build/wasm/release/build/cmd/greeter/greeter.wasm",
   )
 }
+
+///|
+test "generated entries live under the module source root" {
+  let src_rooted : @cli.Project = {
+    root: "/work/app",
+    module_name: "colmugx/app",
+    source_dir: "src",
+    contract: {
+      entry: "app",
+      device_entry: None,
+      assets: [],
+      host_dependencies: [],
+    },
+  }
+  // Filesystem paths carry the source root; package paths never do, and
+  // moon's _build layout uses the package path form.
+  inspect(
+    @cli.generated_web_entry_dir(src_rooted),
+    content="/work/app/src/passport-generated/web",
+  )
+  inspect(
+    @cli.generated_device_entry_dir(src_rooted),
+    content="/work/app/src/passport-generated/folotoy-ai-passport",
+  )
+  inspect(@cli.generated_web_entry(), content="passport-generated/web")
+  inspect(
+    @cli.expected_wasm_artifact(src_rooted, @cli.generated_web_entry()),
+    content="/work/app/_build/wasm/release/build/passport-generated/web/web.wasm",
+  )
+  inspect(
+    @cli.application_package_import(src_rooted),
+    content="colmugx/app/app",
+  )
+  let root_rooted : @cli.Project = { ..src_rooted, source_dir: "", }
+  inspect(
+    @cli.generated_web_entry_dir(root_rooted),
+    content="/work/app/passport-generated/web",
+  )
+  inspect(
+    @cli.expected_wasm_artifact(root_rooted, @cli.generated_web_entry()),
+    content="/work/app/_build/wasm/release/build/passport-generated/web/web.wasm",
+  )
+}

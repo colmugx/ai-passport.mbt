@@ -19,7 +19,7 @@
  *                          application contract: display, input, battery,
  *                          audio output state, playback position) builds
  *                          through the CLI-GENERATED Web entry adapter
- *                          under passport-generated/, keeps the ABI v0
+ *                          under src/passport-generated/, keeps the ABI v0
  *                          export/import surface, and boots in a real
  *                          browser rendering the host facts;
  *  5. doctor             — the doctor passes for a resolvable project;
@@ -464,10 +464,11 @@ export function registerCliFixtureSuites({ suite, ok, eq, eqText, SuiteError, re
       "/index.html?pcm=./assets/tone.pcm&pcmLoop=1",
       `the printed entry must carry the generic PCM parameters (got ${JSON.stringify(url)})`,
     );
-    // The entry adapter is the CLI's generated build product.
-    const generated = path.join(project, "passport-generated", "web");
-    ok(fs.existsSync(path.join(generated, "moon.pkg")), "passport-generated/web/moon.pkg must exist");
-    ok(fs.existsSync(path.join(generated, "adapter.mbt")), "passport-generated/web/adapter.mbt must exist");
+    // The entry adapter is the CLI's generated build product, under the
+    // module source root (the fixture keeps `source = "src"`).
+    const generated = path.join(project, "src", "passport-generated", "web");
+    ok(fs.existsSync(path.join(generated, "moon.pkg")), "src/passport-generated/web/moon.pkg must exist");
+    ok(fs.existsSync(path.join(generated, "adapter.mbt")), "src/passport-generated/web/adapter.mbt must exist");
     ok(
       res.stdout.includes("generated the Web entry adapter"),
       "the build must log the generated entry adapter",

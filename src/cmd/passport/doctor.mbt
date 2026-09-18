@@ -199,11 +199,6 @@ async fn doctor_device(sub : @argparse.Matches) -> Unit {
                 "FAIL: host \"folotoy-ai-passport\" requires a \"deviceEntry\" package in passport.json",
               )
               false
-            } else if project.source_dir != "" {
-              println(
-                "FAIL: the application entry contract requires the module source root to be the project root; remove `source = \"\{project.source_dir}\"` from moon.mod",
-              )
-              false
             } else {
               println(
                 "ok: device entry generated from application entry \"\{project.contract.entry}\" at build time",

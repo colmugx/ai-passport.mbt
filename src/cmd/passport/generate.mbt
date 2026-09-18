@@ -1,20 +1,18 @@
 ///|
-/// Generation of the Host entry adapter packages under
-/// `<project>/passport-generated/`. They are generated build output,
-/// recreated wholesale by every build: each adapter imports the project's
+/// Generation of the Host entry adapter packages under the module source
+/// root's `passport-generated/` tree. They are generated build output,
+/// wiped and recreated by every build: each adapter imports the project's
 /// application entry, wraps it in the SDK runtime for one Host, and exposes
-/// exactly that Host's ABI. The project's own source tree is never written.
+/// exactly that Host's ABI. The project's own source files are never written.
 
 ///|
-/// The single-entry contract requires the module source root to be the
-/// project root: moon must discover the generated entry packages as part of
-/// the project module, and it only discovers packages under the source
-/// root.
-fn require_root_source(project : @cli.Project) -> Unit raise {
-  guard project.source_dir == "" else {
-    @cli.fail_cli(
-      "the application entry contract requires the module source root to be the project root; remove `source = \"\{project.source_dir}\"` from moon.mod (generated Host entries are discovered as project packages)",
-    )
+/// Removes one generated adapter package so no stale generated file can
+/// survive into the fresh build.
+async fn clear_generated_package(pkg_dir : String) -> Unit {
+  if @fs.exists(pkg_dir) {
+    @fs.rmdir(pkg_dir, recursive=true) catch {
+      _ => @cli.fail_cli("cannot clear the generated entry at \{pkg_dir}")
+    }
   }
 }
 
@@ -27,10 +25,10 @@ async fn write_generated_file(path : String, text : String) -> Unit {
 
 ///|
 /// Regenerates the Web Host entry (wasm executable, ABI v0 exports) and
-/// returns its package path for `moon build`.
+/// returns its filesystem package path for `moon build`.
 async fn generate_web_entry(project : @cli.Project) -> String {
-  require_root_source(project)
-  let pkg_dir = @cli.under_root(project.root, @cli.generated_web_entry())
+  let pkg_dir = @cli.generated_web_entry_dir(project)
+  clear_generated_package(pkg_dir)
   ensure_dir(pkg_dir)
   let app_import = @cli.application_package_import(project)
   let moon_pkg : String =
@@ -110,22 +108,22 @@ async fn generate_web_entry(project : @cli.Project) -> String {
   println(
     "passport: generated the Web entry adapter at \{pkg_dir} for application entry \"\{project.contract.entry}\"",
   )
-  @cli.generated_web_entry()
+  pkg_dir
 }
 
 ///|
 /// Regenerates the FoloToy Host native entry (foreign library, the eight
-/// `ai_passport_mbt_*` C symbols) and returns its package path for
-/// `moon build`. `cc_path` wires the capture cc into the link options for
-/// the capture invocation — a machine-specific path the CLI rewrites away
-/// afterwards (pass `None` for the plain package), because the package is
-/// CLI-owned: nothing to inject or restore.
+/// `ai_passport_mbt_*` C symbols) and returns its filesystem package path
+/// for `moon build`. `cc_path` wires the capture cc into the link options
+/// for the capture invocation — a machine-specific path the CLI rewrites
+/// away afterwards (pass `None` for the plain package), because the package
+/// is CLI-owned: nothing to inject or restore.
 async fn generate_device_entry(
   project : @cli.Project,
   cc_path : String?,
 ) -> String {
-  require_root_source(project)
-  let pkg_dir = @cli.under_root(project.root, @cli.generated_device_entry())
+  let pkg_dir = @cli.generated_device_entry_dir(project)
+  clear_generated_package(pkg_dir)
   ensure_dir(pkg_dir)
   let app_import = @cli.application_package_import(project)
   let link_options : String = match cc_path {
@@ -214,5 +212,5 @@ async fn generate_device_entry(
   println(
     "passport: generated the FoloToy entry adapter at \{pkg_dir} for application entry \"\{project.contract.entry}\"",
   )
-  @cli.generated_device_entry()
+  pkg_dir
 }

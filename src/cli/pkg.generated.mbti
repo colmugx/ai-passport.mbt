@@ -29,7 +29,11 @@ pub fn[T] fail_cli(String) -> T raise
 
 pub fn generated_device_entry() -> String
 
+pub fn generated_device_entry_dir(Project) -> String
+
 pub fn generated_web_entry() -> String
+
+pub fn generated_web_entry_dir(Project) -> String
 
 pub fn host_dependency_path(ProjectContract, String) -> String?
 

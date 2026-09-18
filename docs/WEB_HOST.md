@@ -2,9 +2,7 @@
 
 > **Status: INTERNAL, EXPERIMENTAL.** ABI v0 is *not* a frozen public SDK API
 > and may change or be withdrawn in later rounds. The target backend is the
-> MoonBit **`wasm`** target (not `js`, not `wasm-gc`). Toolchain this document
-> was verified against (2026-09-15): moon 0.1.20260904, moonc
-> v0.10.12+1634b282e, moonrun 0.1.20260904, MoonBit core 0.10.12.
+> MoonBit **`wasm`** target (not `js`, not `wasm-gc`).
 >
 > The host-side reference is `hosts/web/README.md`; the test/tooling reference
 > is `hosts/web/test/README.md`. When those and this file disagree, the code
@@ -146,7 +144,7 @@ A ScriptProcessorNode fallback exists only where AudioWorklet is unavailable
 authored MP3/WAV decoding is an asset-compiler concern outside this
 repository (`hosts/web/README.md`).
 
-### PCM asset mode (R1.2: normalized `.pcm` artifact transport)
+### PCM asset mode (normalized `.pcm` artifact transport)
 
 Besides the streamed `host_pcm_write` producer, the host can itself play an
 already-normalized `.pcm` artifact — the SAME bytes an ESP32-class device
@@ -299,9 +297,13 @@ moon build --target wasm --release        # fixture app.wasm (release)
 moon build --target wasm                  # fixture app.wasm (debug; the suite pins both profiles)
 node hosts/web/tools/gen-test-pcm.mjs     # once, creates the committed asset
 node hosts/web/tools/make-bundle.mjs      # assemble _build/passport-bundle
-node hosts/web/test/run-tests.mjs         # all nine suites
+node hosts/web/test/run-tests.mjs         # all suites
 # local escape hatch: node hosts/web/test/run-tests.mjs --skip-browser
 ```
+
+The frozen test asset `hosts/web/assets/test.pcm` is 8000 bytes (first 4000
+samples = 0.25 s at 16000 Hz, PCM16 LE mono), byte-identical on
+regeneration (`hosts/web/tools/gen-test-pcm.mjs`).
 
 `run-tests.mjs` and `make-bundle.mjs` resolve all their inputs (fixture wasm
 artifacts, PCM asset, bundle output) relative to the repository root, so run
@@ -310,42 +312,13 @@ them from the repository root. `run-tests.mjs` checks the built artifacts and
 `moon build` commands) — a missing prerequisite is never silently skipped —
 and exits 1 if any suite fails.
 
-### Current results (2026-09-15, R1.2 closeout, verified locally)
-
-- Moon suites: **319/319** native, **319/319** js, **319/319** wasm
-  (`src/hostabi` unit tests run on all three targets).
-- Integration: **18/18 suites pass** (`node hosts/web/test/run-tests.mjs`),
-  including the R1 golden suites (frames N=0..7 pixels, input effects,
-  266-sample/frame PCM waveform equality, RGBA round-trip, memory growth,
-  bundle assembly), the R1.2 PCM asset node suites (exact decode, bounded
-  refill with `maxChunkSamples`/`peakPendingSamples` proofs, sample-exact
-  loop, non-loop EOF, mute/volume clock semantics, suspended-context frames,
-  producer-mode exclusivity), and **two real-chromium Playwright suites**:
-  the R1 streamed-PCM probe (worklet transport, consumed>0, proof full) and
-  the R1.2 PCM asset probe (http fetch of the normalized .pcm, seam-exact
-  first-chunk checksum vs the node-side PCM16 decode, consumption across
-  2+ asset loops, frames presenting while audio runs, mute not stopping the
-  playback position).
-- Two release-blocking correctness fixes landed with R1.2 closeout, found by
-  the asset transport and latent before it: (1) `pump` read `chunk.length`
-  after `postMessage` transferred (detached) the buffer — the length read 0,
-  so `estimatedFill` never advanced and the asset refiller could spin;
-  (2) the worklet's `process()` never decremented its ring `fill`, so the
-  ring never drained, the reported `filled` never dropped, and the worklet
-  replayed stale samples while `consumed` kept growing (the R1 audio proof
-  had counted that replay). Both are pinned green now.
-- `hosts/web/assets/test.pcm`: 8000 bytes, sha256
-  `9537f4960e25fce8694bb3a4708531eeecfa1dba4563e491d79de58adc51eae6`
-  (first 4000 samples = 0.25 s at 16000 Hz, PCM16 LE mono), byte-identical
-  on regeneration (`hosts/web/tools/gen-test-pcm.mjs`).
-
 ### Continuous integration (wasm-host job)
 
 `.github/workflows/ci.yml` runs a dedicated `wasm-host` job on
-`ubuntu-latest` (Node 22), alongside the native/js job:
+`ubuntu-latest`, alongside the native/js job:
 
 1. `moon check --target wasm --output-json` and
-   `moon test --target wasm --output-json` (the wasm moon suites, 319/319).
+   `moon test --target wasm --output-json`.
 2. Build the fixture in **both** profiles (`--release`, then debug) and
    record the artifact paths.
 3. `node hosts/web/tools/gen-test-pcm.mjs`.
@@ -410,88 +383,16 @@ project needs:
    (`hosts/web/README.md` "Bundle directory contract"; `file://` does not
    work). `hosts/web/tools/make-bundle.mjs` assembles that bundle (default
    `_build/passport-bundle` at the repository root) from the release wasm
-   and the test asset.
-
-### Packaging evidence (labeled, re-verified 2026-09-15 at 0.0.2 release prep)
-
-- **Verified — no ignore rule hides the new trees.**
-  `git check-ignore -v hosts/web/passport-host.js hosts/web/assets/test.pcm
-  hosts/web/test/minimal-wasm.mjs hosts/web/test/pcm-asset-suites.mjs
-  hosts/web/test/pcm-asset-probe.html src/hostabi/moon.pkg docs/WEB_HOST.md`
-  exits 1 (no rule matches) against the repo `.gitignore`.
-- **Verified — the packaging file set includes the web host.**
-  `moon package --list` (toolchain above) lists **119 files** (2026-09-15
-  0.0.2 tree) — identical to the artifact it writes to
-  `_build/publish/colmugx-ai-passport-0.0.2.zip` (gitignored build output,
-  nothing was uploaded; `moon publish` itself has NOT been run). The set
-  includes **all thirteen** `hosts/web/**` files (`passport-host.js`,
-  `pcm-worklet.js`, `index.html`, `README.md`, `assets/test.pcm`,
-  `test/{README.md,browser-probe.html,pcm-asset-probe.html,run-tests.mjs,
-  minimal-wasm.mjs,pcm-asset-suites.mjs}`, `tools/{gen-test-pcm.mjs,
-  make-bundle.mjs}`), the full `src/**` SDK packages, and the non-gitignored
-  `docs/*.md` — including this file, `docs/WEB_HOST.md`. Gitignored files are
-  excluded (e.g. `docs/PLAN.md` per `.gitignore:9`), while untracked-but
-  -not-ignored files are included.
-- **Verified — non-MoonBit files survive the registry install round trip.**
-  The registry cache on this machine holds a previous publish of this very
-  module: `~/.moon/registry/cache/colmugx/ai-passport/0.0.1.zip` and its
-  installed copy `~/.moon/cache/deps/v1/sources/colmugx/ai-passport/0.0.1/`
-  contain `docs/*.md`, `LICENSE`, `README*.md`, `AGENTS.md`,
-  `skills-lock.json` next to the `.mbt` sources. Other installed modules
-  ship `.c` stubs, `CHANGELOG.md`, and `moon.work` the same way.
-- **Assumption (strongly supported, not directly observable without
-  publishing):** the zip `moon publish` uploads is the artifact of the same
-  packaging step, so a future publish would deliver `hosts/web/**` to
-  consumers. Publishing has not been run (out of scope for this round).
-- **Verified at 0.0.2 release prep — downstream materialization from the
-  packaged artifact alone** (temp workspace, nothing committed, no clone of
-  this repository): unzipping `_build/publish/colmugx-ai-passport-0.0.2.zip`
-  and registering it in a `moon work` workspace alongside a downstream
-  module that imports `colmugx/ai-passport@0.0.2` — the downstream module
-  builds and runs against the materialized SDK (`@core`/`@input`), the
-  dependency's own `src/fixture` builds to wasm from the zip sources, and
-  the materialized `hosts/web/passport-host.js` boots that wasm in streamed
-  mode (9 frames / 9 `host_pcm_write` calls / 4788 bytes) AND in PCM asset
-  mode (`pcmAssetBytes` of the packaged `assets/test.pcm` + `pcmLoop: true`:
-  4000 samples, 250000 µs, sample-exact decode and loop seam). The three
-  Web Host runtime files (`index.html`, `passport-host.js`,
-  `pcm-worklet.js`) all materialize from the zip.
-
-### Interim materialization mechanism (verified end-to-end)
-
-`moon add` accepts registry modules only and the text `moon.mod` has no path
-dependencies (`deps` key rejected; `import` requires versioned registry
-entries — both probed). Until the packaging question is settled (Open
-questions #3), the verified local mechanisms are:
-
-1. **Copy from the installed dependency directory.** A downstream project
-   copies `hosts/web/` out of
-   `~/.moon/cache/deps/v1/sources/colmugx/ai-passport/<version>/hosts/web/`
-   (the installed-copy layout is verified to preserve non-MoonBit files).
-2. **moon workspace (local path consumption).** Verified end-to-end in a
-   scratch dir with `moon work init` + `moon work use <sdk-copy>
-   <downstream>`, the SDK vendored by unzipping the packaging artifact, and
-   the downstream `moon.mod` declaring
-   `import { "colmugx/ai-passport@0.0.1" }`. The downstream module imported
-   `@core`/`@input` from the vendored SDK, built the fixture wasm from the
-   dependency's own source (debug and release), copied the host tree from
-   the dependency, regenerated `assets/test.pcm` with the dependency's own
-   `tools/gen-test-pcm.mjs` (sha256 matches the frozen value), booted the
-   copied host in plain node against the dependency-built wasm (9 frames,
-   9 `host_pcm_write` calls, 4788 bytes = 9x266 samples x2, first pixel
-   `63488` = `0xF800` red), and the full integration suite (browser
-   skipped) reported ALL SUITES PASSED against that copy. (Verified against
-   the pre-rename tree layout; the steps and tools are unchanged apart from
-   the canonical `hosts/web/` paths.)
+   and the test asset. Downstream projects consume these files from the
+   published `colmugx/ai-passport` package the CLI resolves for them
+   (`.mooncakes/colmugx/ai-passport/hosts/web/`) — never from GitHub.
 
 ## Limitations
 
 - **Big-endian platforms are rejected at host boot** (little-endian check);
-  ABI v0 framebuffer and PCM are LE by ISA guarantee. Whether this
-  restriction is acceptable long-term is Open questions #5.
+  ABI v0 framebuffer and PCM are LE by ISA guarantee.
 - **PCM pacing**: the fixture pushes a fixed 266 samples per rAF tick —
-  deterministic, but not audio-clock paced. Real pacing strategy is deferred
-  to the project-format phase (Open questions #4).
+  deterministic, but not audio-clock paced.
 - **Playback position is host best-effort**: consumption reports arrive
   roughly every 32 ms and the position is interpolated from
   `AudioContext.currentTime` between them, so it is optimistic during
@@ -499,57 +400,10 @@ questions #3), the verified local mechanisms are:
 - **Unused wasm imports are dead-code-eliminated per build profile**: the
   fixture keeps `host_playback_pos_us` in the import table via a write-only
   probe store in `main` (`src/fixture/state.mbt`; a bare `let _ =` binding
-  dies in debug). A sanctioned hostabi plumbing accessor is proposed in
-  Open questions #6.
+  dies in debug).
 - **Sample rate hint**: `AudioContext` is constructed at 16000 Hz; engines
   that ignore the hint play at the wrong pitch (no host-side resampler).
 - **ScriptProcessor fallback** exists where AudioWorklet is unavailable; it
   is deprecated, main-thread, and a compatibility path only.
 - The host is served over http(s) only — ES modules, `fetch("app.wasm")`,
   and AudioWorklet `addModule` all require it (`hosts/web/README.md`).
-
-## Open questions (parked for the user, 2026-09-15)
-
-1. **AGENTS.md wording vs the host backend.** AGENTS.md's repository-scope
-   paragraph still says "Do not add a permanent ... Web Canvas or WebAudio
-   preview". Should the wording be updated to permit (or name) the
-   SDK-owned wasm host backend, or stay unchanged with this document's
-   "Scope-change record" serving as the standing scope record?
-2. **Gitignored PLAN.md scope record.** `docs/PLAN.md` is gitignored
-   (`.gitignore:9`), so the AGENTS-mandated scope-change record ("Scope
-   changes require updating `docs/PLAN.md`") lives only locally and is not
-   committed. Keep it as a local doc, or un-ignore it?
-3. **Long-term packaging mechanism.** Mooncakes asset inclusion of
-   `hosts/web/**` in the published artifact is strongly supported by the
-   packaging evidence above (all ten files listed and zipped; non-MoonBit
-   files proven to survive a registry install), but the plain `moon publish`
-   path is unverified until a real publish happens. If the registry ever
-   stripped non-MoonBit files, fall back to the verified interim mechanisms
-   (workspace or installed-copy).
-4. **Audio pacing strategy.** The fixture pushes a fixed 266 samples per
-   rendered frame — deterministic and waveform-exact, but not paced by the
-   audio clock. The real pacing strategy (audio-callback-driven or ring
-   -level) is deferred to the project-format phase.
-5. **Big-endian rejection.** The host refuses to boot on big-endian
-   platforms (defense-in-depth on top of the wasm ISA's LE guarantee).
-   Acceptable as a permanent posture?
-6. **Hostabi plumbing accessor.** Unused wasm imports are
-   dead-code-eliminated per build profile, so apps currently need a
-   write-only field (like the fixture's `pos_probe`) to keep an import such
-   as `host_playback_pos_us` alive. Should `hostabi` grow a sanctioned
-   plumbing accessor (e.g. a `refresh_playback_pos()` that stores into the
-   bridge) so apps do not need write-only fields?
-
-## Scope-change record (R1)
-
-Round R1 added an SDK-owned wasm host backend to this repository as a direct
-round directive: new package `src/hostabi`, host assets `hosts/web/**`
-(documented here and in `hosts/web/README.md`), fixture app `src/fixture`,
-and the integration/tooling wave under `hosts/web/test` and
-`hosts/web/tools`. AGENTS.md's older wording "Do not add a permanent ...
-Web Canvas or WebAudio preview" refers to application previews — the host
-backend is a backend, not a preview of any application. The user ruling on
-updating AGENTS.md itself is pending (Open questions #1), so AGENTS.md text
-is unchanged and this section is the standing scope record;
-`docs/PLAN.md` (gitignored) carries the same note locally (Open questions
-#2).

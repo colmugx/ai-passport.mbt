@@ -10,7 +10,7 @@ The SDK defines portable MoonBit application contracts. **Host is the only backe
 
 This repository owns both reusable SDK code and the tooling/runtime assets for registered Hosts. It does **not** own application semantics or starter applications: Forest Walk and other reference apps belong in downstream application repositories.
 
-Platform details such as browser APIs, ESP-IDF, BSPs, GPIO, buses, codecs, and flashing may exist inside a Host implementation when required, but they must stay behind the Host boundary and out of public application APIs. The Web Host browser code lives in `hosts/web/*.js`; the FoloToy physical Host backend is registered but its device build migration is the next architecture wave.
+Platform details such as browser APIs, ESP-IDF, BSPs, GPIO, buses, codecs, and flashing may exist inside a Host implementation when required, but they must stay behind the Host boundary and out of public application APIs. The Web Host browser code lives in `hosts/web/*.js`; the FoloToy physical Host backend builds real firmware through the `passport` CLI (no flashing is ever performed by the SDK or CI).
 
 ## Packages
 
@@ -76,11 +76,18 @@ CI runs the same gate in a dedicated `wasm-host` job (`.github/workflows/ci.yml`
 
 ## Passport CLI
 
-The module ships the `passport` CLI: build and serve applications for registered Hosts, with **Host as the only backend abstraction**. This release registers `web` (implemented) and `folotoy-ai-passport` (descriptor only; its device build is not migrated yet). The minimal downstream project contract is a `passport.json` at the project root declaring the wasm entry package and optional bundle assets. See `docs/PASSPORT_CLI.md`.
+The module ships the `passport` CLI: build and serve applications for registered Hosts, with **Host as the only backend abstraction**. Registered Hosts: `web` (implemented) and `folotoy-ai-passport` (implemented; ESP-IDF device build, no flash). A downstream project is any MoonBit module with a `passport.json` at its root declaring ONE application entry — the same application package serves every Host:
+
+```json
+{ "entry": "app" }
+```
+
+The entry path is relative to the module source root: with the normal `source = "src"` in `moon.mod`, the application lives at `src/app` and nothing about the project's imports changes. The application package implements the `Application` contract (`colmugx/ai-passport/application`) and exposes `pub fn passport_main() -> &Application`; the CLI generates the Host entry adapters under the source root's `passport-generated/` tree (build output — gitignore `passport-generated/`). See `docs/PASSPORT_CLI.md`.
 
 ```sh
 moon run --target wasm src/cmd/passport hosts
 moon run --target wasm src/cmd/passport build --host web --project <app-dir>
+moon run --target wasm src/cmd/passport build --host folotoy-ai-passport --project <app-dir>
 moon run --target wasm src/cmd/passport dev --host web --project <app-dir>
 ```
 

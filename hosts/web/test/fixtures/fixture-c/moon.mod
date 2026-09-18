@@ -4,6 +4,8 @@ version = "0.0.1"
 
 description = "Downstream-style single-entry fixture: display, input, battery, and audio output state"
 
+source = "src"
+
 import {
   "colmugx/ai-passport@0.0.5",
 }

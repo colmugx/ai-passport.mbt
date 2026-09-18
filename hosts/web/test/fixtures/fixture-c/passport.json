@@ -1,5 +1,5 @@
 {
-  "entry": "src/app",
+  "entry": "app",
   "assets": [
     {
       "source": "assets/tone.pcm",
