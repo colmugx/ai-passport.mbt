@@ -5,12 +5,58 @@
 
 ///|
 /// Removes one generated adapter package so no stale generated file can
-/// survive into the fresh build.
-async fn clear_generated_package(pkg_dir : String) -> Unit {
-  if @fs.exists(pkg_dir) {
-    @fs.rmdir(pkg_dir, recursive=true) catch {
-      _ => @cli.fail_cli("cannot clear the generated entry at \{pkg_dir}")
+/// survive into the fresh build. The destructive operation is guarded at the
+/// call site: symlinks may not move the source/generated/package roots outside
+/// their owning project directories.
+async fn clear_generated_package(
+  project : @cli.Project,
+  pkg_dir : String,
+) -> Unit {
+  let source_path = @cli.source_root(project)
+  let source_root = @fs.realpath(source_path) catch {
+    _ => @cli.fail_cli("cannot resolve the module source root at \{source_path}")
+  }
+  guard path_is_within(project.root, source_root) else {
+    @cli.fail_cli(
+      "refusing to clear generated entries: module source root resolves outside the project",
+    )
+  }
+  let generated_path = @cli.under_root(source_path, @cli.GENERATED_ENTRY_DIR)
+  if @fs.exists(generated_path) {
+    let generated_root = @fs.realpath(generated_path) catch {
+      _ =>
+        @cli.fail_cli(
+          "cannot resolve the generated entry root at \{generated_path}",
+        )
     }
+    guard
+      generated_root != source_root &&
+      path_is_within(source_root, generated_root)
+    else {
+      @cli.fail_cli(
+        "refusing to clear generated entries outside the module source root",
+      )
+    }
+    if @fs.exists(pkg_dir) {
+      let resolved_pkg = @fs.realpath(pkg_dir) catch {
+        _ => @cli.fail_cli("cannot resolve the generated entry at \{pkg_dir}")
+      }
+      guard
+        resolved_pkg != generated_root &&
+        path_is_within(generated_root, resolved_pkg)
+      else {
+        @cli.fail_cli(
+          "refusing to clear generated entry outside \{generated_path}",
+        )
+      }
+      @fs.rmdir(pkg_dir, recursive=true) catch {
+        _ => @cli.fail_cli("cannot clear the generated entry at \{pkg_dir}")
+      }
+    }
+  } else if @fs.exists(pkg_dir) {
+    @cli.fail_cli(
+      "refusing to clear generated entry without its owned generated root",
+    )
   }
 }
 
@@ -26,7 +72,7 @@ async fn write_generated_file(path : String, text : String) -> Unit {
 /// returns its filesystem package path for `moon build`.
 async fn generate_web_entry(project : @cli.Project) -> String {
   let pkg_dir = @cli.generated_web_entry_dir(project)
-  clear_generated_package(pkg_dir)
+  clear_generated_package(project, pkg_dir)
   ensure_dir(pkg_dir)
   let app_import = @cli.application_package_import(project)
   let moon_pkg : String =
@@ -120,7 +166,7 @@ async fn generate_device_entry(
   cc_path : String?,
 ) -> String {
   let pkg_dir = @cli.generated_device_entry_dir(project)
-  clear_generated_package(pkg_dir)
+  clear_generated_package(project, pkg_dir)
   ensure_dir(pkg_dir)
   let app_import = @cli.application_package_import(project)
   let link_options : String = match cc_path {
