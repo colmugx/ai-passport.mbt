@@ -208,26 +208,21 @@ function copySdkTree(src, dest, excluded) {
  *  fixture's registry pin, so the unpublished application contract resolves.
  *  Mirrors the CI template-integration overlay excludes exactly. Returns the
  *  stamped pin. */
-// One overlay per run-tests invocation: re-copying the tree after a build
-// inside it invalidates module metadata moon derived from the previous
-// copy, so the second build's package discovery fails intermittently.
-let fixtureCOverlaid = false;
+// One resolved overlay per run-tests invocation. The first copy exposes the
+// CURRENT SDK's transitive dependency graph to moon update; the second copy
+// restores the unpublished SDK source in case resolution rematerialized the
+// published package at the same registry pin.
+let fixtureCOverlayPin = null;
 
 function overlayCurrentSdkIntoFixtureC(repoRoot) {
-  if (fixtureCOverlaid) return;
-  fixtureCOverlaid = true;
+  if (fixtureCOverlayPin !== null) return fixtureCOverlayPin;
   const project = fixtureDir(repoRoot, "fixture-c");
   const pin = /"colmugx\/ai-passport@([0-9.]+)"/.exec(
     fs.readFileSync(path.join(project, "moon.mod"), "utf8"),
   )[1];
-  // Stamp from the SOURCE module text — never read the copied tree back.
   const sdkMod = fs.readFileSync(path.join(repoRoot, "moon.mod"), "utf8");
   const dest = path.join(project, ".mooncakes", "colmugx", "ai-passport");
-  fs.rmSync(dest, { recursive: true, force: true });
-  // A lock recorded against the published tree would make moon re-materialize
-  // it over the overlay; a fresh resolution accepts the overlaid module.
-  fs.rmSync(path.join(project, ".mooncakes", ".moon-lock"), { force: true });
-  copySdkTree(repoRoot, dest, new Set([
+  const excluded = new Set([
     ".git",
     "_build",
     ".mooncakes",
@@ -237,11 +232,31 @@ function overlayCurrentSdkIntoFixtureC(repoRoot) {
     ".passport",
     "passport-generated",
     "external",
-  ]));
-  fs.writeFileSync(
-    path.join(dest, "moon.mod"),
-    sdkMod.replace(/^version = ".*"$/m, `version = "${pin}"`),
-  );
+  ]);
+  const writeOverlay = () => {
+    fs.rmSync(dest, { recursive: true, force: true });
+    copySdkTree(repoRoot, dest, excluded);
+    fs.writeFileSync(
+      path.join(dest, "moon.mod"),
+      sdkMod.replace(/^version = ".*"$/m, `version = "${pin}"`),
+    );
+  };
+
+  writeOverlay();
+  fs.rmSync(path.join(project, ".mooncakes", ".moon-lock"), { force: true });
+  const update = spawnSync("moon", ["update"], {
+    cwd: project,
+    encoding: "utf8",
+    timeout: 120_000,
+    maxBuffer: 16 * 1024 * 1024,
+  });
+  if (update.status !== 0) {
+    throw new Error(
+      `fixture-c dependency resolution failed: ${update.stderr || update.stdout}`,
+    );
+  }
+  writeOverlay();
+  fixtureCOverlayPin = pin;
   return pin;
 }
 
