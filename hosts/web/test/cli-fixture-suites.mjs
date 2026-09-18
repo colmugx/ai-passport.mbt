@@ -283,6 +283,53 @@ export function registerCliFixtureSuites({ suite, ok, eq, eqText, SuiteError, re
     }
   });
 
+  // --- Suite: project path safety -----------------------------------------------
+
+  suite("cli: project source paths cannot escape the project root", () => {
+    const temp = fs.mkdtempSync(path.join(os.tmpdir(), "passport-source-boundary-"));
+    try {
+      const project = path.join(temp, "project");
+      const outside = path.join(temp, "outside");
+      fs.cpSync(fixtureDir(repoRoot, "fixture-a"), project, { recursive: true });
+      fs.mkdirSync(path.join(outside, "passport-generated", "web"), { recursive: true });
+      const sentinel = path.join(outside, "passport-generated", "web", "sentinel");
+      fs.writeFileSync(sentinel, "keep");
+
+      const moonMod = path.join(project, "moon.mod");
+      const original = fs.readFileSync(moonMod, "utf8");
+      fs.writeFileSync(
+        moonMod,
+        original.replace(/^source = ".*"$/m, 'source = "../outside"'),
+      );
+      const traversing = runCli(repoRoot, ["build", "--host", "web", "--project", project]);
+      ok(traversing.status !== 0, "a traversing moon.mod source must be refused");
+      ok(
+        `${traversing.stdout}\n${traversing.stderr}`.includes(
+          "moon.mod: source contains an unsafe path component",
+        ),
+        "the traversal refusal must identify moon.mod source",
+      );
+      ok(fs.existsSync(sentinel), "refusing a traversing source must not touch outside files");
+
+      fs.writeFileSync(
+        moonMod,
+        original.replace(/^source = ".*"$/m, 'source = "linked-src"'),
+      );
+      fs.symlinkSync(outside, path.join(project, "linked-src"), "dir");
+      const linked = runCli(repoRoot, ["build", "--host", "web", "--project", project]);
+      ok(linked.status !== 0, "a source symlink resolving outside the project must be refused");
+      ok(
+        `${linked.stdout}\n${linked.stderr}`.includes(
+          'moon.mod: source "linked-src" resolves outside the project root',
+        ),
+        "the symlink refusal must identify the resolved source boundary",
+      );
+      ok(fs.existsSync(sentinel), "refusing an escaping source symlink must not touch outside files");
+    } finally {
+      fs.rmSync(temp, { recursive: true, force: true });
+    }
+  });
+
   // --- Suite: fixture A bundle assembly ----------------------------------------
 
   suite("cli: fixture-a (no audio) builds the full web bundle", () => {
@@ -434,6 +481,33 @@ export function registerCliFixtureSuites({ suite, ok, eq, eqText, SuiteError, re
       }
     } finally {
       server.close();
+    }
+  });
+
+  // --- Suite: generated-entry delete boundary ----------------------------------
+
+  suite("cli: generated entry cleanup refuses an escaping symlink", () => {
+    const project = fixtureDir(repoRoot, "fixture-c");
+    overlayCurrentSdkIntoFixtureC(repoRoot);
+    const generatedRoot = path.join(project, "src", "passport-generated");
+    const outside = fs.mkdtempSync(path.join(os.tmpdir(), "passport-generated-boundary-"));
+    const sentinel = path.join(outside, "sentinel");
+    fs.writeFileSync(sentinel, "keep");
+    fs.rmSync(generatedRoot, { recursive: true, force: true });
+    try {
+      fs.symlinkSync(outside, generatedRoot, "dir");
+      const res = runCli(repoRoot, ["build", "--host", "web", "--project", project]);
+      ok(res.status !== 0, "an escaping passport-generated symlink must be refused");
+      ok(
+        `${res.stdout}\n${res.stderr}`.includes(
+          "refusing to clear generated entries outside the module source root",
+        ),
+        "the destructive-operation guard must explain the generated-root boundary",
+      );
+      ok(fs.existsSync(sentinel), "refused generated-entry cleanup must preserve outside files");
+    } finally {
+      fs.rmSync(generatedRoot, { recursive: true, force: true });
+      fs.rmSync(outside, { recursive: true, force: true });
     }
   });
 

@@ -41,6 +41,19 @@ async fn load_project(project_dir : String) -> @cli.Project {
     Some(dir) => dir
     None => ""
   }
+  validate_module_source_dir(source_dir)
+  let source_path = @cli.under_root(root, source_dir)
+  let source_root = @fs.realpath(source_path) catch {
+    _ =>
+      @cli.fail_cli(
+        "moon.mod: source \"\{source_dir}\" is not accessible under the project root",
+      )
+  }
+  guard path_is_within(root, source_root) else {
+    @cli.fail_cli(
+      "moon.mod: source \"\{source_dir}\" resolves outside the project root",
+    )
+  }
   let contract_path = "\{root}/passport.toml"
   guard @fs.exists(contract_path) else {
     @cli.fail_cli(
