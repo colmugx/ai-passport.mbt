@@ -1,7 +1,10 @@
 .DS_Store
 _build/
-target/
 target
+.agents
 .mooncakes/
 .moonagent/
 .passport/
+passport-generated/
+
+__pycache__

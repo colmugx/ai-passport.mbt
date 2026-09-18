@@ -1,7 +1,6 @@
 ///|
-/// Focused contract hardening tests. These cases previously reached raw
-/// filesystem joins in the CLI and could escape or overwrite bundle-owned
-/// files.
+/// Contract hardening: entry and asset paths must stay relative to the
+/// module, so no parse input can escape or overwrite bundle-owned files.
 test "contract rejects non-relative or traversing entry paths" {
   let cases = [
     "{ \"entry\": \"/main\" }", "{ \"entry\": \"../main\" }", "{ \"entry\": \"main/../other\" }",
