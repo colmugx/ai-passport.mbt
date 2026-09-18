@@ -14,8 +14,7 @@ rm -rf "$dst"
 mkdir -p "$(dirname "$dst")"
 cp -R "$src" "$dst"
 
-rm -rf "$dst/src/runtime_wasm" "$dst/src/runtime_native"
-rm -rf "$dst/_build" "$dst/.passport" "$dst/passport-generated" "$dst/src/passport-generated"
+rm -rf   "$dst/_build"   "$dst/.mooncakes"   "$dst/.passport"   "$dst/passport-generated"   "$dst/src/passport-generated"   "$dst/src/runtime_wasm"   "$dst/src/runtime_native"
 
 cat > "$dst/src/app/passport_contract.mbt" <<'EOF'
 ///|
@@ -65,29 +64,44 @@ pub fn passport_main() -> &@application.Application {
 EOF
 
 # The app package gains the SDK application contract import; all existing
-# imports stay as authored.
+# imports stay as authored. The TOML contract switches to the app package and
+# drops the legacy device entry; assets and host dependencies are preserved.
 python3 - "$dst" <<'EOF'
-import re, sys
+import re
+import sys
 
 root = sys.argv[1]
 
 pkg_path = f"{root}/src/app/moon.pkg"
-text = open(pkg_path).read()
-text = text.replace("import {", 'import {\n  "colmugx/ai-passport/application",', 1)
-open(pkg_path, "w").write(text)
+pkg = open(pkg_path, encoding="utf-8").read()
+pkg = pkg.replace(
+    "import {",
+    'import {\n  "colmugx/ai-passport/application",',
+    1,
+)
+open(pkg_path, "w", encoding="utf-8").write(pkg)
 
 contract_path = f"{root}/passport.toml"
-contract = open(contract_path).read()
-contract, count = re.subn(r'^entry\\s*=.*
-EOF
-
-echo "single-entry transform: $dst (entry app, runtime adapters removed)"
-, 'entry = "app"', contract, count=1, flags=re.MULTILINE)
+contract = open(contract_path, encoding="utf-8").read()
+contract, count = re.subn(
+    r'^entry\s*=.*$',
+    'entry = "app"',
+    contract,
+    count=1,
+    flags=re.MULTILINE,
+)
 if count != 1:
-    raise SystemExit("passport.toml must contain exactly one top-level entry assignment")
-contract = re.sub(r'^deviceEntry\\s*=.*\\n?', '', contract, count=1, flags=re.MULTILINE)
-with open(contract_path, "w") as handle:
-    handle.write(contract)
+    raise SystemExit(
+        "passport.toml must contain exactly one top-level entry assignment",
+    )
+contract = re.sub(
+    r'^deviceEntry\s*=.*\n?',
+    '',
+    contract,
+    count=1,
+    flags=re.MULTILINE,
+)
+open(contract_path, "w", encoding="utf-8").write(contract)
 EOF
 
 echo "single-entry transform: $dst (entry app, runtime adapters removed)"

@@ -152,9 +152,9 @@ jobs:
 
   template-integration:
     # Pre-release compatibility gate: the CURRENT public template, compiled
-    # and built against THIS unpublished SDK commit. The .mooncakes overlay
-    # below is CI-internal; the template stays coupled only to its published
-    # registry pin.
+    # and built against THIS unpublished SDK commit. moon.work resolves the
+    # SDK checkout as a local module while the template keeps its published
+    # registry pin in moon.mod.
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -163,12 +163,10 @@ jobs:
     env:
       AI_PASSPORT_SDK: ${{ github.workspace }}/sdk
     steps:
-      - name: Set up MoonBit and host tools
+      - name: Set up MoonBit
         run: |
           curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash
           echo "$HOME/.moon/bin" >> "$GITHUB_PATH"
-          apt-get update -qq
-          apt-get install -y -qq --no-install-recommends rsync > /dev/null
           "$HOME/.moon/bin/moon" version --all
 
       - name: Check out the SDK
@@ -190,11 +188,19 @@ jobs:
           test -f template/passport.toml
           test ! -e template/passport.json
 
-      - name: Expose current SDK dependencies to overlay projects
+      - name: Configure local SDK workspace
         run: |
-          python3 sdk/.github/scripts/sync-overlay-dependencies.py sdk/moon.mod template/moon.mod
-          python3 sdk/.github/scripts/sync-overlay-dependencies.py \
-            sdk/moon.mod sdk/hosts/folotoy/ai-passport/test/fixtures/no-audio/moon.mod
+          rm -rf no-audio
+          cp -R sdk/hosts/folotoy/ai-passport/test/fixtures/no-audio no-audio
+          rm -rf no-audio/_build no-audio/.mooncakes no-audio/.passport no-audio/src/passport-generated
+          cat > moon.work <<'EOF'
+          members = [
+            "sdk",
+            "template",
+            "no-audio",
+          ]
+          EOF
+          cat moon.work
 
       - name: Assert the pinned FoloToy submodule revision
         run: |
@@ -206,49 +212,14 @@ jobs:
         run: |
           test "$(sha256sum template/assets/forest_walk.pcm | cut -d' ' -f1)" = "a848e82fa15266fc474ccc2d9656e30ab24081d690d4944767c332fb7866010a"
 
-      # Materialize the published dependency graph first. The overlay step
-      # below then exposes THIS SDK's dependency graph, resolves any newly
-      # introduced transitive modules, and restores this checkout over the
-      # registry-pinned package before compilation.
-      - name: Materialize Moon dependencies for the SDK and template
+      # moon.work makes the SDK a local module for both downstream projects.
+      # Their registry version pins remain unchanged, but Moon reads THIS
+      # checkout's moon.mod and therefore resolves its current dependencies.
+      - name: Materialize workspace dependencies
         run: |
           (cd sdk && moon update && moon check --target wasm src/cmd/passport)
           (cd template && moon update && moon check --target native)
-
-      # CI-internal dev overlay: replace the materialized published package
-      # with THIS checkout in each downstream fixture, keeping moon.mod
-      # stamped at the registry pin so dependency resolution stays intact.
-      # The template itself knows nothing of this.
-      - name: Overlay the current SDK into both fixtures
-        run: |
-          for project in template sdk/hosts/folotoy/ai-passport/test/fixtures/no-audio; do
-            dest="$project/.mooncakes/colmugx/ai-passport"
-            pin="$(sed -n 's/.*"colmugx\/ai-passport@\([0-9.]*\)".*/\1/p' "$project/moon.mod" | head -n 1)"
-            test -n "$pin"
-            overlay_current_sdk() {
-              mkdir -p "$(dirname "$dest")"
-              rsync -a --delete --delete-excluded \
-                --exclude='.git' \
-                --exclude='_build' \
-                --exclude='.mooncakes' \
-                --exclude='.agents' \
-                --exclude='.github' \
-                --exclude='.githooks' \
-                --exclude='/external' \
-                --exclude='passport-generated' \
-                "$AI_PASSPORT_SDK/" "$dest/"
-              sed -i.bak "s/^version = \".*\"/version = \"$pin\"/" "$dest/moon.mod"
-              rm -f "$dest/moon.mod.bak"
-            }
-            overlay_current_sdk
-            rm -f "$project/.mooncakes/.moon-lock"
-            (cd "$project" && moon update)
-            # moon update may rematerialize the published package at this pin;
-            # restore the current checkout while keeping the freshly-resolved
-            # lock and transitive dependencies.
-            overlay_current_sdk
-            echo "overlay: $project carries the current SDK stamped as colmugx/ai-passport@$pin"
-          done
+          (cd no-audio && moon update)
 
       - name: Template checks against the current SDK
         run: |
@@ -295,7 +266,16 @@ jobs:
           set -eo pipefail
           bash "$AI_PASSPORT_SDK/.github/scripts/template-single-entry.sh" \
             "$GITHUB_WORKSPACE/template" "$GITHUB_WORKSPACE/template-single"
+          cat > "$GITHUB_WORKSPACE/moon.work" <<'EOF'
+          members = [
+            "sdk",
+            "template",
+            "template-single",
+            "no-audio",
+          ]
+          EOF
           cd "$GITHUB_WORKSPACE/template-single"
+          moon update
           test ! -d src/runtime_wasm -a ! -d src/runtime_native
           # The migrated project stays a normal MoonBit project: the source
           # root and every authored import are untouched.
@@ -331,7 +311,7 @@ jobs:
         shell: bash
         run: |
           set -eo pipefail
-          fixture="$AI_PASSPORT_SDK/hosts/folotoy/ai-passport/test/fixtures/no-audio"
+          fixture="$GITHUB_WORKSPACE/no-audio"
           (cd "$fixture" && moon check --target native --output-json && moon check --target wasm --output-json)
           (cd "$AI_PASSPORT_SDK" && moon run --target wasm src/cmd/passport -- \
             build --host web --project "$fixture") | tee /tmp/no-audio-web.log
