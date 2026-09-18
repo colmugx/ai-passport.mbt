@@ -9,7 +9,10 @@ test "module source accepts only portable project-relative paths" {
       _ => ()
     }
   }
-  for source in ["/tmp/app", "../outside", "src/../outside", "./src", "src//app", "src\\app"] {
+  for
+    source in [
+      "/tmp/app", "../outside", "src/../outside", "./src", "src//app", "src\\app",
+    ] {
     try validate_module_source_dir(source) catch {
       @cli.Fail(_) => ()
       _ => fail("expected CliError")

@@ -3,10 +3,7 @@
 /// module, so no parse input can escape or overwrite bundle-owned files.
 test "contract rejects non-relative or traversing entry paths" {
   let cases = [
-    "entry = \"/main\"",
-    "entry = \"../main\"",
-    "entry = \"main/../other\"",
-    "entry = \"main\\\\other\"",
+    "entry = \"/main\"", "entry = \"../main\"", "entry = \"main/../other\"", "entry = \"main\\\\other\"",
   ]
   for text in cases {
     try @cli.parse_contract(text) catch {

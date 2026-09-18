@@ -14,7 +14,8 @@ async fn clear_generated_package(
 ) -> Unit {
   let source_path = @cli.source_root(project)
   let source_root = @fs.realpath(source_path) catch {
-    _ => @cli.fail_cli("cannot resolve the module source root at \{source_path}")
+    _ =>
+      @cli.fail_cli("cannot resolve the module source root at \{source_path}")
   }
   guard path_is_within(project.root, source_root) else {
     @cli.fail_cli(
@@ -29,10 +30,8 @@ async fn clear_generated_package(
           "cannot resolve the generated entry root at \{generated_path}",
         )
     }
-    guard
-      generated_root != source_root &&
-      path_is_within(source_root, generated_root)
-    else {
+    guard generated_root != source_root &&
+      path_is_within(source_root, generated_root) else {
       @cli.fail_cli(
         "refusing to clear generated entries outside the module source root",
       )
@@ -41,10 +40,8 @@ async fn clear_generated_package(
       let resolved_pkg = @fs.realpath(pkg_dir) catch {
         _ => @cli.fail_cli("cannot resolve the generated entry at \{pkg_dir}")
       }
-      guard
-        resolved_pkg != generated_root &&
-        path_is_within(generated_root, resolved_pkg)
-      else {
+      guard resolved_pkg != generated_root &&
+        path_is_within(generated_root, resolved_pkg) else {
         @cli.fail_cli(
           "refusing to clear generated entry outside \{generated_path}",
         )

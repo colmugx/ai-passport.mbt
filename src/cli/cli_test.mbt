@@ -98,9 +98,7 @@ test "parse_contract accepts a device entry with the same path rules as entry" {
   )
   debug_inspect(contract.device_entry, content="Some(\"runtime_native\")")
   try
-    @cli.parse_contract(
-      "entry = \"main\"\ndeviceEntry = \"../escape\"",
-    )
+    @cli.parse_contract("entry = \"main\"\ndeviceEntry = \"../escape\"")
   catch {
     @cli.Fail(_) => ()
     _ => fail("expected an unsafe deviceEntry to fail")
