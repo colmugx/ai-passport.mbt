@@ -70,10 +70,9 @@ fn require_runtime() -> DeviceRuntime {
 }
 
 ///|
-/// `ai_passport_mbt_app_update`: the application receives the monotonic
-/// device clock and the transport's playback Option (`Some(position)` —
-/// loop-boundary zero included — while the streaming task runs, `None` when
-/// it does not), then any audio output delta is mirrored to the transport.
+/// `ai_passport_mbt_app_update`: one device frame tick. The transport's
+/// playback Option is `Some` (loop-boundary zero included) while the
+/// streaming task runs, `None` otherwise.
 pub fn device_update() -> Unit {
   let runtime = require_runtime()
   runtime.app.update({

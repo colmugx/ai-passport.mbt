@@ -6,41 +6,6 @@
 /// the Host entry adapters the CLI generates own every platform detail. The
 /// application package must not import Host implementation packages
 /// (`hostabi` and below).
-///
-/// # Example
-///
-/// ```mbt nocheck
-/// impl @application.Application for Ticker with fn update(
-///   self,
-///   ctx : @application.FrameContext,
-/// ) -> Unit {
-///   self.ticks = self.ticks + 1
-/// }
-///
-/// impl @application.Application for Ticker with fn button(
-///   self,
-///   button : @input.Button,
-///   pressed : Bool,
-/// ) -> Unit {
-///   ...
-/// }
-///
-/// impl @application.Application for Ticker with fn render(
-///   self,
-///   battery_percent : Int?,
-/// ) -> @graphics.FrameView {
-///   ...
-///   @graphics.Canvas::logical().frame_view()
-/// }
-///
-/// impl @application.Application for Ticker with fn audio_output(self) -> @application.AudioOutput? {
-///   None
-/// }
-///
-/// pub fn passport_main() -> &@application.Application {
-///   Ticker::{ ticks: 0, }
-/// }
-/// ```
 pub(open) trait Application {
   /// One host-paced frame tick with the current Host facts. The application
   /// owns its simulation rate — the contract imposes no fixed loop.

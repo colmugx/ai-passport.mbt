@@ -78,7 +78,6 @@ fn WebRuntime::frame_context(
   self : WebRuntime,
   now_us : Int64,
 ) -> @application.FrameContext {
-  // The Web Host reports no presentation lead.
   {
     now_us,
     playback_position_us: web_playback_position((self.playback_pos_us)()),
@@ -108,10 +107,7 @@ fn WebRuntime::sync_audio_output(self : WebRuntime) -> Unit {
 }
 
 ///|
-/// One ABI v0 frame tick (the `passport_frame` export): advance the bridge
-/// clock, hand the application the host facts, mirror any audio output
-/// delta, refresh the battery cache, render, and present the logical frame
-/// into the linear-memory framebuffer (marking it dirty).
+/// One ABI v0 frame tick (the `passport_frame` export).
 pub fn WebRuntime::frame(self : WebRuntime, now_us : Int64) -> Unit {
   self.bridge.advance(now_us)
   self.app.update(self.frame_context(now_us))
