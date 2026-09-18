@@ -2,7 +2,7 @@
 /// The passport CLI: build, serve and inspect AI Passport applications
 /// against registered Hosts. The Host is the only backend abstraction; there
 /// is no application-specific knowledge in this CLI — projects describe
-/// themselves through `passport.json` (the contract lives in `src/cli`).
+/// themselves through `passport.toml` (the contract lives in `src/cli`).
 
 ///|
 /// Reads one option value from parsed matches, falling back to `default`.

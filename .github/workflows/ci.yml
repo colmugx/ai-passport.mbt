@@ -184,6 +184,12 @@ jobs:
           path: template
           submodules: recursive
 
+      - name: Migrate the pinned public template contract to passport.toml
+        run: |
+          python3 sdk/.github/scripts/passport-json-to-toml.py template
+          test -f template/passport.toml
+          test ! -e template/passport.json
+
       - name: Assert the pinned FoloToy submodule revision
         run: |
           rev="$(git -C template/external/folotoy-ai-passport rev-parse HEAD)"
@@ -281,8 +287,8 @@ jobs:
           # The migrated project stays a normal MoonBit project: the source
           # root and every authored import are untouched.
           grep -qx 'source = "src"' moon.mod
-          grep -q '"entry": "app"' passport.json
-          grep -q '"deviceEntry"' passport.json && exit 1 || true
+          grep -qx 'entry = "app"' passport.toml
+          grep -q '^deviceEntry[[:space:]]*=' passport.toml && exit 1 || true
           grep -q '"colmugx/ai-passport-template/forest_walk"' src/app/moon.pkg
           moon check --target native --output-json
           moon test --target native --output-json

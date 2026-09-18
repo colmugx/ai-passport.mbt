@@ -309,7 +309,7 @@ export function registerCliFixtureSuites({ suite, ok, eq, eqText, SuiteError, re
     ok(refused.status !== 0, "device build must fail for a project without a device entry");
     const text = `${refused.stdout}\n${refused.stderr}`;
     ok(
-      text.includes('host "folotoy-ai-passport" requires a "deviceEntry" package in passport.json'),
+      text.includes('host "folotoy-ai-passport" requires a "deviceEntry" package in passport.toml'),
       `device refusal must name the deviceEntry contract error; got: ${text.trim().split("\n")[0]}`,
     );
   });

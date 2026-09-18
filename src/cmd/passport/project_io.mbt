@@ -41,10 +41,10 @@ async fn load_project(project_dir : String) -> @cli.Project {
     Some(dir) => dir
     None => ""
   }
-  let contract_path = "\{root}/passport.json"
+  let contract_path = "\{root}/passport.toml"
   guard @fs.exists(contract_path) else {
     @cli.fail_cli(
-      "no passport.json at the project root (\{project_dir}); the project contract declares the application entry and assets",
+      "no passport.toml at the project root (\{project_dir}); the project contract declares the application entry and assets",
     )
   }
   let contract = @cli.parse_contract(read_text_file(contract_path))

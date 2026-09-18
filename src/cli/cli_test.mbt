@@ -4,7 +4,7 @@
 
 ///|
 test "parse_contract accepts the minimal contract" {
-  let contract = @cli.parse_contract("{ \"entry\": \"main\" }")
+  let contract = @cli.parse_contract("entry = \"main\"")
   inspect(contract.entry, content="main")
   debug_inspect(contract.device_entry, content="None")
   inspect(contract.assets.length(), content="0")
@@ -13,12 +13,12 @@ test "parse_contract accepts the minimal contract" {
 ///|
 test "parse_contract accepts entry plus assets" {
   let text =
-    #|{
-    #|  "entry": "runtime_wasm",
-    #|  "assets": [
-    #|    { "source": ".passport/assets/tone.pcm", "bundlePath": "assets/tone.pcm", "pcmLoop": true }
-    #|  ]
-    #|}
+    #|entry = "runtime_wasm"
+    #|
+    #|[[assets]]
+    #|source = ".passport/assets/tone.pcm"
+    #|bundlePath = "assets/tone.pcm"
+    #|pcmLoop = true
   let contract = @cli.parse_contract(text)
   inspect(contract.entry, content="runtime_wasm")
   inspect(contract.assets.length(), content="1")
@@ -29,46 +29,61 @@ test "parse_contract accepts entry plus assets" {
 
 ///|
 test "parse_contract rejects broken documents with clear messages" {
-  try @cli.parse_contract("{ not json") catch {
+  try @cli.parse_contract("entry = [") catch {
     @cli.Fail(message) =>
-      inspect(message, content="passport.json: not valid JSON")
+      inspect(message, content="passport.toml: not valid TOML")
     _ => fail("expected a CliError failure")
   } noraise {
-    _ => fail("expected invalid JSON to fail")
+    _ => fail("expected invalid TOML to fail")
   }
-  try @cli.parse_contract("{}") catch {
+  try @cli.parse_contract("") catch {
     @cli.Fail(message) =>
       inspect(
         message,
-        content="passport.json: missing required field \"entry\" (the application wasm entry package)",
+        content="passport.toml: missing required field \"entry\" (the application wasm entry package)",
       )
     _ => fail("expected a CliError failure")
   } noraise {
     _ => fail("expected missing entry to fail")
   }
-  try @cli.parse_contract("{ \"entry\": 3 }") catch {
+  try @cli.parse_contract("entry = 3") catch {
     @cli.Fail(message) =>
-      inspect(message, content="passport.json: \"entry\" must be a string")
+      inspect(message, content="passport.toml: \"entry\" must be a string")
     _ => fail("expected a CliError failure")
   } noraise {
     _ => fail("expected non-string entry to fail")
   }
-  try @cli.parse_contract("{ \"entry\": \"main\", \"assets\": [{}] }") catch {
+  try
+    @cli.parse_contract(
+      "entry = \"main\"\n\n[[assets]]\nbundlePath = \"assets/a\"",
+    )
+  catch {
     @cli.Fail(message) =>
       inspect(
         message,
-        content="passport.json: asset is missing required field \"source\"",
+        content="passport.toml: asset is missing required string field \"source\"",
       )
     _ => fail("expected a CliError failure")
   } noraise {
     _ => fail("expected incomplete asset to fail")
   }
-  let two_pcm = "{ \"entry\": \"main\", \"assets\": [ { \"source\": \"a\", \"bundlePath\": \"b\", \"pcmLoop\": true }, { \"source\": \"c\", \"bundlePath\": \"d\", \"pcmLoop\": true } ] }"
+  let two_pcm =
+    #|entry = "main"
+    #|
+    #|[[assets]]
+    #|source = "a"
+    #|bundlePath = "b"
+    #|pcmLoop = true
+    #|
+    #|[[assets]]
+    #|source = "c"
+    #|bundlePath = "d"
+    #|pcmLoop = true
   try @cli.parse_contract(two_pcm) catch {
     @cli.Fail(message) =>
       inspect(
         message,
-        content="passport.json: at most one asset may set \"pcmLoop\": true (found 2)",
+        content="passport.toml: at most one asset may set \"pcmLoop\": true (found 2)",
       )
     _ => fail("expected a CliError failure")
   } noraise {
@@ -79,12 +94,12 @@ test "parse_contract rejects broken documents with clear messages" {
 ///|
 test "parse_contract accepts a device entry with the same path rules as entry" {
   let contract = @cli.parse_contract(
-    "{ \"entry\": \"runtime_wasm\", \"deviceEntry\": \"runtime_native\" }",
+    "entry = \"runtime_wasm\"\ndeviceEntry = \"runtime_native\"",
   )
   debug_inspect(contract.device_entry, content="Some(\"runtime_native\")")
   try
     @cli.parse_contract(
-      "{ \"entry\": \"main\", \"deviceEntry\": \"../escape\" }",
+      "entry = \"main\"\ndeviceEntry = \"../escape\"",
     )
   catch {
     @cli.Fail(_) => ()
@@ -92,11 +107,11 @@ test "parse_contract accepts a device entry with the same path rules as entry" {
   } noraise {
     _ => fail("expected an unsafe deviceEntry to fail")
   }
-  try @cli.parse_contract("{ \"entry\": \"main\", \"deviceEntry\": 7 }") catch {
+  try @cli.parse_contract("entry = \"main\"\ndeviceEntry = 7") catch {
     @cli.Fail(message) =>
       inspect(
         message,
-        content="passport.json: \"deviceEntry\" must be a string",
+        content="passport.toml: \"deviceEntry\" must be a string",
       )
     _ => fail("expected a CliError failure")
   } noraise {
@@ -107,7 +122,7 @@ test "parse_contract accepts a device entry with the same path rules as entry" {
 ///|
 test "parse_contract reads hostDependencies as host-id to path entries" {
   let contract = @cli.parse_contract(
-    "{ \"entry\": \"main\", \"hostDependencies\": { \"folotoy-ai-passport\": { \"path\": \"external/folotoy-ai-passport\" } } }",
+    "entry = \"main\"\n\n[hostDependencies.\"folotoy-ai-passport\"]\npath = \"external/folotoy-ai-passport\"",
   )
   debug_inspect(
     @cli.host_dependency_path(contract, "folotoy-ai-passport"),
@@ -116,13 +131,13 @@ test "parse_contract reads hostDependencies as host-id to path entries" {
   debug_inspect(@cli.host_dependency_path(contract, "web"), content="None")
   try
     @cli.parse_contract(
-      "{ \"entry\": \"main\", \"hostDependencies\": { \"folotoy-ai-passport\": { \"path\": \"../escape\" } } }",
+      "entry = \"main\"\n\n[hostDependencies.\"folotoy-ai-passport\"]\npath = \"../escape\"",
     )
   catch {
     @cli.Fail(message) =>
       inspect(
         message,
-        content="passport.json: hostDependencies[\"folotoy-ai-passport\"].\"path\" contains an unsafe path component",
+        content="passport.toml: hostDependencies[\"folotoy-ai-passport\"].\"path\" contains an unsafe path component",
       )
     _ => fail("expected an unsafe hostDependency path to fail")
   } noraise {
@@ -130,13 +145,13 @@ test "parse_contract reads hostDependencies as host-id to path entries" {
   }
   try
     @cli.parse_contract(
-      "{ \"entry\": \"main\", \"hostDependencies\": { \"folotoy-ai-passport\": {} } }",
+      "entry = \"main\"\n\n[hostDependencies.\"folotoy-ai-passport\"]",
     )
   catch {
     @cli.Fail(message) =>
       inspect(
         message,
-        content="passport.json: hostDependencies[\"folotoy-ai-passport\"] is missing required field \"path\"",
+        content="passport.toml: hostDependencies[\"folotoy-ai-passport\"] is missing required string field \"path\"",
       )
     _ => fail("expected a hostDependency without path to fail")
   } noraise {
@@ -148,14 +163,14 @@ test "parse_contract reads hostDependencies as host-id to path entries" {
 test "entry_url_path derives the generic host parameters" {
   // No audio: the plain entry page.
   inspect(
-    @cli.entry_url_path(@cli.parse_contract("{ \"entry\": \"main\" }")),
+    @cli.entry_url_path(@cli.parse_contract("entry = \"main\"")),
     content="index.html",
   )
   // One looping PCM asset: the generic URL parameters only.
   inspect(
     @cli.entry_url_path(
       @cli.parse_contract(
-        "{ \"entry\": \"main\", \"assets\": [ { \"source\": \"s.pcm\", \"bundlePath\": \"assets/tone.pcm\", \"pcmLoop\": true } ] }",
+        "entry = \"main\"\n\n[[assets]]\nsource = \"s.pcm\"\nbundlePath = \"assets/tone.pcm\"\npcmLoop = true",
       ),
     ),
     content="index.html?pcm=./assets/tone.pcm&pcmLoop=1",
@@ -165,7 +180,7 @@ test "entry_url_path derives the generic host parameters" {
   inspect(
     @cli.entry_url_path(
       @cli.parse_contract(
-        "{ \"entry\": \"main\", \"assets\": [ { \"source\": \"s.pcm\", \"bundlePath\": \"assets/once.pcm\" } ] }",
+        "entry = \"main\"\n\n[[assets]]\nsource = \"s.pcm\"\nbundlePath = \"assets/once.pcm\"",
       ),
     ),
     content="index.html",

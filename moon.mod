@@ -27,4 +27,5 @@ source = "src"
 
 import {
   "moonbitlang/async@0.22.0",
+  "bobzhang/toml@0.4.3",
 }

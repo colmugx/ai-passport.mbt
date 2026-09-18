@@ -79,7 +79,7 @@ The CLI is the executable package `src/cmd/passport` (package path
 - `passport hosts` — deterministic registry listing with capabilities and
   backend status.
 - `passport doctor --host web [--project <dir>]` — checks exactly what web
-  work needs: moon toolchain, `passport.json` contract, entry package,
+  work needs: moon toolchain, `passport.toml` contract, entry package,
   resolvable SDK Web Host assets, python3 (the dev server). For a clean
   project, doctor runs `moon check` on the declared wasm entry so Moon can
   resolve/materialize its declared dependencies before Host assets are
@@ -178,27 +178,27 @@ resolving declared dependencies. The CLI does not rely on the deprecated
 no-argument `moon install` flow, does not guess a private global cache path,
 and does not download Host files from GitHub.
 
-## The project contract (`passport.json`)
+## The project contract (`passport.toml`)
 
-Deliberately minimal; a machine-readable `passport.json` at the project
+Deliberately minimal; a machine-readable `passport.toml` at the project
 root. The current contract has ONE application entry — the same application
 package is the semantic source for every Host:
 
-```json
-{
-  "entry": "app",
-  "assets": [
-    { "source": "assets/tone.pcm", "bundlePath": "assets/tone.pcm", "pcmLoop": true }
-  ],
-  "hostDependencies": {
-    "folotoy-ai-passport": { "path": "external/folotoy-ai-passport" }
-  }
-}
+```toml
+entry = "app"
+
+[[assets]]
+source = "assets/tone.pcm"
+bundlePath = "assets/tone.pcm"
+pcmLoop = true
+
+[hostDependencies."folotoy-ai-passport"]
+path = "external/folotoy-ai-passport"
 ```
 
 - `entry` (required) — the application package path relative to the module
   source root. A normal project keeps `source = "src"` in `moon.mod`, so
-  `"entry": "app"` names the package at `src/app`; nothing about the
+  `entry = "app"` names the package at `src/app`; nothing about the
   project's own layout or imports has to change for the CLI. The package
   implements the SDK application contract
   (`colmugx/ai-passport/application`): a type implementing
