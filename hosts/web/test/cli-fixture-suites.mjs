@@ -189,92 +189,46 @@ function runShellBundleStatus(url) {
   return m ? m[1].trim() : null;
 }
 
-/** Copies the SDK tree into `dest`, skipping the CI overlay excludes.
- *  Manual recursion because fs.cpSync refuses to copy a directory into its
- *  own subtree and the fixture lives inside the checkout. */
-function copySdkTree(src, dest, excluded) {
-  fs.mkdirSync(dest, { recursive: true });
-  for (const entry of fs.readdirSync(src, { withFileTypes: true })) {
-    if (excluded.has(entry.name)) continue;
-    const from = path.join(src, entry.name);
-    const to = path.join(dest, entry.name);
-    if (entry.isDirectory()) copySdkTree(from, to, excluded);
-    else if (entry.isFile()) fs.copyFileSync(from, to);
-    // Symlinks in the checkout are dev-environment noise, not module facts.
-  }
-}
+/** Resolve fixture-c and THIS SDK checkout as local workspace members.
+ *  This is Moon's supported unpublished-module workflow: the fixture keeps its
+ *  registry pin, but the workspace resolves ai-passport from local source and
+ *  therefore reads the current SDK's dependency graph. */
+let fixtureCWorkspaceReady = false;
 
-/** Overlays THIS SDK checkout into fixture-c's .mooncakes, stamped at the
- *  fixture's registry pin, so the unpublished application contract resolves.
- *  Mirrors the CI template-integration overlay excludes exactly. Returns the
- *  stamped pin. */
-// One resolved overlay per run-tests invocation. The first copy exposes the
-// CURRENT SDK's transitive dependency graph to moon update; the second copy
-// restores the unpublished SDK source in case resolution rematerialized the
-// published package at the same registry pin.
-let fixtureCOverlayPin = null;
-
-function overlayCurrentSdkIntoFixtureC(repoRoot) {
-  if (fixtureCOverlayPin !== null) return fixtureCOverlayPin;
+function prepareCurrentSdkWorkspaceForFixtureC(repoRoot) {
+  if (fixtureCWorkspaceReady) return;
   const project = fixtureDir(repoRoot, "fixture-c");
-  const projectMoonMod = path.join(project, "moon.mod");
-  const originalProjectMoonMod = fs.readFileSync(projectMoonMod, "utf8");
-  const pin = /"colmugx\/ai-passport@([0-9.]+)"/.exec(originalProjectMoonMod)[1];
-  const expose = spawnSync(
-    "python3",
+  const workspace = path.join(repoRoot, ".passport-cli-fixture.moon.work");
+  const previousMoonWork = process.env.MOON_WORK;
+  fs.writeFileSync(
+    workspace,
     [
-      path.join(repoRoot, ".github", "scripts", "sync-overlay-dependencies.py"),
-      path.join(repoRoot, "moon.mod"),
-      projectMoonMod,
-    ],
-    { encoding: "utf8", timeout: 30_000, maxBuffer: 4 * 1024 * 1024 },
+      "members = [",
+      '  ".",',
+      '  "hosts/web/test/fixtures/fixture-c",',
+      "]",
+      "",
+    ].join("\n"),
   );
-  if (expose.status !== 0) {
-    throw new Error(
-      `fixture-c overlay dependency preparation failed: ${expose.stderr || expose.stdout}`,
-    );
-  }
+  process.env.MOON_WORK = workspace;
   process.once("exit", () => {
-    fs.writeFileSync(projectMoonMod, originalProjectMoonMod);
+    if (previousMoonWork === undefined) delete process.env.MOON_WORK;
+    else process.env.MOON_WORK = previousMoonWork;
+    fs.rmSync(workspace, { force: true });
   });
-  const sdkMod = fs.readFileSync(path.join(repoRoot, "moon.mod"), "utf8");
-  const dest = path.join(project, ".mooncakes", "colmugx", "ai-passport");
-  const excluded = new Set([
-    ".git",
-    "_build",
-    ".mooncakes",
-    ".agents",
-    ".github",
-    ".githooks",
-    ".passport",
-    "passport-generated",
-    "external",
-  ]);
-  const writeOverlay = () => {
-    fs.rmSync(dest, { recursive: true, force: true });
-    copySdkTree(repoRoot, dest, excluded);
-    fs.writeFileSync(
-      path.join(dest, "moon.mod"),
-      sdkMod.replace(/^version = ".*"$/m, `version = "${pin}"`),
-    );
-  };
-
-  writeOverlay();
-  fs.rmSync(path.join(project, ".mooncakes", ".moon-lock"), { force: true });
   const update = spawnSync("moon", ["update"], {
     cwd: project,
     encoding: "utf8",
     timeout: 120_000,
     maxBuffer: 16 * 1024 * 1024,
+    env: process.env,
   });
   if (update.status !== 0) {
     throw new Error(
-      `fixture-c dependency resolution failed: ${update.stderr || update.stdout}`,
+      `fixture-c workspace dependency resolution failed: ${update.stderr || update.stdout}`,
     );
   }
-  writeOverlay();
-  fixtureCOverlayPin = pin;
-  return pin;
+  fixtureCWorkspaceReady = true;
 }
 
 export function registerCliFixtureSuites({ suite, ok, eq, eqText, SuiteError, repoRoot, webHostDir }) {
@@ -520,7 +474,7 @@ export function registerCliFixtureSuites({ suite, ok, eq, eqText, SuiteError, re
 
   suite("cli: generated entry cleanup refuses an escaping symlink", () => {
     const project = fixtureDir(repoRoot, "fixture-c");
-    overlayCurrentSdkIntoFixtureC(repoRoot);
+    prepareCurrentSdkWorkspaceForFixtureC(repoRoot);
     const generatedRoot = path.join(project, "src", "passport-generated");
     const outside = fs.mkdtempSync(path.join(os.tmpdir(), "passport-generated-boundary-"));
     const sentinel = path.join(outside, "sentinel");
@@ -547,7 +501,7 @@ export function registerCliFixtureSuites({ suite, ok, eq, eqText, SuiteError, re
 
   suite("cli: fixture-c (single-entry application contract) builds through the generated entry", async () => {
     const project = fixtureDir(repoRoot, "fixture-c");
-    const pin = overlayCurrentSdkIntoFixtureC(repoRoot);
+    prepareCurrentSdkWorkspaceForFixtureC(repoRoot);
     const res = runCli(repoRoot, ["build", "--host", "web", "--project", project]);
     eq(res.status, 0, `passport build must succeed for fixture-c; stderr: ${res.stderr}`);
     const bundle = path.join(project, ".passport", "web");
@@ -598,7 +552,7 @@ export function registerCliFixtureSuites({ suite, ok, eq, eqText, SuiteError, re
       !imported.includes("host_pcm_write"),
       "the generated entry must keep the streamed PCM import out of the module (PCM asset mode)",
     );
-    console.log(`  fixture-c: SDK overlaid at registry pin ${pin}; generated entry carries ABI v0`);
+    console.log("  fixture-c: current SDK resolved through moon.work; generated entry carries ABI v0");
   });
 
   // --- Suite: browser, fixture C --------------------------------------------------
@@ -643,7 +597,7 @@ export function registerCliFixtureSuites({ suite, ok, eq, eqText, SuiteError, re
 
   suite("browser: CLI fixture-c single-entry bundle renders host facts and answers input", async () => {
     const project = fixtureDir(repoRoot, "fixture-c");
-    overlayCurrentSdkIntoFixtureC(repoRoot);
+    prepareCurrentSdkWorkspaceForFixtureC(repoRoot);
     const build = runCli(repoRoot, ["build", "--host", "web", "--project", project]);
     eq(build.status, 0, `fixture-c CLI build must succeed; stderr: ${build.stderr}`);
     const entry = printedEntryUrl(build.stdout);
