@@ -190,6 +190,12 @@ jobs:
           test -f template/passport.toml
           test ! -e template/passport.json
 
+      - name: Expose current SDK dependencies to overlay projects
+        run: |
+          python3 sdk/.github/scripts/sync-overlay-dependencies.py sdk/moon.mod template/moon.mod
+          python3 sdk/.github/scripts/sync-overlay-dependencies.py \
+            sdk/moon.mod sdk/hosts/folotoy/ai-passport/test/fixtures/no-audio/moon.mod
+
       - name: Assert the pinned FoloToy submodule revision
         run: |
           rev="$(git -C template/external/folotoy-ai-passport rev-parse HEAD)"
