@@ -160,3 +160,16 @@ test "device build planning keeps a declared looping PCM asset" {
   inspect(kept.source, content="assets/tone.pcm")
   inspect(kept.pcm_loop, content="true")
 }
+
+///|
+test "device workspace preserves only incremental ESP-IDF state" {
+  for name in ["build", "managed_components", "sdkconfig", "sdkconfig.old"] {
+    inspect(device_workspace_preserve(name), content="true")
+  }
+  for
+    name in [
+      "components", "main", "tools", "dependencies.lock", "passport_music.pcm", "toolchain", "legacy.c",
+    ] {
+    inspect(device_workspace_preserve(name), content="false")
+  }
+}
