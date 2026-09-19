@@ -33,3 +33,33 @@ fn path_is_within(root : String, path : String) -> Bool {
   let prefix = if root.has_suffix("/") { root } else { "\{root}/" }
   path.has_prefix(prefix)
 }
+
+///|
+fn path_is_strictly_within(root : String, path : String) -> Bool {
+  path != root && path_is_within(root, path)
+}
+
+///|
+/// Canonicalizes an owner root and one existing target immediately before a
+/// recursive delete. The target must be a strict descendant of the owner;
+/// deleting the owner itself or following an escaping symlink is refused.
+async fn remove_owned_tree(
+  owner_path : String,
+  target_path : String,
+  what : String,
+) -> Unit {
+  let owner_root = @fs.realpath(owner_path) catch {
+    _ => @cli.fail_cli("cannot resolve ownership root at \{owner_path}")
+  }
+  let target_root = @fs.realpath(target_path) catch {
+    _ => @cli.fail_cli("cannot resolve \{what} at \{target_path}")
+  }
+  guard path_is_strictly_within(owner_root, target_root) else {
+    @cli.fail_cli(
+      "refusing to remove \{what} outside its owned root \{owner_path}",
+    )
+  }
+  @fs.rmdir(target_path, recursive=true) catch {
+    _ => @cli.fail_cli("cannot remove \{what} at \{target_path}")
+  }
+}

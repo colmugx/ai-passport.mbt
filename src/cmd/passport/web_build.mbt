@@ -134,9 +134,7 @@ async fn reset_web_bundle(project : @cli.Project) -> String {
         "refusing to clear Web bundle outside the CLI-owned .passport/web directory",
       )
     }
-    @fs.rmdir(bundle, recursive=true) catch {
-      _ => @cli.fail_cli("cannot clear stale Web bundle at \{bundle}")
-    }
+    remove_owned_tree(state_root, bundle, "Web bundle")
   }
   @fs.mkdir(bundle, recursive=true) catch {
     _ => @cli.fail_cli("cannot create Web bundle at \{bundle}")

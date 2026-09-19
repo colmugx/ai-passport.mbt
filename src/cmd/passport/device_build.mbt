@@ -258,10 +258,9 @@ async fn ensure_bsp_checkout(project : @cli.Project) -> (String, Bool) {
     MaterializeManaged(dir) => {
       // A partial or corrupt managed clone restarts clean.
       if @fs.exists(dir) {
-        @fs.rmdir(dir, recursive=true) catch {
-          _ =>
-            @cli.fail_cli("cannot clear the stale managed checkout at \{dir}")
-        }
+        let managed_parent = "\{project.root}/.passport/deps/folotoy-ai-passport"
+        ensure_dir(managed_parent)
+        remove_owned_tree(managed_parent, dir, "stale managed FoloToy checkout")
       }
       ensure_dir("\{project.root}/.passport/deps/folotoy-ai-passport")
       run_step(
@@ -410,12 +409,7 @@ async fn prune_device_workspace(
       continue
     }
     if @fs.kind(target) is Directory {
-      @fs.rmdir(target, recursive=true) catch {
-        _ =>
-          @cli.fail_cli(
-            "cannot clear stale device workspace entry at \{target}",
-          )
-      }
+      remove_owned_tree(workspace_root, target, "device workspace entry")
     } else {
       @fs.remove(target) catch {
         _ =>
@@ -629,12 +623,11 @@ async fn device_build_command(sub : @argparse.Matches) -> Unit {
   // A stale native build tree would skip compilation entirely and leave the
   // capture empty; the proven template flow resets it the same way.
   if @fs.exists("\{project.root}/_build/native") {
-    @fs.rmdir("\{project.root}/_build/native", recursive=true) catch {
-      _ =>
-        @cli.fail_cli(
-          "cannot clear \{project.root}/_build/native before the capture",
-        )
-    }
+    remove_owned_tree(
+      project.root,
+      "\{project.root}/_build/native",
+      "stale native capture build tree",
+    )
   }
   ensure_dir(capture_dir)
   match legacy_device_entry {

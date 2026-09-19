@@ -171,6 +171,11 @@ The CLI is the executable package `src/cmd/passport` (package path
 
 ### Where the SDK host files come from
 
+Project loading treats `moon.mod`'s top-level `name` and optional `source`
+as strict quoted scalar metadata: normal whitespace and trailing line comments
+are accepted, while duplicate declarations or malformed values are rejected
+before generated-output cleanup.
+
 The CLI never reaches into MoonBit's private global dependency-cache layout.
 Host files come from the same SDK source tree Moon resolved for the project:
 

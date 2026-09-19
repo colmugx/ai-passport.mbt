@@ -271,6 +271,23 @@ export function registerCliFixtureSuites({ suite, ok, eq, eqText, SuiteError, re
         "the symlink refusal must identify the resolved source boundary",
       );
       ok(fs.existsSync(sentinel), "refusing an escaping source symlink must not touch outside files");
+
+      // Ambiguous project metadata must fail before any generated-output
+      // cleanup. Duplicate source declarations are never "first one wins".
+      fs.rmSync(path.join(project, "linked-src"), { force: true });
+      fs.writeFileSync(
+        moonMod,
+        original + '\nsource = "src"\n',
+      );
+      const duplicate = runCli(repoRoot, ["build", "--host", "web", "--project", project]);
+      ok(duplicate.status !== 0, "duplicate moon.mod source declarations must be refused");
+      ok(
+        `${duplicate.stdout}\n${duplicate.stderr}`.includes(
+          'moon.mod: duplicate "source" declaration',
+        ),
+        "the duplicate metadata refusal must identify moon.mod source",
+      );
+      ok(fs.existsSync(sentinel), "metadata parse failure must not touch outside files");
     } finally {
       fs.rmSync(temp, { recursive: true, force: true });
     }
