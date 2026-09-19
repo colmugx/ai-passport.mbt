@@ -46,11 +46,7 @@ async fn clear_generated_package(
           "refusing to clear generated entry outside \{generated_path}",
         )
       }
-      remove_owned_tree(
-        generated_root,
-        pkg_dir,
-        "generated entry",
-      )
+      remove_owned_tree(generated_root, pkg_dir, "generated entry")
     }
   } else if @fs.exists(pkg_dir) {
     @cli.fail_cli(

@@ -154,18 +154,12 @@ pub fn entry_is_executable_package(pkg_text : String) -> Bool {
     if statement.contains(")") {
       if statement_kind == 1 {
         match config_argument_after(statement, "kind") {
-          Some(value) =>
-            if value.has_prefix("\"executable\"") {
-              return true
-            }
+          Some(value) => if value.has_prefix("\"executable\"") { return true }
           None => ()
         }
       } else {
         match config_argument_after(statement, "\"is-main\"") {
-          Some(value) =>
-            if value.has_prefix("true") {
-              return true
-            }
+          Some(value) => if value.has_prefix("true") { return true }
           None => ()
         }
       }

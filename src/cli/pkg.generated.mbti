@@ -39,7 +39,7 @@ pub fn host_dependency_path(ProjectContract, String) -> String?
 
 pub fn known_host_ids() -> String
 
-pub fn moon_mod_scalar(String, String) -> String?
+pub fn moon_mod_scalar(String, String) -> String? raise
 
 pub fn parse_contract(String) -> ProjectContract raise
 
