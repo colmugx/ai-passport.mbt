@@ -8,6 +8,7 @@ test "parse_contract accepts the minimal contract" {
   inspect(contract.entry, content="main")
   debug_inspect(contract.device_entry, content="None")
   inspect(contract.assets.length(), content="0")
+  inspect(contract.sounds.length(), content="0")
 }
 
 ///|
@@ -25,6 +26,7 @@ test "parse_contract accepts entry plus assets" {
   inspect(contract.assets[0].source, content=".passport/assets/tone.pcm")
   inspect(contract.assets[0].bundle_path, content="assets/tone.pcm")
   inspect(contract.assets[0].pcm_loop, content="true")
+  inspect(contract.sounds.length(), content="0")
 }
 
 ///|
@@ -340,6 +342,7 @@ test "expected_wasm_artifact follows the moon build layout" {
       entry: "main",
       device_entry: None,
       assets: [],
+      sounds: [],
       host_dependencies: [],
     },
   }
@@ -355,6 +358,7 @@ test "expected_wasm_artifact follows the moon build layout" {
       entry: "cmd/greeter",
       device_entry: None,
       assets: [],
+      sounds: [],
       host_dependencies: [],
     },
   }
@@ -374,6 +378,7 @@ test "generated entries live under the module source root" {
       entry: "app",
       device_entry: None,
       assets: [],
+      sounds: [],
       host_dependencies: [],
     },
   }

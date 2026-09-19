@@ -46,6 +46,36 @@ function printedEntryUrl(stdout) {
   return m ? m[1] : null;
 }
 
+function readSoundBank(file) {
+  const require = (condition, message) => {
+    if (!condition) throw new Error(message);
+  };
+  const requireEq = (actual, expected, message) => {
+    if (actual !== expected) throw new Error(`${message}: expected ${expected}, got ${actual}`);
+  };
+  const bytes = fs.readFileSync(file);
+  require(bytes.length >= 16, `sound bank header must be complete (${bytes.length} bytes)`);
+  requireEq(bytes.subarray(0, 4).toString("ascii"), "APSB", "sound bank magic");
+  requireEq(bytes.readUInt16LE(4), 1, "sound bank version");
+  requireEq(bytes.readUInt16LE(6), 16, "sound bank header size");
+  const count = bytes.readUInt32LE(8);
+  requireEq(bytes.readUInt16LE(12), 8, "sound bank entry size");
+  requireEq(bytes.readUInt16LE(14), 0, "sound bank flags");
+  const entries = [];
+  let expectedOffset = 16 + count * 8;
+  for (let id = 0; id < count; id += 1) {
+    const at = 16 + id * 8;
+    const offset = bytes.readUInt32LE(at);
+    const samples = bytes.readUInt32LE(at + 4);
+    requireEq(offset, expectedOffset, `sound ${id} payload must be contiguous`);
+    expectedOffset += samples * 2;
+    require(expectedOffset <= bytes.length, `sound ${id} payload must fit in the bank`);
+    entries.push({ id, offset, samples });
+  }
+  requireEq(expectedOffset, bytes.length, "sound bank must have no trailing bytes");
+  return { bytes, entries };
+}
+
 
 /** Playwright run of a CLI-produced bundle through the SDK's own index.html
  *  (the DOM auto-boot path — no probe page). Waits for globalThis.__passportHost
@@ -206,7 +236,7 @@ export function registerCliFixtureSuites({ suite, ok, eq, eqText, SuiteError, re
 
   // --- Suite: project path safety -----------------------------------------------
 
-  suite("cli: project source paths cannot escape the project root", () => {
+  suite("cli: project paths cannot escape the project root", () => {
     const temp = fs.mkdtempSync(path.join(os.tmpdir(), "passport-source-boundary-"));
     try {
       const project = path.join(temp, "project");
@@ -263,6 +293,66 @@ export function registerCliFixtureSuites({ suite, ok, eq, eqText, SuiteError, re
         "the duplicate metadata refusal must identify moon.mod source",
       );
       ok(fs.existsSync(sentinel), "metadata parse failure must not touch outside files");
+
+      // Sound sources are canonicalized independently from lexical TOML path
+      // checks. An in-project symlink to an outside PCM must fail before the
+      // previous Web bundle is cleared.
+      fs.writeFileSync(moonMod, original);
+      const assets = path.join(project, "assets");
+      fs.mkdirSync(assets, { recursive: true });
+      const outsidePcm = path.join(outside, "escape.pcm");
+      fs.writeFileSync(outsidePcm, Buffer.from([0, 0]));
+      fs.symlinkSync(outsidePcm, path.join(assets, "escape.pcm"));
+      fs.writeFileSync(
+        path.join(project, "passport.toml"),
+        [
+          'entry = "main"',
+          "",
+          "[[sounds]]",
+          'name = "escape"',
+          'source = "assets/escape.pcm"',
+          "",
+        ].join("\n"),
+      );
+      const oldBundle = path.join(project, ".passport", "web");
+      fs.mkdirSync(oldBundle, { recursive: true });
+      const oldBundleSentinel = path.join(oldBundle, "known-good");
+      fs.writeFileSync(oldBundleSentinel, "keep");
+      const escapedSound = runCli(repoRoot, ["build", "--host", "web", "--project", project]);
+      ok(escapedSound.status !== 0, "an escaping sound symlink must be refused");
+      ok(
+        `${escapedSound.stdout}\n${escapedSound.stderr}`.includes(
+          "sound source resolves outside the project root: assets/escape.pcm",
+        ),
+        "the refusal must identify the sound source boundary",
+      );
+      ok(fs.existsSync(oldBundleSentinel), "invalid sound input must preserve the previous Web bundle");
+
+      fs.rmSync(path.join(assets, "escape.pcm"));
+      fs.writeFileSync(
+        path.join(project, "passport.toml"),
+        'entry = "main"\n[[sounds]]\nname = "missing"\nsource = "assets/missing.pcm"\n',
+      );
+      const missingSound = runCli(repoRoot, ["build", "--host", "web", "--project", project]);
+      ok(missingSound.status !== 0, "a missing sound source must fail");
+      ok(
+        `${missingSound.stdout}\n${missingSound.stderr}`.includes("sound source is missing: assets/missing.pcm"),
+        "the missing sound refusal must identify the configured source",
+      );
+      ok(fs.existsSync(oldBundleSentinel), "missing sound input must preserve the previous Web bundle");
+
+      fs.writeFileSync(path.join(assets, "odd.pcm"), Buffer.from([0]));
+      fs.writeFileSync(
+        path.join(project, "passport.toml"),
+        'entry = "main"\n[[sounds]]\nname = "odd"\nsource = "assets/odd.pcm"\n',
+      );
+      const oddSound = runCli(repoRoot, ["build", "--host", "web", "--project", project]);
+      ok(oddSound.status !== 0, "an odd-length PCM source must fail");
+      ok(
+        `${oddSound.stdout}\n${oddSound.stderr}`.includes("PCM byte length must be even"),
+        "the PCM refusal must identify the even-byte contract",
+      );
+      ok(fs.existsSync(oldBundleSentinel), "invalid PCM input must preserve the previous Web bundle");
     } finally {
       fs.rmSync(temp, { recursive: true, force: true });
     }
@@ -289,6 +379,8 @@ export function registerCliFixtureSuites({ suite, ok, eq, eqText, SuiteError, re
         ].join("\n"),
       );
       fs.writeFileSync(path.join(app, "moon.pkg"), "");
+      fs.mkdirSync(path.join(project, "assets"), { recursive: true });
+      fs.writeFileSync(path.join(project, "assets", "hit.pcm"), Buffer.from([1, 0, 2, 0]));
       fs.writeFileSync(
         path.join(project, "passport.toml"),
         [
@@ -296,6 +388,10 @@ export function registerCliFixtureSuites({ suite, ok, eq, eqText, SuiteError, re
           "",
           '[hostDependencies."folotoy-ai-passport"]',
           'path = "missing-bsp"',
+          "",
+          "[[sounds]]",
+          'name = "hit"',
+          'source = "assets/hit.pcm"',
           "",
         ].join("\n"),
       );
@@ -331,6 +427,13 @@ export function registerCliFixtureSuites({ suite, ok, eq, eqText, SuiteError, re
       ok(!fs.existsSync(path.join(workspace, "toolchain")), "generated toolchain state must be rebuilt, not retained");
       ok(!fs.existsSync(path.join(workspace, "passport_music.pcm")), "stale application music must not survive a no-audio build");
       ok(fs.existsSync(path.join(workspace, "main", "app_main.c")), "current Host sources must be rematerialized");
+      const deviceBank = readSoundBank(path.join(workspace, "sounds.bank"));
+      eq(deviceBank.entries.length, 1, "device workspace sound bank entry count");
+      eq(deviceBank.entries[0].samples, 2, "device workspace sound sample count");
+      ok(
+        deviceBank.bytes.subarray(deviceBank.entries[0].offset).equals(Buffer.from([1, 0, 2, 0])),
+        "device workspace bank must contain the declared PCM bytes",
+      );
 
       eq(fs.readFileSync(path.join(workspace, "build", "sentinel"), "utf8"), "build-cache", "build cache must survive");
       eq(
@@ -370,6 +473,9 @@ export function registerCliFixtureSuites({ suite, ok, eq, eqText, SuiteError, re
     eq(res.status, 0, `passport build must succeed for fixture-a; stderr: ${res.stderr}`);
     const bundle = path.join(project, ".passport", "web");
     ok(fs.existsSync(path.join(bundle, "app.wasm")), "bundle/app.wasm must exist");
+    const emptyBank = readSoundBank(path.join(bundle, "sounds.bank"));
+    eq(emptyBank.entries.length, 0, "no-audio project must emit an empty sound bank");
+    eq(emptyBank.bytes.length, 16, "empty sound bank must contain only its header");
     for (const file of ["index.html", "passport-host.js", "pcm-worklet.js"]) {
       ok(
         fs.readFileSync(path.join(bundle, file)).equals(fs.readFileSync(path.join(webHostDir, file))),
@@ -413,6 +519,17 @@ export function registerCliFixtureSuites({ suite, ok, eq, eqText, SuiteError, re
       ),
       "bundle/assets/tone.pcm must be byte-identical to the project asset",
     );
+    const soundBank = readSoundBank(path.join(bundle, "sounds.bank"));
+    eq(soundBank.entries.length, 2, "fixture-b sound bank entry count");
+    eq(soundBank.entries[0].samples, 4000, "first sound sample count");
+    eq(soundBank.entries[1].samples, 4000, "second sound sample count");
+    const tone = fs.readFileSync(path.join(project, "assets", "tone.pcm"));
+    for (const entry of soundBank.entries) {
+      ok(
+        soundBank.bytes.subarray(entry.offset, entry.offset + entry.samples * 2).equals(tone),
+        `sound ${entry.id} payload must equal its declared PCM source`,
+      );
+    }
     const url = printedEntryUrl(res.stdout);
     eq(
       url,

@@ -55,7 +55,7 @@ Host glue stays behind the Host boundary; reusable application semantics remain 
 
 ## Web host (wasm backend)
 
-The SDK ships an application-agnostic web host backend for compiled MoonBit `wasm` apps: `hosts/web/passport-host.js` with `hosts/web/pcm-worklet.js` and `hosts/web/index.html` implements the internal, experimental ABI v0 contract specified in `docs/WEB_HOST.md`. It is a host **backend**, not an application preview or template — it holds no application state, and all browser code lives in the `hosts/web/*.js` assets, not in SDK MoonBit packages. `src/hostabi` adapts the SDK contracts to the raw wasm boundary, and `src/fixture` is the smallest main package that proves the boundary end-to-end with deterministic pixels and PCM. ABI v0 is internal and not a frozen public SDK API; the bundle contract is `<bundle>/app.wasm` plus `<bundle>/assets/` (`hosts/web/README.md`).
+The SDK ships an application-agnostic web host backend for compiled MoonBit `wasm` apps: `hosts/web/passport-host.js` with `hosts/web/pcm-worklet.js` and `hosts/web/index.html` implements the internal, experimental ABI v0 contract specified in `docs/WEB_HOST.md`. It is a host **backend**, not an application preview or template — it holds no application state, and all browser code lives in the `hosts/web/*.js` assets, not in SDK MoonBit packages. `src/hostabi` adapts the SDK contracts to the raw wasm boundary, and `src/fixture` is the smallest main package that proves the boundary end-to-end with deterministic pixels and PCM. ABI v0 is internal and not a frozen public SDK API; the CLI-produced bundle includes `app.wasm`, `sounds.bank`, the Host files and declared ordinary assets (`hosts/web/README.md`).
 
 Verify the boundary with the fixture and integration suite, from the repository root:
 
@@ -75,9 +75,15 @@ The module ships the `passport` CLI: build and serve applications for registered
 
 ```toml
 entry = "app"
+
+[[sounds]]
+name = "jump"
+source = "assets/jump.pcm"
 ```
 
 The entry path is relative to the module source root: with the normal `source = "src"` in `moon.mod`, the application lives at `src/app` and nothing about the project's imports changes. The application package implements the `Application` contract (`colmugx/ai-passport/application`) and exposes `pub fn passport_main() -> &Application`; the CLI generates the Host entry adapters under the source root's `passport-generated/` tree (build output — gitignore `passport-generated/`). See `docs/PASSPORT_CLI.md`.
+
+Each `[[sounds]]` entry names one externally prepared, headerless signed PCM16 little-endian mono 16000 Hz file. The CLI validates its path and byte-level PCM contract, then compiles every declared sound in order into the same deterministic `sounds.bank` format for Web and device builds. The SDK does not decode media formats or infer sample rate/channel metadata from headerless PCM. See `docs/SOUND_BANK.md`.
 
 ```sh
 moon run --target wasm src/cmd/passport hosts

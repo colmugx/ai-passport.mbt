@@ -19,6 +19,16 @@ pub(all) struct AssetEntry {
 } derive(Eq, Debug)
 
 ///|
+/// One preprocessed PCM sound resource. Playback behavior is deliberately
+/// absent: loop, volume and routing belong to each playback, not the resource.
+pub(all) struct SoundEntry {
+  /// Stable logical name used to derive the generated MoonBit symbol.
+  name : String
+  /// Path to headerless PCM16 LE mono 16000 Hz data, relative to the project.
+  source : String
+} derive(Eq, Debug)
+
+///|
 /// One external dependency a Host build consumes outside the SDK release
 /// (for example a pinned hardware vendor checkout). The SDK never carries
 /// or publishes this code; the path is project-provided and points at a
@@ -41,6 +51,8 @@ pub(all) struct ProjectContract {
   device_entry : String?
   /// Files to materialize into the bundle; may be empty.
   assets : Array[AssetEntry]
+  /// Preprocessed PCM resources compiled into the deterministic sound bank.
+  sounds : Array[SoundEntry]
   /// Project-provided external Host dependencies; may be empty.
   host_dependencies : Array[HostDependency]
 } derive(Eq, Debug)
@@ -97,7 +109,8 @@ fn reserved_bundle_path(path : String) -> Bool {
   path == "app.wasm" ||
   path == "index.html" ||
   path == "passport-host.js" ||
-  path == "pcm-worklet.js"
+  path == "pcm-worklet.js" ||
+  path == SOUND_BANK_FILE
 }
 
 ///|
@@ -219,6 +232,21 @@ pub fn parse_contract(text : String) -> ProjectContract raise {
       "passport.toml: at most one asset may set \"pcmLoop\": true (found \{pcm_assets.length()})",
     )
   }
+  let sounds : Array[SoundEntry] = []
+  match root.get("sounds") {
+    Some(@toml.TomlArray(list)) =>
+      for raw in list {
+        let sound = parse_sound(raw)
+        for existing in sounds {
+          if existing.name == sound.name {
+            fail_cli("passport.toml: duplicate sound name \"\{sound.name}\"")
+          }
+        }
+        sounds.push(sound)
+      }
+    Some(_) => fail_cli("passport.toml: \"sounds\" must be an array")
+    None => ()
+  }
   let host_dependencies : Array[HostDependency] = []
   match root.get("hostDependencies") {
     Some(@toml.TomlTable(map)) =>
@@ -239,7 +267,29 @@ pub fn parse_contract(text : String) -> ProjectContract raise {
     Some(_) => fail_cli("passport.toml: \"hostDependencies\" must be a table")
     None => ()
   }
-  { entry, device_entry, assets, host_dependencies, }
+  { entry, device_entry, assets, sounds, host_dependencies, }
+}
+
+///|
+fn parse_sound(value : @toml.TomlValue) -> SoundEntry raise {
+  guard value is @toml.TomlTable(obj) else {
+    fail_cli("passport.toml: each sound must be a table")
+  }
+  for (key, _) in obj {
+    if key != "name" && key != "source" {
+      fail_cli("passport.toml: sound field \"\{key}\" is not supported")
+    }
+  }
+  guard obj.get("name") is Some(@toml.TomlString(name)) else {
+    fail_cli("passport.toml: sound is missing required string field \"name\"")
+  }
+  guard obj.get("source") is Some(@toml.TomlString(source)) else {
+    fail_cli(
+      "passport.toml: sound \"\{name}\" is missing required string field \"source\"",
+    )
+  }
+  validate_relative_path(source, "sound \"\{name}\" source")
+  { name, source, }
 }
 
 ///|

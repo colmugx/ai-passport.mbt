@@ -83,7 +83,8 @@ The CLI is the executable package `src/cmd/passport` (package path
   resolvable SDK Web Host assets, python3 (the dev server). For a clean
   project, doctor runs `moon check` on the declared wasm entry so Moon can
   resolve/materialize its declared dependencies before Host assets are
-  inspected. It never demands device tooling.
+  inspected. It validates every declared sound through the same compiler used
+  by builds. It never demands device tooling.
 - `passport doctor --host folotoy-ai-passport [--project <dir>]` — checks
   exactly what a device build needs, reporting every failure without
   aborting early: the pinned moon toolchain
@@ -91,9 +92,9 @@ The CLI is the executable package `src/cmd/passport` (package path
   v5.5.3 (source the matching `export.sh` first), the project contract
   (a `deviceEntry` package for the legacy 0.0.5 layout, or a library
   application entry whose device adapter the build generates), the entry
-  package and its `moon.pkg`, the
-  looping PCM music asset source when one is declared (a project with no
-  audio asset is a valid state), the resolvable SDK device Host assets, the
+  package and its `moon.pkg`, the shared sound resources/bank, the
+  transitional looping PCM music asset source when one is declared (a project
+  with no audio asset is a valid state), the resolvable SDK device Host assets, the
   `$MOON_HOME` runtime files against the Host's `moonbit-runtime.sha256`
   manifest, and the external FoloToy dependency — which checkout a build
   would use, whether it matches the pinned content manifest, or (when
@@ -109,6 +110,7 @@ The CLI is the executable package `src/cmd/passport` (package path
     index.html           SDK-owned, byte-for-byte from the resolved SDK
     passport-host.js     SDK-owned
     pcm-worklet.js       SDK-owned
+    sounds.bank          deterministic APSB v1 bank (valid empty bank when no sounds)
     assets/...           every asset declared by the project contract
   ```
 
@@ -131,33 +133,37 @@ The CLI is the executable package `src/cmd/passport` (package path
   2. refuse clearly when neither applies or a declared looping PCM asset is
      missing;
   3. resolve the SDK's `hosts/folotoy/ai-passport` implementation;
-  4. refresh the device workspace
+  4. validate every `[[sounds]]` source and compile the deterministic APSB v1
+     bank before modifying the existing workspace;
+  5. refresh the device workspace
      `<project>/.passport/folotoy-ai-passport/`: remove stale Host/source
      and generated entries, preserve only the incremental ESP-IDF state
      (`build/`, `managed_components/`, `sdkconfig`, `sdkconfig.old`),
      then copy the current SDK Host files; the SDK's own `test/` tree and
      `README.md` are never copied;
-  5. copy the looping PCM asset to `<workspace>/passport_music.pcm` when
-     declared; without one the firmware embeds no application music;
-  6. resolve the external FoloToy dependency — the contract's
+  6. write the same compiler output to `<workspace>/sounds.bank`, then copy
+     the transitional looping PCM asset to `<workspace>/passport_music.pcm`
+     when declared; without the latter the legacy runtime embeds no
+     application music;
+  7. resolve the external FoloToy dependency — the contract's
      `hostDependencies` checkout when declared, else the CLI-managed clone
      of the single pinned revision under
      `.passport/deps/folotoy-ai-passport/<revision>/` — verify it against
      the Host's content manifest, log its path/revision/origin, and connect
      it via a generated `upstream.cmake` (upstream source is compiled in
      place, never copied into the SDK or the workspace);
-  7. capture the device entry's generated C: the capture cc is copied into
+  8. capture the device entry's generated C: the capture cc is copied into
      the workspace, injected into the entry package's `moon.pkg` for exactly
      one `moon build <deviceEntry> --target native --release` invocation
      (`MOON_CC_CAPTURE_DIR` + `MOONBIT_NEW_NATIVE=0`), and the original
      `moon.pkg` bytes are restored on success and failure alike — the
      project source tree is never left modified;
-  8. verify the pinned toolchain (ESP-IDF v5.5.3, moon version, runtime
+  9. verify the pinned toolchain (ESP-IDF v5.5.3, moon version, runtime
      manifest);
-  9. `idf.py reconfigure` in the workspace and verify the device baselines
+  10. `idf.py reconfigure` in the workspace and verify the device baselines
      in the effective `sdkconfig` (`CONFIG_FREERTOS_HZ=1000`, custom
      partition table `partitions.csv`);
-  10. `idf.py build` and report the firmware path, size and app-partition
+  11. `idf.py build` and report the firmware path, size and app-partition
       margin (partition size `0x380000`).
 
   The workspace keeps `build/`, `managed_components/`, `sdkconfig` and
@@ -201,6 +207,10 @@ source = "assets/tone.pcm"
 bundlePath = "assets/tone.pcm"
 pcmLoop = true
 
+[[sounds]]
+name = "jump"
+source = "assets/jump.pcm"
+
 [hostDependencies."folotoy-ai-passport"]
 path = "external/folotoy-ai-passport"
 ```
@@ -225,6 +235,15 @@ path = "external/folotoy-ai-passport"
   `passport_music.pcm` in the device workspace). Declaring no audio asset is
   a valid application: the device firmware then embeds no music and the Host
   reports playback unavailable, while the audio hardware capability stays.
+- `sounds` (optional) — ordered preprocessed PCM resources, separate from
+  ordinary assets. Each table contains only `name` and project-relative
+  `source`; playback behavior such as loop, autoplay, volume and channel is
+  rejected here. Names must produce distinct MoonBit constructor symbols.
+  Sources must be non-empty `.pcm` files with an even byte length. Their
+  input contract is signed PCM16 little-endian, mono, 16000 Hz and headerless;
+  the CLI cannot infer sample rate or channel count from headerless bytes.
+  Every build emits a deterministic `sounds.bank`, including a valid empty
+  bank when the list is absent. See `SOUND_BANK.md`.
 - `hostDependencies` (optional) — project-provided checkouts of external
   Host dependencies (third-party hardware code the SDK itself never
   carries). Each entry maps a registered host id to a `path` relative to the
@@ -238,7 +257,7 @@ path = "external/folotoy-ai-passport"
 Contract paths are forward-slash relative paths. Absolute paths, traversal
 components (`.` / `..`), duplicate bundle destinations, and attempts to
 replace Host-owned files (`app.wasm`, `index.html`, `passport-host.js`,
-`pcm-worklet.js`) are rejected before filesystem access.
+`pcm-worklet.js`, `sounds.bank`) are rejected before filesystem access.
 
 The contract cannot express GPIO, ESP-IDF settings, frame rate, or anything
 application-specific — later rounds extend it without renaming these fields.

@@ -570,6 +570,9 @@ async fn device_build_command(sub : @argparse.Matches) -> Unit {
     HOST_DIR_FOLOTOY,
     @cli.sdk_device_host_files(),
   )
+  // Compile and validate all project-owned sound inputs before refreshing the
+  // CLI-owned workspace. A bad resource must not destroy a known-good build.
+  let sound_compilation = compile_project_sounds(project)
   let workspace = @cli.under_root(project.root, @cli.DEVICE_BUNDLE_DIR)
   println("passport: materializing the device workspace from \{sdk_host}")
   ensure_dir(workspace)
@@ -580,6 +583,7 @@ async fn device_build_command(sub : @argparse.Matches) -> Unit {
     }
     copy_tree("\{sdk_host}/\{name}", "\{workspace}/\{name}")
   }
+  write_sound_bank("\{workspace}/\{@cli.SOUND_BANK_FILE}", sound_compilation)
   let generated_dir = "\{workspace}/components/moonbit_device/generated"
   match plan_device_music(project) {
     Music(asset) => {

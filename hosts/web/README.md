@@ -108,11 +108,15 @@ bundle/
 ├── passport-host.js
 ├── pcm-worklet.js
 ├── app.wasm          # compiled MoonBit wasm app (wasm backend, ABI v0)
+├── sounds.bank       # APSB v1 resource bank emitted by the CLI
 └── assets/           # test/asset files (owned by later waves; see below)
 ```
 
 - The host fetches `app.wasm` relative to its own module URL (i.e. the bundle
   directory); `index.html` loads `./passport-host.js` from the same directory.
+- The CLI always emits `sounds.bank`, including a valid empty bank. The
+  current legacy Web runtime does not consume it yet; the Sound runtime
+  cutover is tracked separately from the resource format.
 - The host **never** reads `assets/` itself and never knows about `src/`,
   authored PNG/MP3/WAV sources, or ESP-IDF configuration. `assets/` belongs to
   the test wave (`hosts/web/test/**` exercises the normalized-PCM path via
