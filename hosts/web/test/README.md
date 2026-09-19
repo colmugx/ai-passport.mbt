@@ -8,7 +8,7 @@ real built artifacts:
 - `../passport-host.js` — the host module under test (suites 4-7 and the
   pcm-asset suites import it directly; no DOM needed).
 - `_build/wasm/{release,debug}/build/fixture/fixture.wasm` — the fixture app
-  the host boots (suites 2-3 instantiate it with stub imports; suite 9 runs it
+  the host boots (suites 2-3 instantiate it with stub imports; suite 26 runs it
   in a real browser).
 - `assets/test.pcm` — the committed normalized-PCM test asset (0.25 s of the
   frozen integer square wave, PCM16 LE mono 16000 Hz, 8000 bytes). Also the
@@ -16,7 +16,7 @@ real built artifacts:
 - `minimal-wasm.mjs` — deterministic emitter for the minimal no-import wasm
   module used by the PCM asset suites (satisfies the ABI v0 export surface,
   imports nothing, so the host boots it in asset mode).
-- `pcm-asset-suites.mjs` — the node-side PCM asset suites (10-16), registered
+- `pcm-asset-suites.mjs` — the node-side PCM asset suites (9-16), registered
   into `run-tests.mjs`.
 
 There is no `package.json`, no `node_modules`, and no CDN dependency: plain
@@ -43,8 +43,8 @@ node hosts/web/test/run-tests.mjs               # add --skip-browser to skip the
 
 `run-tests.mjs` checks 1-2 and auto-generates the asset (via 2) if missing,
 printing what it does; it never builds or downloads anything else. Execution
-order follows registration: suites 1-8, the pcm-asset node suites (10-17),
-then the two browser suites (9 and 18) last.
+order follows registration: suites 1-8, PCM-asset node suites 9-16,
+passport-CLI suites 17-25, then browser suites 26-28.
 
 ## Suites
 
@@ -58,18 +58,20 @@ then the two browser suites (9 and 18) last.
 | 6 | `host-module: canvas-less` | No canvas: dirty/consume protocol still runs (`tick()` returns `presented: true`); `dispose()` stops the interval loop and freezes the host; start/dispose idempotence. |
 | 7 | `host-module: memory growth` | `memory.grow(1)` detaches the old framebuffer buffer; `getFramebufferView()` re-binds to the grown memory; content and the app survive growth. |
 | 8 | `bundle` | `make-bundle.mjs` copies the release wasm and the asset byte-identically (temp outdir and the default `_build/passport-bundle`); refuses with the exact `moon build` command when the wasm is missing. |
-| 10 | `pcm-asset: minimal wasm module` | `minimal-wasm.mjs` emits a deterministic module importing NOTHING that satisfies the ABI v0 export surface (fb 4096/38400, always-dirty frames, `passport_frame` stores low16(now_us) at pixel 0) and boots through `createHost` in asset mode. |
-| 11 | `pcm-asset: strict input, non-blocking load` | Exact PCM16 LE -> Float32 (/32768) decode sample-for-sample; odd/empty artifacts and HTTP 404 reject `waitForAudioAsset` without ever blocking ticks; a deliberately slow fetch lets 5 frames run first; config validation (url+bytes, pcmLoop without source, non-string url); neutral asset facts on non-asset hosts. |
-| 12 | `pcm-asset: bounded refill` | 40000-sample asset through ScriptProcessor pulls: every output sample equals the frozen square wave at its global index (cursor advances exactly); decode chunks never exceed 3200 samples (no whole-track Float32 — `maxChunkSamples`); pending queue bounded (`peakPendingSamples`); decode is incremental; consumption crosses >= 3 passes. |
-| 13 | `pcm-asset: sample-exact loop` | `[A B C]` looping must emit `A B C A B C ...` for 2+ full pull buffers with NO missing/duplicated boundary sample; `eof` never set. |
-| 14 | `pcm-asset: non-loop EOF` | `[A B C]` non-looping plays exactly A B C then silence, forever: EOF sets, cursor parks at the sample count, no further decode, position freezes at exactly the asset length (188 µs). |
-| 15 | `pcm-asset: mute/volume` | Mute forces gain 0 without moving the cursor; position/loops/decode continue while muted; volume while muted keeps gain 0 and never alters the cursor; unmute maps volume -> gain; position monotonic across toggles. |
-| 16 | `pcm-asset: suspended AudioContext` | With the context suspended: the asset loads, initial refill happens, 10 frames present, position stays 0n; after the simulated unlock, audio flows through the same transport and frames still run. |
-| 17 | `pcm-asset: exclusivity` | The real fixture wasm (imports `host_pcm_write`) + asset config fails loudly at `createHost` naming both modes; on asset hosts `feedNormalizedPcm`/the default import throw; the minimal module without asset options stays a plain streamed host. |
-| 9 | `browser` | Exact RGB565 output and the full normalized-PCM host path in a real browser: a real chromium boots the bundle, drives the same deterministic frame/input sequence as a node-side golden instance, and the canvas `getImageData` FNV-1a checksum must equal the node-side `rgb565ToRgba8888`-derived expectation (plus framebuffer checksum equality and frame-count sanity). Additionally, with REAL audio enabled, wasm `host_pcm_write` must push PCM (`pcmCalls`/`pcmBytes`), the audio transport must be worklet or script, samples must be handed to the transport (`audioFilled`), and on the playwright path the render side must actually consume them (`audioConsumed`, `audioProof: "full"`). |
-| 18 | `browser pcm-asset` | The PCM asset transport in a real browser: the minimal no-import wasm boots an asset host that fetches `assets/test.pcm` over HTTP, decodes bounded chunks through the SAME AudioWorklet transport (first posted chunk byte-equals the node-side PCM16 decode), consumes past 2 full asset loops (loop refill), keeps presenting wasm/canvas frames while audio runs, and muting does not stop the playback position. On the playwright (CI) path the AudioWorklet transport itself is required. |
+| 9 | `pcm-asset: minimal wasm module` | `minimal-wasm.mjs` emits a deterministic module importing NOTHING that satisfies the ABI v0 export surface (fb 4096/38400, always-dirty frames, `passport_frame` stores low16(now_us) at pixel 0) and boots through `createHost` in asset mode. |
+| 10 | `pcm-asset: strict input, non-blocking load` | Exact PCM16 LE -> Float32 (/32768) decode sample-for-sample; odd/empty artifacts and HTTP 404 reject `waitForAudioAsset` without ever blocking ticks; a deliberately slow fetch lets 5 frames run first; config validation (url+bytes, pcmLoop without source, non-string url); neutral asset facts on non-asset hosts. |
+| 11 | `pcm-asset: bounded refill` | 40000-sample asset through ScriptProcessor pulls: every output sample equals the frozen square wave at its global index (cursor advances exactly); decode chunks never exceed 3200 samples (no whole-track Float32 — `maxChunkSamples`); pending queue bounded (`peakPendingSamples`); decode is incremental; consumption crosses >= 3 passes. |
+| 12 | `pcm-asset: sample-exact loop` | `[A B C]` looping must emit `A B C A B C ...` for 2+ full pull buffers with NO missing/duplicated boundary sample; `eof` never set. |
+| 13 | `pcm-asset: non-loop EOF` | `[A B C]` non-looping plays exactly A B C then silence, forever: EOF sets, cursor parks at the sample count, no further decode, position freezes at exactly the asset length (188 µs). |
+| 14 | `pcm-asset: mute/volume` | Mute forces gain 0 without moving the cursor; position/loops/decode continue while muted; volume while muted keeps gain 0 and never alters the cursor; unmute maps volume -> gain; position monotonic across toggles. |
+| 15 | `pcm-asset: suspended AudioContext` | With the context suspended: the asset loads, initial refill happens, 10 frames present, position stays 0n; after the simulated unlock, audio flows through the same transport and frames still run. |
+| 16 | `pcm-asset: exclusivity` | The real fixture wasm (imports `host_pcm_write`) + asset config fails loudly at `createHost` naming both modes; on asset hosts `feedNormalizedPcm`/the default import throw; the minimal module without asset options stays a plain streamed host. |
+| 17–25 | `passport CLI fixtures` | Structural vocabulary gates, project source containment, device-workspace stale-source pruning, fixture A/B bundle assembly, deterministic Web rebuild, doctor, and CLI-produced browser bundles for fixtures A/B. |
+| 26 | `browser` | Exact RGB565 output and the full normalized-PCM host path in a real browser: a real chromium boots the bundle, drives the same deterministic frame/input sequence as a node-side golden instance, and the canvas `getImageData` FNV-1a checksum must equal the node-side `rgb565ToRgba8888`-derived expectation (plus framebuffer checksum equality and frame-count sanity). Additionally, with REAL audio enabled, wasm `host_pcm_write` must push PCM (`pcmCalls`/`pcmBytes`), the audio transport must be worklet or script, samples must be handed to the transport (`audioFilled`), and on the playwright path the render side must actually consume them (`audioConsumed`, `audioProof: "full"`). |
+| 27 | `browser pcm-asset` | The PCM asset transport in a real browser: the minimal no-import wasm boots an asset host that fetches `assets/test.pcm` over HTTP, decodes bounded chunks through the SAME AudioWorklet transport (first posted chunk byte-equals the node-side PCM16 decode), consumes past 2 full asset loops (loop refill), keeps presenting wasm/canvas frames while audio runs, and muting does not stop the playback position. On the playwright (CI) path the AudioWorklet transport itself is required. |
+| 28 | `browser DOM auto-boot` | The SDK's own `index.html` auto-boots the minimal no-import wasm in PCM-asset mode, loads and loops the committed PCM asset, exposes `globalThis.__passportHost`, keeps canvas frames running, and guards the historical pre-`createHost` `ReferenceError` regression. |
 
-## Browser suite (9) requirements and fallbacks
+## Browser suite (26) requirements and fallbacks
 
 The suite tries, in order:
 
@@ -151,7 +153,7 @@ documented environmental degradation of a FALLBACK; it is never seen in CI.
 `--skip-browser` (or `PASSPORT_SKIP_BROWSER=1`) skips the browser suites
 entirely; the remaining suites are fully hermetic.
 
-## Browser PCM asset suite (18)
+## Browser PCM asset suite (27)
 
 `test/pcm-asset-probe.html` boots the host in PCM asset mode with the REAL
 AudioContext: the app is the minimal no-import wasm (generated into the
@@ -188,7 +190,7 @@ before the module script (host blob import, worklet blob URL, wasm and PCM
 bytes inline — exercising `pcmAssetBytes`). On the playwright (CI) path the
 AudioWorklet transport itself is required (`audioKind === "worklet"`); the
 shell fallbacks may degrade to ScriptProcessor with the documented
-ingest-only marker, exactly like suite 9.
+ingest-only marker, exactly like suite 26.
 
 ## Tools
 
