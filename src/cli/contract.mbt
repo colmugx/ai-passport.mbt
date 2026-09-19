@@ -134,7 +134,7 @@ pub fn entry_is_executable_package(pkg_text : String) -> Bool {
   let mut statement = ""
   let mut statement_kind = 0
   for raw_line in pkg_text.split("\n").to_array() {
-    let trimmed = strip_config_line_comment(raw_line).trim()
+    let trimmed = strip_config_line_comment(raw_line.to_owned()).trim()
     if trimmed == "" {
       continue
     }
