@@ -145,7 +145,6 @@ async fn reset_web_bundle(project : @cli.Project) -> String {
 }
 
 ///|
-///|
 /// `passport build --host <id>`: route to the Host's build backend. Unknown
 /// hosts fail inside the backend entry (no silent web fallback).
 async fn build_command(sub : @argparse.Matches) -> Unit {
