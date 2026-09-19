@@ -114,7 +114,8 @@ async fn reset_web_bundle(project : @cli.Project) -> String {
     }
   }
   let state_root = @fs.realpath(state_dir) catch {
-    _ => @cli.fail_cli("cannot resolve Web bundle state directory at \{state_dir}")
+    _ =>
+      @cli.fail_cli("cannot resolve Web bundle state directory at \{state_dir}")
   }
   guard state_root != project.root && path_is_within(project.root, state_root) else {
     @cli.fail_cli(
