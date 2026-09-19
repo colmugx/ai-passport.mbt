@@ -12,7 +12,7 @@ extern "c" fn test_output_set_calls() -> Int = "ai_passport_test_output_set_call
 ///|
 test "a fresh mirror starts silent and repeats of the seeded facts never write" {
   let before = test_output_set_calls()
-  let mirror = DeviceAudioMirror::new(initial_volume=80, initial_muted=false)
+  let mirror = DeviceAudioMirror(initial_volume=80, initial_muted=false)
   // Creating the mirror and re-syncing the exact facts it was seeded with
   // crosses nothing: identical state never reaches the transport.
   mirror.sync(80, muted=false)
@@ -23,7 +23,7 @@ test "a fresh mirror starts silent and repeats of the seeded facts never write" 
 
 ///|
 test "a volume change writes once with the C integer encoding" {
-  let mirror = DeviceAudioMirror::new(initial_volume=80, initial_muted=false)
+  let mirror = DeviceAudioMirror(initial_volume=80, initial_muted=false)
   let before = test_output_set_calls()
   mirror.sync(90, muted=false)
   assert_eq(test_output_set_calls(), before + 1)
@@ -36,7 +36,7 @@ test "a volume change writes once with the C integer encoding" {
 
 ///|
 test "a mute-only change writes once and keeps the remembered volume" {
-  let mirror = DeviceAudioMirror::new(initial_volume=80, initial_muted=false)
+  let mirror = DeviceAudioMirror(initial_volume=80, initial_muted=false)
   let before = test_output_set_calls()
   mirror.sync(80, muted=true)
   assert_eq(test_output_set_calls(), before + 1)
@@ -51,7 +51,7 @@ test "a mute-only change writes once and keeps the remembered volume" {
 
 ///|
 test "volume and mute travel together as one coherent snapshot" {
-  let mirror = DeviceAudioMirror::new(initial_volume=80, initial_muted=false)
+  let mirror = DeviceAudioMirror(initial_volume=80, initial_muted=false)
   let before = test_output_set_calls()
   mirror.sync(100, muted=true)
   // One call carries both absolute facts; neither is applied alone.
