@@ -16,35 +16,35 @@
  *   6. host-module: canvas-less run and dispose
  *   7. host-module: memory-growth view invalidation
  *   8. bundle             make-bundle assembly + refusal path
- *   9. browser            exact RGB565 output reaches a real HTML canvas AND
+ *   9-16. pcm-asset:*     node suites for the PCM ASSET transport (registered
+ *                         from pcm-asset-suites.mjs): minimal no-import wasm,
+ *                         strict input + non-blocking load, bounded refill,
+ *                         sample-exact loop, non-loop EOF, mute/volume clock,
+ *                         suspended AudioContext, producer-mode exclusivity
+ *  17-25. passport CLI    structural gates, source-path containment, device
+ *                         workspace pruning, fixture A/B bundle assembly,
+ *                         deterministic Web rebuild, doctor, and two CLI
+ *                         browser bundle proofs
+ *  26. browser            exact RGB565 output reaches a real HTML canvas AND
  *                         the normalized-PCM host path runs end to end in a
  *                         real browser: wasm host_pcm_write -> decode ->
  *                         audio transport handoff -> consumption reports
  *                         (playwright if available — the CI mechanism, full
  *                         proof required — else the cached
  *                         chrome-headless-shell; --skip-browser to skip)
- *  10-16. pcm-asset:*     node suites for the PCM ASSET transport (registered
- *                         from pcm-asset-suites.mjs): minimal no-import wasm,
- *                         strict input + non-blocking load, bounded refill,
- *                         sample-exact loop, non-loop EOF, mute/volume clock,
- *                         suspended AudioContext, producer-mode exclusivity
- *  17. browser pcm-asset  the PCM asset transport in a real browser: fetch a
+ *  27. browser pcm-asset  the PCM asset transport in a real browser: fetch a
  *                         normalized .pcm over http -> bounded decode chunks
  *                         -> the SAME AudioWorklet transport -> consumption
  *                         past 2 full asset loops, frames continuing while
  *                         audio runs, mute not stopping the position
- *  18. browser auto-boot  the SDK's OWN hosts/web/index.html (no probe page,
- *                         no manual createHost): serve the fixture bundle
- *                         (index.html, passport-host.js, pcm-worklet.js,
- *                         app.wasm, assets/test.pcm), navigate to
- *                         /index.html?pcm=./assets/test.pcm&pcmLoop=1 and
- *                         prove the DOM auto-boot contract end to end — no
- *                         ReferenceError, globalThis.__passportHost exists,
- *                         app.wasm starts, the PCM asset loads, samples are
- *                         consumed, the asset LOOPS, and canvas frames keep
- *                         running while audio plays (regression: 0.0.2's
- *                         autoBootFromDom referenced an undefined `params`
- *                         and killed every DOM boot before createHost)
+ *  28. browser auto-boot  the SDK's OWN hosts/web/index.html (no probe page,
+ *                         no manual createHost): serve the fixture bundle,
+ *                         replace app.wasm with the minimal no-import module,
+ *                         navigate to /index.html?pcm=./assets/test.pcm&pcmLoop=1
+ *                         and prove the DOM auto-boot contract end to end —
+ *                         no ReferenceError, globalThis.__passportHost exists,
+ *                         the app starts, the PCM asset loads and loops, and
+ *                         canvas frames keep running while audio plays
  *
  * Prerequisites (checked, with the exact commands printed when missing):
  *   moon build --target wasm --release    # _build/wasm/release/build/fixture/fixture.wasm
@@ -781,7 +781,7 @@ suite("bundle: make-bundle assembly, default outdir, refusal", () => {
   }
 });
 
-// --- Suites 10-16: PCM asset transport (node) -------------------------------
+// --- Suites 9-16: PCM asset transport (node) --------------------------------
 
 registerPcmAssetSuites({
   suite,
@@ -795,7 +795,7 @@ registerPcmAssetSuites({
   releaseWasmPath: RELEASE_WASM,
 });
 
-// --- Suites 19-24: passport CLI fixtures (assembly + real browser) -----------
+// --- Suites 17-25: passport CLI fixtures (assembly + real browser) ----------
 
 registerCliFixtureSuites({
   suite,
@@ -807,7 +807,7 @@ registerCliFixtureSuites({
   webHostDir,
 });
 
-// --- Suite 9: browser ---------------------------------------------------------
+// --- Suite 26: browser --------------------------------------------------------
 
 /** Node-side golden for the browser probe: an independent wasm instance
  *  drives the EXACT same frame/input sequence as hosts/web/test/
@@ -1214,7 +1214,7 @@ suite("browser: exact RGB565 canvas + normalized-PCM audio in a real browser", a
   }
 });
 
-// --- Suite 17: browser PCM asset transport -----------------------------------
+// --- Suite 27: browser PCM asset transport -----------------------------------
 
 /** Node-side golden for the PCM asset probe: decode the committed asset
  *  exactly as the host does (PCM16 LE -> Float32 /32768, looping) and FNV-1a
@@ -1397,7 +1397,7 @@ suite("browser: PCM asset transport (fetch -> bounded chunks -> AudioWorklet)", 
   }
 });
 
-// --- Suite 18: browser DOM auto-boot (the SDK's own index.html) ---------------
+// --- Suite 28: browser DOM auto-boot (the SDK's own index.html) --------------
 
 /** Serve the DOM auto-boot fixture bundle EXACTLY as the distribution contract
  *  describes it — one directory containing index.html, passport-host.js,
