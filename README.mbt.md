@@ -78,8 +78,8 @@ CI runs the same gate in a dedicated `wasm-host` job (`.github/workflows/ci.yml`
 
 The module ships the `passport` CLI: build and serve applications for registered Hosts, with **Host as the only backend abstraction**. Registered Hosts: `web` (implemented) and `folotoy-ai-passport` (implemented; ESP-IDF device build, no flash). A downstream project is any MoonBit module with a `passport.toml` at its root declaring ONE application entry — the same application package serves every Host:
 
-```json
-{ "entry": "app" }
+```toml
+entry = "app"
 ```
 
 The entry path is relative to the module source root: with the normal `source = "src"` in `moon.mod`, the application lives at `src/app` and nothing about the project's imports changes. The application package implements the `Application` contract (`colmugx/ai-passport/application`) and exposes `pub fn passport_main() -> &Application`; the CLI generates the Host entry adapters under the source root's `passport-generated/` tree (build output — gitignore `passport-generated/`). See `docs/PASSPORT_CLI.md`.
