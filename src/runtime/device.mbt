@@ -9,7 +9,6 @@ pub struct DeviceRuntime {
   priv app : &@application.Application
   priv sink : @hostabi.DeviceDisplaySink
   priv audio : @hostabi.DeviceAudioMirror
-  priv startup_audio : @application.AudioOutput?
   priv mut frame : @graphics.FrameView?
 }
 
@@ -36,18 +35,16 @@ const PRESENTATION_LEAD_US : Int64 = 100_000L
 
 ///|
 /// `ai_passport_mbt_app_init`: creates the runtime exactly once from the
-/// application entry's `passport_main`. The startup audio facts are
-/// snapshotted once because C reads them immediately afterwards to start the
-/// transport. The mirror is seeded from that same snapshot; `None` uses the
-/// transport's existing silent startup facts (volume 0, muted) without
-/// publishing an extra write.
+/// application entry's `passport_main`. The audio mirror always exists so
+/// an application may acquire audio output after boot. Initial `None` seeds
+/// the mirror with the transport's existing silent startup facts (volume 0,
+/// muted) without publishing an extra write.
 pub fn device_boot(create_app : () -> &@application.Application) -> Unit {
   if device_slot.runtime is Some(_) {
     abort("passport device runtime initialized twice")
   }
   let app = create_app()
-  let startup_audio = app.audio_output()
-  let audio = match startup_audio {
+  let audio = match app.audio_output() {
     Some(output) =>
       @hostabi.DeviceAudioMirror::new(
         initial_volume=output.volume,
@@ -60,7 +57,6 @@ pub fn device_boot(create_app : () -> &@application.Application) -> Unit {
     app,
     sink: @hostabi.DeviceDisplaySink::new(),
     audio,
-    startup_audio,
     frame: None,
   })
 }
@@ -124,12 +120,11 @@ pub fn device_input(code : Int) -> Unit {
 
 ///|
 /// `ai_passport_mbt_audio_volume` / `ai_passport_mbt_audio_muted`, read by
-/// C once before the music transport starts. These are the boot snapshot,
-/// not live getters: later output changes cross through DeviceAudioMirror.
-/// An application with no startup audio output gets silence — volume 0,
-/// muted — never an invented default volume.
+/// C once before the music transport starts. An application with no desired
+/// audio output gets silence — volume 0, muted — never an invented default
+/// volume. Live output changes after startup cross through DeviceAudioMirror.
 pub fn device_audio_volume() -> Int {
-  match require_runtime().startup_audio {
+  match require_runtime().app.audio_output() {
     Some(output) => output.volume
     None => 0
   }
@@ -137,7 +132,7 @@ pub fn device_audio_volume() -> Int {
 
 ///|
 pub fn device_audio_muted() -> Int {
-  match require_runtime().startup_audio {
+  match require_runtime().app.audio_output() {
     Some(output) => if output.muted { 1 } else { 0 }
     None => 1
   }

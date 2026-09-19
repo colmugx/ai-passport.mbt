@@ -81,11 +81,10 @@ test "the device runtime drives one application through the C ABI shape" {
     canvas: @graphics.Canvas::logical(),
   }
   device_boot(fn() { app })
-  // C reads the boot snapshot once before starting the transport.
+  // C reads these facts before starting the transport; the mirror is seeded
+  // with the same initial state, so the first unchanged update crosses nothing.
   assert_eq(device_audio_volume(), 70)
   assert_eq(device_audio_muted(), 0)
-  // The transport mirror is seeded with those same facts, so the first
-  // update with unchanged state crosses nothing.
   let calls_before = test_output_set_calls()
   device_update()
   debug_inspect(
@@ -113,10 +112,10 @@ test "the device runtime drives one application through the C ABI shape" {
   device_input(2)
   device_input(7)
   assert_eq(app.ok_edges, 2)
-  // Startup accessors stay the boot snapshot; live changes travel only
-  // through the mirror after update().
+  // The ABI accessors remain ordinary views of the App's current state;
+  // C only uses them during startup.
   assert_eq(device_audio_volume(), 70)
-  assert_eq(device_audio_muted(), 0)
+  assert_eq(device_audio_muted(), 1)
   // Restore the shared stub state for other tests.
   test_set_music_available(0)
   test_set_music_position(0L)
