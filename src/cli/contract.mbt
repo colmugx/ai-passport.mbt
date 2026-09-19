@@ -234,16 +234,16 @@ pub fn parse_contract(text : String) -> ProjectContract raise {
   }
   let sounds : Array[SoundEntry] = []
   match root.get("sounds") {
-    Some(@toml.TomlArray(list)) =>
+    Some(@toml.TomlArray(list)) => {
+      let names : Set[String] = Set([], capacity=list.length())
       for raw in list {
         let sound = parse_sound(raw)
-        for existing in sounds {
-          if existing.name == sound.name {
-            fail_cli("passport.toml: duplicate sound name \"\{sound.name}\"")
-          }
+        guard names.add_and_check(sound.name) else {
+          fail_cli("passport.toml: duplicate sound name \"\{sound.name}\"")
         }
         sounds.push(sound)
       }
+    }
     Some(_) => fail_cli("passport.toml: \"sounds\" must be an array")
     None => ()
   }
