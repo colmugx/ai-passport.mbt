@@ -16,7 +16,7 @@ pub struct DeviceAudioMirror {
 }
 
 ///|
-pub fn DeviceAudioMirror::new(
+pub fn DeviceAudioMirror::DeviceAudioMirror(
   initial_volume~ : Int,
   initial_muted~ : Bool,
 ) -> DeviceAudioMirror {
