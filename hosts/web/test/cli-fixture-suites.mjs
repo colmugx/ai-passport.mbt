@@ -276,6 +276,100 @@ export function registerCliFixtureSuites({ suite, ok, eq, eqText, SuiteError, re
     }
   });
 
+  // --- Suite: device workspace source refresh ----------------------------------
+
+  suite("cli: device workspace prunes stale Host sources but keeps ESP-IDF state", () => {
+    const temp = fs.mkdtempSync(path.join(os.tmpdir(), "passport-device-workspace-"));
+    try {
+      const project = path.join(temp, "project");
+      const app = path.join(project, "src", "app");
+      const host = path.join(project, "hosts", "folotoy", "ai-passport");
+      fs.mkdirSync(app, { recursive: true });
+      fs.mkdirSync(path.dirname(host), { recursive: true });
+      fs.cpSync(path.join(repoRoot, "hosts", "folotoy", "ai-passport"), host, { recursive: true });
+      fs.writeFileSync(
+        path.join(project, "moon.mod"),
+        [
+          'name = "colmugx/ai-passport"',
+          'version = "0.0.0"',
+          'source = "src"',
+          "",
+        ].join("\n"),
+      );
+      fs.writeFileSync(path.join(app, "moon.pkg"), "");
+      fs.writeFileSync(
+        path.join(project, "passport.toml"),
+        [
+          'entry = "app"',
+          "",
+          '[hostDependencies."folotoy-ai-passport"]',
+          'path = "missing-bsp"',
+          "",
+        ].join("\n"),
+      );
+
+      const workspace = path.join(project, ".passport", "folotoy-ai-passport");
+      fs.mkdirSync(path.join(workspace, "components", "legacy"), { recursive: true });
+      fs.writeFileSync(path.join(workspace, "components", "legacy", "legacy.c"), "stale");
+      fs.writeFileSync(path.join(workspace, "obsolete.cmake"), "stale");
+      fs.mkdirSync(path.join(workspace, "toolchain"), { recursive: true });
+      fs.writeFileSync(path.join(workspace, "toolchain", "old-cc"), "stale");
+      fs.writeFileSync(path.join(workspace, "passport_music.pcm"), "stale");
+
+      fs.mkdirSync(path.join(workspace, "build"), { recursive: true });
+      fs.writeFileSync(path.join(workspace, "build", "sentinel"), "build-cache");
+      fs.mkdirSync(path.join(workspace, "managed_components"), { recursive: true });
+      fs.writeFileSync(path.join(workspace, "managed_components", "sentinel"), "managed-cache");
+      fs.writeFileSync(path.join(workspace, "sdkconfig"), "CONFIG_FREERTOS_HZ=1000\n");
+      fs.writeFileSync(path.join(workspace, "sdkconfig.old"), "old-config\n");
+
+      const res = runCli(repoRoot, [
+        "build", "--host", "folotoy-ai-passport", "--project", project,
+      ]);
+      ok(res.status !== 0, "the fixture must stop at its intentionally missing BSP");
+      ok(
+        `${res.stdout}\n${res.stderr}`.includes(
+          'passport.toml declares hostDependencies["folotoy-ai-passport"]',
+        ),
+        "the build must progress through workspace refresh and fail at BSP resolution",
+      );
+
+      ok(!fs.existsSync(path.join(workspace, "components", "legacy")), "removed Host components must not survive");
+      ok(!fs.existsSync(path.join(workspace, "obsolete.cmake")), "stale root Host files must not survive");
+      ok(!fs.existsSync(path.join(workspace, "toolchain")), "generated toolchain state must be rebuilt, not retained");
+      ok(!fs.existsSync(path.join(workspace, "passport_music.pcm")), "stale application music must not survive a no-audio build");
+      ok(fs.existsSync(path.join(workspace, "main", "app_main.c")), "current Host sources must be rematerialized");
+
+      eq(fs.readFileSync(path.join(workspace, "build", "sentinel"), "utf8"), "build-cache", "build cache must survive");
+      eq(
+        fs.readFileSync(path.join(workspace, "managed_components", "sentinel"), "utf8"),
+        "managed-cache",
+        "managed components must survive",
+      );
+      eq(fs.readFileSync(path.join(workspace, "sdkconfig"), "utf8"), "CONFIG_FREERTOS_HZ=1000\n", "sdkconfig must survive");
+      eq(fs.readFileSync(path.join(workspace, "sdkconfig.old"), "utf8"), "old-config\n", "sdkconfig.old must survive");
+
+      const outside = path.join(temp, "outside");
+      fs.mkdirSync(outside, { recursive: true });
+      const sentinel = path.join(outside, "sentinel");
+      fs.writeFileSync(sentinel, "keep");
+      fs.symlinkSync(outside, path.join(workspace, "escape"), "dir");
+      const escaped = runCli(repoRoot, [
+        "build", "--host", "folotoy-ai-passport", "--project", project,
+      ]);
+      ok(escaped.status !== 0, "workspace cleanup must refuse an escaping symlink");
+      ok(
+        `${escaped.stdout}\n${escaped.stderr}`.includes(
+          "refusing to prune device workspace entry outside",
+        ),
+        "the refusal must identify the device workspace boundary",
+      );
+      eq(fs.readFileSync(sentinel, "utf8"), "keep", "refused cleanup must preserve outside files");
+    } finally {
+      fs.rmSync(temp, { recursive: true, force: true });
+    }
+  });
+
   // --- Suite: fixture A bundle assembly ----------------------------------------
 
   suite("cli: fixture-a (no audio) builds the full web bundle", () => {

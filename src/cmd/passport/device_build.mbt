@@ -356,9 +356,18 @@ fn device_workspace_skip(name : String) -> Bool {
 }
 
 ///|
-/// Creates `path` with parents, tolerating an existing directory: the
-/// device workspace is materialized copy-over, so re-runs find every
-/// directory already in place.
+/// Expensive ESP-IDF state that survives Host source refreshes. Everything
+/// else at the workspace root is CLI-owned Host/source/generated material and
+/// is rebuilt from the current SDK on every device build.
+fn device_workspace_preserve(name : String) -> Bool {
+  name == "build" ||
+  name == "managed_components" ||
+  name == "sdkconfig" ||
+  name == "sdkconfig.old"
+}
+
+///|
+/// Creates `path` with parents, tolerating an existing directory.
 async fn ensure_dir(path : String) -> Unit {
   @fs.mkdir(path, recursive=true) catch {
     _ =>
@@ -369,9 +378,60 @@ async fn ensure_dir(path : String) -> Unit {
 }
 
 ///|
-/// Copies `from` into `to` recursively, copy-over: whatever is already in
-/// the workspace survives, so the idf build tree stays incremental. `from`
-/// may be a file or a directory; shell scripts land executable.
+/// Removes stale Host/source/generated workspace entries while preserving the
+/// expensive ESP-IDF incremental state. Every candidate is canonicalized
+/// immediately before deletion so a symlink cannot redirect recursive cleanup
+/// outside the device workspace.
+async fn prune_device_workspace(
+  project : @cli.Project,
+  workspace : String,
+) -> Unit {
+  let workspace_root = @fs.realpath(workspace) catch {
+    _ => @cli.fail_cli("cannot resolve device workspace at \{workspace}")
+  }
+  guard
+    workspace_root != project.root &&
+    path_is_within(project.root, workspace_root)
+  else {
+    @cli.fail_cli(
+      "refusing to prune device workspace outside the project root",
+    )
+  }
+  for name in @fs.readdir(workspace) {
+    let target = "\{workspace}/\{name}"
+    let resolved = @fs.realpath(target) catch {
+      _ =>
+        @cli.fail_cli(
+          "cannot resolve device workspace entry before cleanup: \{target}",
+        )
+    }
+    guard
+      resolved != workspace_root &&
+      path_is_within(workspace_root, resolved)
+    else {
+      @cli.fail_cli(
+        "refusing to prune device workspace entry outside \{workspace}",
+      )
+    }
+    if device_workspace_preserve(name) {
+      continue
+    }
+    if @fs.kind(target) is Directory {
+      @fs.rmdir(target, recursive=true) catch {
+        _ => @cli.fail_cli("cannot clear stale device workspace entry at \{target}")
+      }
+    } else {
+      @fs.remove(target) catch {
+        _ => @cli.fail_cli("cannot remove stale device workspace entry at \{target}")
+      }
+    }
+  }
+}
+
+///|
+/// Copies one current SDK Host subtree into the refreshed workspace. ESP-IDF
+/// caches are preserved separately by `prune_device_workspace`; this copy
+/// therefore never needs to preserve old Host source files.
 async fn copy_tree(from : String, to : String) -> Unit {
   if @fs.kind(from) is Directory {
     ensure_dir(to)
@@ -520,6 +580,7 @@ async fn device_build_command(sub : @argparse.Matches) -> Unit {
   let workspace = @cli.under_root(project.root, @cli.DEVICE_BUNDLE_DIR)
   println("passport: materializing the device workspace from \{sdk_host}")
   ensure_dir(workspace)
+  prune_device_workspace(project, workspace)
   for name in @fs.readdir(sdk_host) {
     if device_workspace_skip(name) {
       continue
@@ -527,12 +588,6 @@ async fn device_build_command(sub : @argparse.Matches) -> Unit {
     copy_tree("\{sdk_host}/\{name}", "\{workspace}/\{name}")
   }
   let generated_dir = "\{workspace}/components/moonbit_device/generated"
-  if @fs.exists(generated_dir) {
-    // A stale capture must never pair old C with new MoonBit semantics.
-    @fs.rmdir(generated_dir, recursive=true) catch {
-      _ => @cli.fail_cli("cannot clear the stale capture at \{generated_dir}")
-    }
-  }
   match plan_device_music(project) {
     Music(asset) => {
       let pcm_path = @cli.under_root(project.root, asset.source)

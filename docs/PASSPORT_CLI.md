@@ -131,10 +131,12 @@ The CLI is the executable package `src/cmd/passport` (package path
   2. refuse clearly when neither applies or a declared looping PCM asset is
      missing;
   3. resolve the SDK's `hosts/folotoy/ai-passport` implementation;
-  4. materialize the device workspace
-     `<project>/.passport/folotoy-ai-passport/` (host files copied
-     copy-over — the idf `build/` tree stays incremental; the SDK's own
-     `test/` tree and `README.md` are never copied);
+  4. refresh the device workspace
+     `<project>/.passport/folotoy-ai-passport/`: remove stale Host/source
+     and generated entries, preserve only the incremental ESP-IDF state
+     (`build/`, `managed_components/`, `sdkconfig`, `sdkconfig.old`),
+     then copy the current SDK Host files; the SDK's own `test/` tree and
+     `README.md` are never copied;
   5. copy the looping PCM asset to `<workspace>/passport_music.pcm` when
      declared; without one the firmware embeds no application music;
   6. resolve the external FoloToy dependency — the contract's
@@ -158,8 +160,10 @@ The CLI is the executable package `src/cmd/passport` (package path
   10. `idf.py build` and report the firmware path, size and app-partition
       margin (partition size `0x380000`).
 
-  The workspace accumulates `<workspace>/build/` output; the project's
-  source tree is untouched.
+  The workspace keeps `build/`, `managed_components/`, `sdkconfig` and
+  `sdkconfig.old` across builds for incremental ESP-IDF work; Host sources
+  are refreshed from the current SDK on every build so removed/renamed files
+  cannot survive. The project's source tree is untouched.
 - `passport dev --host web [--project <dir>] [--port N]` — build, then serve
   `.passport/web/` with an unmodified `python3 -m http.server` bound to
   127.0.0.1, and print the final URL (Ctrl-C exits cleanly). Other Hosts are
