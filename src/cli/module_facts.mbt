@@ -49,10 +49,7 @@ fn strip_config_line_comment(line : String) -> String {
 /// example `name = "colmugx/ai-passport"`). Whitespace around `=` and a
 /// trailing // comment are accepted. Duplicate declarations and malformed
 /// values fail instead of silently selecting whichever line happens to match.
-pub fn moon_mod_scalar(
-  mod_text : String,
-  key : String,
-) -> String? raise {
+pub fn moon_mod_scalar(mod_text : String, key : String) -> String? raise {
   let mut found : String? = None
   for raw_line in mod_text.split("\n").to_array() {
     let trimmed = strip_config_line_comment(raw_line.to_owned()).trim()

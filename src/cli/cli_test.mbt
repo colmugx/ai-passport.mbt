@@ -245,8 +245,7 @@ test "require_implemented_host accepts both implemented backends and rejects unk
 
 ///|
 test "moon_mod_scalar reads strict quoted module facts" {
-  let text =
-    "name=\"colmugx/ai-passport\" // module id\n\nversion = \"0.0.4\"\n\nsource   =   \"src\" // package root\n"
+  let text = "name=\"colmugx/ai-passport\" // module id\n\nversion = \"0.0.4\"\n\nsource   =   \"src\" // package root\n"
   debug_inspect(
     @cli.moon_mod_scalar(text, "name"),
     content="Some(\"colmugx/ai-passport\")",
@@ -258,19 +257,20 @@ test "moon_mod_scalar reads strict quoted module facts" {
   )
   inspect(@cli.moon_mod_scalar(text, "keywords") is Some(_), content="false")
   debug_inspect(
-    @cli.moon_mod_scalar("name = \"https://example.invalid/app\" // comment", "name"),
+    @cli.moon_mod_scalar(
+      "name = \"https://example.invalid/app\" // comment", "name",
+    ),
     content="Some(\"https://example.invalid/app\")",
   )
 }
 
 ///|
 test "moon_mod_scalar rejects duplicate and malformed target fields" {
-  for text in [
-    "name = \"a/b\"\nname = \"c/d\"\n",
-    "name = colmugx/app\n",
-    "name = \"unterminated\n",
-    "name = \"a/b\" trailing\n",
-  ] {
+  for
+    text in [
+      "name = \"a/b\"\nname = \"c/d\"\n", "name = colmugx/app\n", "name = \"unterminated\n",
+      "name = \"a/b\" trailing\n",
+    ] {
     try @cli.moon_mod_scalar(text, "name") catch {
       @cli.Fail(_) => ()
       _ => fail("expected a CliError failure")
@@ -287,15 +287,11 @@ test "entry executable detection ignores comments and unrelated strings" {
     content="true",
   )
   inspect(
-    @cli.entry_is_executable_package(
-      "pkgtype(\n  kind: \"executable\",\n)\n",
-    ),
+    @cli.entry_is_executable_package("pkgtype(\n  kind: \"executable\",\n)\n"),
     content="true",
   )
   inspect(
-    @cli.entry_is_executable_package(
-      "options(\n  \"is-main\": true,\n)\n",
-    ),
+    @cli.entry_is_executable_package("options(\n  \"is-main\": true,\n)\n"),
     content="true",
   )
   inspect(
@@ -311,9 +307,7 @@ test "entry executable detection ignores comments and unrelated strings" {
     content="false",
   )
   inspect(
-    @cli.entry_is_executable_package(
-      "pkgtype(other_kind: \"executable\")\n",
-    ),
+    @cli.entry_is_executable_package("pkgtype(other_kind: \"executable\")\n"),
     content="false",
   )
   inspect(
