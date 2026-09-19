@@ -102,6 +102,49 @@ async fn copy_file(from : String, to : String) -> Unit {
 }
 
 ///|
+/// Clears and recreates the CLI-owned Web bundle directory. Canonical-path
+/// checks happen immediately before the recursive delete so a symlinked
+/// `.passport` / bundle cannot redirect cleanup outside the project-owned
+/// state tree.
+async fn reset_web_bundle(project : @cli.Project) -> String {
+  let state_dir = @cli.under_root(project.root, ".passport")
+  if !@fs.exists(state_dir) {
+    @fs.mkdir(state_dir, recursive=true) catch {
+      _ => @cli.fail_cli("cannot create \{state_dir}")
+    }
+  }
+  let state_root = @fs.realpath(state_dir) catch {
+    _ => @cli.fail_cli("cannot resolve Web bundle state directory at \{state_dir}")
+  }
+  guard state_root != project.root && path_is_within(project.root, state_root) else {
+    @cli.fail_cli(
+      "refusing to clear Web bundle: .passport resolves outside the project",
+    )
+  }
+
+  let bundle = @cli.under_root(project.root, @cli.BUNDLE_DIR)
+  if @fs.exists(bundle) {
+    let bundle_root = @fs.realpath(bundle) catch {
+      _ => @cli.fail_cli("cannot resolve Web bundle at \{bundle}")
+    }
+    let expected_bundle_root = "\{state_root}/web"
+    guard bundle_root == expected_bundle_root else {
+      @cli.fail_cli(
+        "refusing to clear Web bundle outside the CLI-owned .passport/web directory",
+      )
+    }
+    @fs.rmdir(bundle, recursive=true) catch {
+      _ => @cli.fail_cli("cannot clear stale Web bundle at \{bundle}")
+    }
+  }
+  @fs.mkdir(bundle, recursive=true) catch {
+    _ => @cli.fail_cli("cannot create Web bundle at \{bundle}")
+  }
+  bundle
+}
+
+///|
+///|
 /// `passport build --host <id>`: route to the Host's build backend. Unknown
 /// hosts fail inside the backend entry (no silent web fallback).
 async fn build_command(sub : @argparse.Matches) -> Unit {
@@ -158,22 +201,25 @@ async fn web_bundle_build(sub : @argparse.Matches) -> Unit {
     @cli.sdk_host_files(),
   )
 
-  let bundle = @cli.under_root(project.root, @cli.BUNDLE_DIR)
-  let bundle_assets = "\{bundle}/assets"
-  if !@fs.exists(bundle_assets) {
-    @fs.mkdir(bundle_assets, recursive=true) catch {
-      _ => @cli.fail_cli("cannot create \{bundle_assets}")
+  // Validate every project-owned input before deleting the previous bundle.
+  // A contract typo must fail without first destroying a known-good output.
+  for asset in project.contract.assets {
+    let source = @cli.under_root(project.root, asset.source)
+    guard @fs.exists(source) else {
+      @cli.fail_cli("contract asset source is missing: \{asset.source}")
     }
   }
+
+  // The Web bundle is CLI-owned output, not an overlay. Rebuild it from an
+  // empty directory so removed assets and files from older SDK versions
+  // cannot survive into the next build.
+  let bundle = reset_web_bundle(project)
   copy_file(wasm_artifact, "\{bundle}/app.wasm")
   for file in @cli.sdk_host_files() {
     copy_file("\{sdk_dir}/\{file}", "\{bundle}/\{file}")
   }
   for asset in project.contract.assets {
     let source = @cli.under_root(project.root, asset.source)
-    guard @fs.exists(source) else {
-      @cli.fail_cli("contract asset source is missing: \{asset.source}")
-    }
     let destination = "\{bundle}/\{asset.bundle_path}"
     match destination.rev_find("/") {
       Some(at) => {
@@ -187,14 +233,6 @@ async fn web_bundle_build(sub : @argparse.Matches) -> Unit {
       None => ()
     }
     copy_file(source, destination)
-  }
-  // The SDK index.html is the only web entry; a stale generated bootstrap
-  // page from older tooling must never survive into the supported bundle.
-  let stale = "\{bundle}/app.html"
-  if @fs.exists(stale) {
-    @fs.remove(stale) catch {
-      _ => @cli.fail_cli("cannot remove stale \{stale}")
-    }
   }
   println("passport: bundle assembled at \{bundle}")
   println("passport: entry: /\{@cli.entry_url_path(project.contract)}")
