@@ -168,7 +168,8 @@ test "device workspace preserves only incremental ESP-IDF state" {
   }
   for
     name in [
-      "components", "main", "tools", "dependencies.lock", "passport_music.pcm", "toolchain", "legacy.c",
+      "components", "main", "tools", "dependencies.lock", "passport_music.pcm", "toolchain",
+      "legacy.c",
     ] {
     inspect(device_workspace_preserve(name), content="false")
   }
