@@ -107,9 +107,73 @@ fn reserved_bundle_path(path : String) -> Bool {
 /// `deviceEntry` names a separate native entry. A library entry instead
 /// implements the application contract and the CLI generates every Host
 /// entry around it.
+fn config_argument_after(statement : String, key : String) -> String? {
+  match statement.find("(") {
+    Some(open) =>
+      for part in statement[open + 1:].split(",").to_array() {
+        match part.find(":") {
+          Some(at) =>
+            if part[:at].trim() == key {
+              return Some(part[at + 1:].trim().to_owned())
+            }
+          None => ()
+        }
+      }
+    None => ()
+  }
+  None
+}
+
+///|
+/// Detects only actual package declarations, not words that happen to occur
+/// in comments, descriptions, import paths or unrelated option values.
+/// Moon's current form is `pkgtype(kind: "executable")`; the legacy
+/// `options("is-main": true)` form remains accepted for published 0.0.5
+/// projects.
 pub fn entry_is_executable_package(pkg_text : String) -> Bool {
-  (pkg_text.contains("pkgtype(") && pkg_text.contains("executable")) ||
-  pkg_text.contains("is-main")
+  let mut statement = ""
+  let mut statement_kind = 0
+  for raw_line in pkg_text.split("\n").to_array() {
+    let trimmed = strip_config_line_comment(raw_line).trim()
+    if trimmed == "" {
+      continue
+    }
+    if statement_kind == 0 {
+      if trimmed.has_prefix("pkgtype(") {
+        statement_kind = 1
+      } else if trimmed.has_prefix("options(") {
+        statement_kind = 2
+      } else {
+        continue
+      }
+      statement = trimmed.to_owned()
+    } else {
+      statement = "\{statement}\{trimmed}"
+    }
+
+    if statement.contains(")") {
+      if statement_kind == 1 {
+        match config_argument_after(statement, "kind") {
+          Some(value) =>
+            if value.has_prefix("\"executable\"") {
+              return true
+            }
+          None => ()
+        }
+      } else {
+        match config_argument_after(statement, "\"is-main\"") {
+          Some(value) =>
+            if value.has_prefix("true") {
+              return true
+            }
+          None => ()
+        }
+      }
+      statement = ""
+      statement_kind = 0
+    }
+  }
+  false
 }
 
 ///|

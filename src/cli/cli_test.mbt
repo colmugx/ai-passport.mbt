@@ -244,8 +244,9 @@ test "require_implemented_host accepts both implemented backends and rejects unk
 }
 
 ///|
-test "moon_mod_scalar reads the common module facts" {
-  let text = "name = \"colmugx/ai-passport\"\n\nversion = \"0.0.4\"\n\nsource = \"src\"\n"
+test "moon_mod_scalar reads strict quoted module facts" {
+  let text =
+    "name=\"colmugx/ai-passport\" // module id\n\nversion = \"0.0.4\"\n\nsource   =   \"src\" // package root\n"
   debug_inspect(
     @cli.moon_mod_scalar(text, "name"),
     content="Some(\"colmugx/ai-passport\")",
@@ -256,6 +257,71 @@ test "moon_mod_scalar reads the common module facts" {
     content="Some(\"0.0.4\")",
   )
   inspect(@cli.moon_mod_scalar(text, "keywords") is Some(_), content="false")
+  debug_inspect(
+    @cli.moon_mod_scalar("name = \"https://example.invalid/app\" // comment", "name"),
+    content="Some(\"https://example.invalid/app\")",
+  )
+}
+
+///|
+test "moon_mod_scalar rejects duplicate and malformed target fields" {
+  for text in [
+    "name = \"a/b\"\nname = \"c/d\"\n",
+    "name = colmugx/app\n",
+    "name = \"unterminated\n",
+    "name = \"a/b\" trailing\n",
+  ] {
+    try @cli.moon_mod_scalar(text, "name") catch {
+      @cli.Fail(_) => ()
+      _ => fail("expected a CliError failure")
+    } noraise {
+      _ => fail("expected malformed moon.mod metadata to fail")
+    }
+  }
+}
+
+///|
+test "entry executable detection ignores comments and unrelated strings" {
+  inspect(
+    @cli.entry_is_executable_package("pkgtype(kind: \"executable\")"),
+    content="true",
+  )
+  inspect(
+    @cli.entry_is_executable_package(
+      "pkgtype(\n  kind: \"executable\",\n)\n",
+    ),
+    content="true",
+  )
+  inspect(
+    @cli.entry_is_executable_package(
+      "options(\n  \"is-main\": true,\n)\n",
+    ),
+    content="true",
+  )
+  inspect(
+    @cli.entry_is_executable_package(
+      "// pkgtype(kind: \"executable\")\npkgtype(kind: \"foreign_library\")",
+    ),
+    content="false",
+  )
+  inspect(
+    @cli.entry_is_executable_package(
+      "description = \"pkgtype(kind: executable)\"\n",
+    ),
+    content="false",
+  )
+  inspect(
+    @cli.entry_is_executable_package(
+      "pkgtype(other_kind: \"executable\")\n",
+    ),
+    content="false",
+  )
+  inspect(
+    @cli.entry_is_executable_package(
+      "options(\n  \"is-main\": false,\n  \"native-stub\": true,\n)\n",
+    ),
+    content="false",
+  )
 }
 
 ///|

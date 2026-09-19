@@ -2,21 +2,97 @@
 /// Pure module-file fact scanning and path derivation (no I/O).
 
 ///|
-/// Extracts a quoted scalar assignment from moon.mod text (for example
-/// `name = "colmugx/ai-passport"`). Returns None when absent.
-pub fn moon_mod_scalar(mod_text : String, key : String) -> String? {
-  let needle = "\{key} = \""
-  for line in mod_text.split("\n").to_array() {
-    let trimmed = line.trim()
-    if trimmed.has_prefix(needle) {
-      let rest = trimmed[needle.length():]
-      match rest.find("\"") {
-        Some(end) => return Some(rest[:end].to_owned())
-        None => return None
+/// Removes Moon's line-comment suffix from one configuration line. Moon's
+/// text module/package formats use // comments and have no block comments.
+fn strip_config_line_comment(line : String) -> String {
+  let out = StringBuilder()
+  let mut quoted = false
+  let mut escaped = false
+  let mut pending_slash = false
+  for ch in line {
+    let text = ch.to_string()
+    if quoted {
+      out.write_string(text)
+      if escaped {
+        escaped = false
+      } else if text == "\\" {
+        escaped = true
+      } else if text == "\"" {
+        quoted = false
       }
+      continue
+    }
+    if pending_slash {
+      if text == "/" {
+        return out.to_string()
+      }
+      out.write_string("/")
+      pending_slash = false
+    }
+    if text == "\"" {
+      quoted = true
+      out.write_string(text)
+    } else if text == "/" {
+      pending_slash = true
+    } else {
+      out.write_string(text)
     }
   }
-  None
+  if pending_slash {
+    out.write_string("/")
+  }
+  out.to_string()
+}
+
+///|
+/// Extracts one top-level quoted scalar assignment from moon.mod text (for
+/// example `name = "colmugx/ai-passport"`). Whitespace around `=` and a
+/// trailing // comment are accepted. Duplicate declarations and malformed
+/// values fail instead of silently selecting whichever line happens to match.
+pub fn moon_mod_scalar(
+  mod_text : String,
+  key : String,
+) -> String? raise {
+  let mut found : String? = None
+  for raw_line in mod_text.split("\n").to_array() {
+    let trimmed = strip_config_line_comment(raw_line).trim()
+    if trimmed == "" {
+      continue
+    }
+    match trimmed.find("=") {
+      Some(at) => {
+        let lhs = trimmed[:at].trim()
+        if lhs != key {
+          continue
+        }
+        guard found is None else {
+          fail_cli("moon.mod: duplicate \"\{key}\" declaration")
+        }
+        let rhs = trimmed[at + 1:].trim()
+        guard rhs.has_prefix("\"") else {
+          fail_cli("moon.mod: \"\{key}\" must be a quoted string scalar")
+        }
+        let rest = rhs[1:]
+        match rest.find("\"") {
+          Some(end) => {
+            guard rest[end + 1:].trim() == "" else {
+              fail_cli(
+                "moon.mod: \"\{key}\" must contain exactly one quoted string value",
+              )
+            }
+            found = Some(rest[:end].to_owned())
+          }
+          None =>
+            fail_cli("moon.mod: \"\{key}\" has an unterminated string value")
+        }
+      }
+      None =>
+        if trimmed == key {
+          fail_cli("moon.mod: \"\{key}\" must use `= \"value\"` syntax")
+        }
+    }
+  }
+  found
 }
 
 ///|

@@ -34,7 +34,12 @@ async fn load_project(project_dir : String) -> @cli.Project {
   }
   let mod_text = read_text_file("\{root}/moon.mod")
   let module_name = match @cli.moon_mod_scalar(mod_text, "name") {
-    Some(name) => name
+    Some(name) => {
+      guard name != "" else {
+        @cli.fail_cli("moon.mod: \"name\" must not be empty")
+      }
+      name
+    }
     None => @cli.fail_cli("moon.mod does not declare a module name")
   }
   let source_dir = match @cli.moon_mod_scalar(mod_text, "source") {
