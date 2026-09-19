@@ -1,6 +1,0 @@
-entry = "app"
-
-[[assets]]
-source = "assets/tone.pcm"
-bundlePath = "assets/tone.pcm"
-pcmLoop = true

@@ -2,46 +2,21 @@
  * cli-fixture-suites.mjs — integration suites for the passport CLI
  * (`src/cmd/passport`), registered into run-tests.mjs.
  *
- * What these suites prove:
- *  1. terminology gates  — the CLI/host source never calls a Host a
- *                          "product"/"board" and contains zero application
- *                          semantics (no starter-app names of any kind);
- *  2. fixture A          — a downstream-style NO-AUDIO app builds into the
- *                          full bundle contract (app.wasm + the three SDK
- *                          host files, no app.html, plain index.html URL),
- *                          and the device Host refuses a project that
- *                          declares no deviceEntry instead of falling back
- *                          to web;
- *  3. fixture B          — a downstream-style PCM-asset app builds with the
- *                          asset materialized byte-identically and the
- *                          generic URL parameters on the printed entry;
- *                          rebuilds are clean (removed assets / stale files
- *                          cannot survive) and bundle cleanup is contained;
- *  4. fixture C          — a downstream-style SINGLE-ENTRY application (the
- *                          application contract: display, input, battery,
- *                          audio output state, playback position) builds
- *                          through the CLI-GENERATED Web entry adapter
- *                          under src/passport-generated/, keeps the ABI v0
- *                          export/import surface, and boots in a real
- *                          browser rendering the host facts;
- *  5. doctor             — the doctor passes for a resolvable project;
- *  6. real browsers      — the CLI-produced bundles boot through the SDK's
- *                          own index.html DOM auto-boot from the printed
- *                          URL: fixture A renders and answers input with no
- *                          audio requirement; fixture B fetches its PCM
- *                          asset over http, loops it sample-exactly through
- *                          the AudioWorklet, and keeps presenting frames;
- *                          fixture C drives the whole application contract
- *                          end to end (input queue → bars/markers move).
+ * The nine suites here cover the real CLI behavior exercised in CI:
+ *  1. structural terminology/application-semantics gates;
+ *  2. project source-root traversal and symlink containment;
+ *  3. device workspace stale-source pruning with ESP-IDF state preservation;
+ *  4. fixture A no-audio Web bundle assembly plus device-entry refusal;
+ *  5. fixture B looping-PCM Web bundle assembly;
+ *  6. deterministic Web bundle rebuild and cleanup containment;
+ *  7. doctor on a resolvable downstream-style Web project;
+ *  8. fixture A browser auto-boot/input proof;
+ *  9. fixture B browser PCM fetch/loop/frame-continuation proof.
  *
  * The fixtures are complete nested MoonBit modules under
- * hosts/web/test/fixtures/ (their own moon.mod depending on the PUBLISHED
- * colmugx/ai-passport package) — the strongest pre-publish proof that the
- * CLI works for a downstream project, not just for the SDK checkout.
- * Fixture C consumes the unpublished application contract, so its suite
- * first overlays THIS checkout into its .mooncakes at the fixture's
- * registry pin (the same CI-internal dev overlay the template-integration
- * job performs; the fixture itself stays coupled only to its pin).
+ * hosts/web/test/fixtures/ and depend on published ai-passport versions.
+ * Tests that need current unpublished behavior use temporary projects built
+ * directly from this checkout instead of mutating a fixture dependency tree.
  */
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";

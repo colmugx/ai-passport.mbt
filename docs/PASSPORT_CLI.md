@@ -288,19 +288,14 @@ application is. This is enforced, not hoped for:
   (product/board) and on any starter-app vocabulary (which must never appear
   in tooling);
 - downstream-style fixtures live under `hosts/web/test/fixtures/` as
-  complete nested MoonBit modules depending on the published
-  `colmugx/ai-passport` package: fixture A (no audio; plain entry URL) and
-  fixture B (one looping PCM asset; `?pcm=&pcmLoop=1`) use the legacy 0.0.5
-  entry layout; fixture C is a single-entry application-contract project
-  (display, input, battery, audio output state, playback position) whose
-  suite overlays the current SDK checkout into its `.mooncakes` at the
-  registry pin and builds through the generated Web entry. Doctor is run
-  against a clean fixture so dependency resolution is exercised through
-  `moon check`. The integration suites build each fixture with the CLI and
-  boot them in a real chromium through the SDK's own index.html: fixture A
-  proves frames + input with no audio dependency; fixture B proves the http
-  PCM fetch, sample-exact looping through the AudioWorklet, ring health and
-  continued frame presentation; fixture C proves the whole application
-  contract end to end — the battery bar renders the host reading, the
-  volume bar answers the input queue, the mute row toggles, and the
-  playback/time markers move.
+  complete nested MoonBit modules depending on published
+  `colmugx/ai-passport` versions: fixture A covers a no-audio legacy entry
+  with a plain entry URL, while fixture B covers one looping PCM asset and
+  `?pcm=&pcmLoop=1`. Doctor is run against a clean fixture so dependency
+  resolution is exercised through `moon check`. The integration suites
+  build those fixtures with the CLI and boot them in a real chromium through
+  the SDK's own index.html: fixture A proves frames + input with no audio
+  dependency; fixture B proves the HTTP PCM fetch, sample-exact looping
+  through the AudioWorklet, ring health and continued frame presentation.
+  Current unpublished CLI behavior is exercised with temporary projects
+  constructed directly from this checkout rather than dependency overlays.
