@@ -207,6 +207,7 @@ async fn web_bundle_build(sub : @argparse.Matches) -> Unit {
       @cli.fail_cli("contract asset source is missing: \{asset.source}")
     }
   }
+  let sound_compilation = compile_project_sounds(project)
 
   // The Web bundle is CLI-owned output, not an overlay. Rebuild it from an
   // empty directory so removed assets and files from older SDK versions
@@ -216,6 +217,7 @@ async fn web_bundle_build(sub : @argparse.Matches) -> Unit {
   for file in @cli.sdk_host_files() {
     copy_file("\{sdk_dir}/\{file}", "\{bundle}/\{file}")
   }
+  write_sound_bank("\{bundle}/\{@cli.SOUND_BANK_FILE}", sound_compilation)
   for asset in project.contract.assets {
     let source = @cli.under_root(project.root, asset.source)
     let destination = "\{bundle}/\{asset.bundle_path}"

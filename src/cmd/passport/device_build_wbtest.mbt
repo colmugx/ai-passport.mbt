@@ -116,6 +116,7 @@ test "managed_bsp_dir is per revision, never a moving ref" {
       entry: "runtime_wasm",
       device_entry: None,
       assets: [],
+      sounds: [],
       host_dependencies: [],
     },
   }
@@ -137,6 +138,7 @@ fn device_music_project(assets : Array[@cli.AssetEntry]) -> @cli.Project {
       entry: "runtime_wasm",
       device_entry: Some("runtime_native"),
       assets,
+      sounds: [],
       host_dependencies: [],
     },
   }

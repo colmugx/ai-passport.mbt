@@ -13,7 +13,17 @@ pub const DEVICE_BUNDLE_DIR : String = ".passport/folotoy-ai-passport"
 
 pub const GENERATED_ENTRY_DIR : String = "passport-generated"
 
+pub const SOUND_BANK_ENTRY_SIZE : Int = 8
+
+pub const SOUND_BANK_FILE : String = "sounds.bank"
+
+pub const SOUND_BANK_HEADER_SIZE : Int = 16
+
+pub const SOUND_BANK_VERSION : Int = 1
+
 pub fn application_package_import(Project) -> String
+
+pub fn compile_sounds(Array[SoundInput]) -> SoundCompilation raise
 
 pub fn device_entry_package_dir(Project, String) -> String
 
@@ -73,6 +83,15 @@ pub(all) struct AssetEntry {
   pcm_loop : Bool
 } derive(Eq, @debug.Debug)
 
+pub(all) struct CompiledSound {
+  id : Int
+  name : String
+  symbol : String
+  source : String
+  offset : Int
+  sample_count : Int
+} derive(Eq, @debug.Debug)
+
 pub(all) struct HostDependency {
   host_id : String
   path : String
@@ -89,7 +108,23 @@ pub(all) struct ProjectContract {
   entry : String
   device_entry : String?
   assets : Array[AssetEntry]
+  sounds : Array[SoundEntry]
   host_dependencies : Array[HostDependency]
+} derive(Eq, @debug.Debug)
+
+pub(all) struct SoundCompilation {
+  sounds : Array[CompiledSound]
+  bank : Bytes
+} derive(Eq, @debug.Debug)
+
+pub(all) struct SoundEntry {
+  name : String
+  source : String
+} derive(Eq, @debug.Debug)
+
+pub(all) struct SoundInput {
+  entry : SoundEntry
+  pcm : Bytes
 } derive(Eq, @debug.Debug)
 
 // Type aliases

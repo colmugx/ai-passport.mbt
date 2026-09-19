@@ -57,6 +57,7 @@ async fn doctor_command(sub : @argparse.Matches) -> Unit {
   }
   match loaded {
     Some(project) => {
+      doctor_sound_resources(project, failures)
       let entry_dir = @cli.entry_package_dir(project)
       let entry_exists = @fs.exists("\{entry_dir}/moon.pkg")
       if entry_exists {
@@ -127,6 +128,31 @@ async fn doctor_command(sub : @argparse.Matches) -> Unit {
     @cli.fail_cli("doctor found \{failures.length()} failing check(s)")
   }
   println("doctor: all checks passed")
+}
+
+///|
+/// Validates the same canonical paths, PCM bytes and APSB serialization used
+/// by real builds. Doctor reports the failure and continues with independent
+/// checks instead of maintaining a weaker, duplicated sound validator.
+async fn doctor_sound_resources(
+  project : @cli.Project,
+  failures : Array[String],
+) -> Unit {
+  try {
+    let compilation = compile_project_sounds(project)
+    println(
+      "ok: \{compilation.sounds.length()} sound resource(s), \{compilation.bank.length()} bank bytes",
+    )
+  } catch {
+    @cli.Fail(message) => {
+      println("FAIL: \{message}")
+      failures.push("sound resources")
+    }
+    _ => {
+      println("FAIL: unexpected error while validating sound resources")
+      failures.push("sound resources")
+    }
+  }
 }
 
 ///|
@@ -321,6 +347,7 @@ async fn doctor_device_common(
   project : @cli.Project,
   failures : Array[String],
 ) -> Unit {
+  doctor_sound_resources(project, failures)
   match pcm_loop_asset(project) {
     Some(asset) => {
       let source = @cli.under_root(project.root, asset.source)

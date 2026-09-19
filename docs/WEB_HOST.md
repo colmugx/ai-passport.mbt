@@ -379,13 +379,18 @@ project needs:
    app wasm (fixture path: `_build/wasm/release/build/fixture/fixture.wasm`).
 3. The **host assets**: `hosts/web/passport-host.js`,
    `hosts/web/pcm-worklet.js`, `hosts/web/index.html`, served over http(s)
-   in a bundle directory `<bundle>/app.wasm` + `<bundle>/assets/`
+   in a bundle directory containing `app.wasm`, `sounds.bank` and any
+   declared ordinary assets under `<bundle>/assets/`
    (`hosts/web/README.md` "Bundle directory contract"; `file://` does not
    work). `hosts/web/tools/make-bundle.mjs` assembles that bundle (default
    `_build/passport-bundle` at the repository root) from the release wasm
    and the test asset. Downstream projects consume these files from the
    published `colmugx/ai-passport` package the CLI resolves for them
    (`.mooncakes/colmugx/ai-passport/hosts/web/`) — never from GitHub.
+
+   `sounds.bank` is the shared APSB v1 resource format documented in
+   `SOUND_BANK.md`. This ABI v0 Host still uses the legacy PCM paths and does
+   not consume the bank until the sound-runtime cutover.
 
 ## Limitations
 

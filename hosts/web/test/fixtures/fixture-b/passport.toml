@@ -4,3 +4,11 @@ entry = "main"
 source = "assets/tone.pcm"
 bundlePath = "assets/tone.pcm"
 pcmLoop = true
+
+[[sounds]]
+name = "forest_walk"
+source = "assets/tone.pcm"
+
+[[sounds]]
+name = "jump"
+source = "assets/tone.pcm"
