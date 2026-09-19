@@ -389,13 +389,9 @@ async fn prune_device_workspace(
   let workspace_root = @fs.realpath(workspace) catch {
     _ => @cli.fail_cli("cannot resolve device workspace at \{workspace}")
   }
-  guard
-    workspace_root != project.root &&
-    path_is_within(project.root, workspace_root)
-  else {
-    @cli.fail_cli(
-      "refusing to prune device workspace outside the project root",
-    )
+  guard workspace_root != project.root &&
+    path_is_within(project.root, workspace_root) else {
+    @cli.fail_cli("refusing to prune device workspace outside the project root")
   }
   for name in @fs.readdir(workspace) {
     let target = "\{workspace}/\{name}"
@@ -405,10 +401,7 @@ async fn prune_device_workspace(
           "cannot resolve device workspace entry before cleanup: \{target}",
         )
     }
-    guard
-      resolved != workspace_root &&
-      path_is_within(workspace_root, resolved)
-    else {
+    guard resolved != workspace_root && path_is_within(workspace_root, resolved) else {
       @cli.fail_cli(
         "refusing to prune device workspace entry outside \{workspace}",
       )
@@ -418,11 +411,17 @@ async fn prune_device_workspace(
     }
     if @fs.kind(target) is Directory {
       @fs.rmdir(target, recursive=true) catch {
-        _ => @cli.fail_cli("cannot clear stale device workspace entry at \{target}")
+        _ =>
+          @cli.fail_cli(
+            "cannot clear stale device workspace entry at \{target}",
+          )
       }
     } else {
       @fs.remove(target) catch {
-        _ => @cli.fail_cli("cannot remove stale device workspace entry at \{target}")
+        _ =>
+          @cli.fail_cli(
+            "cannot remove stale device workspace entry at \{target}",
+          )
       }
     }
   }
