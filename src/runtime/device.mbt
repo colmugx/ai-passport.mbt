@@ -50,8 +50,7 @@ pub fn device_boot(create_app : () -> &@application.Application) -> Unit {
         initial_volume=output.volume,
         initial_muted=output.muted,
       )
-    None =>
-      @hostabi.DeviceAudioMirror(initial_volume=0, initial_muted=true)
+    None => @hostabi.DeviceAudioMirror(initial_volume=0, initial_muted=true)
   }
   device_slot.runtime = Some({
     app,

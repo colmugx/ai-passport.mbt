@@ -51,7 +51,7 @@ pub struct DeviceAudioMirror {
   mut applied_volume : Int
   mut applied_muted : Bool
 }
-pub fn DeviceAudioMirror::new(initial_volume~ : Int, initial_muted~ : Bool) -> Self
+pub fn DeviceAudioMirror::DeviceAudioMirror(initial_volume~ : Int, initial_muted~ : Bool) -> Self
 pub fn DeviceAudioMirror::sync(Self, Int, muted~ : Bool) -> Unit
 
 pub struct DeviceDisplaySink {
