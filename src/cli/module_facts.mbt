@@ -55,7 +55,7 @@ pub fn moon_mod_scalar(
 ) -> String? raise {
   let mut found : String? = None
   for raw_line in mod_text.split("\n").to_array() {
-    let trimmed = strip_config_line_comment(raw_line).trim()
+    let trimmed = strip_config_line_comment(raw_line.to_owned()).trim()
     if trimmed == "" {
       continue
     }
