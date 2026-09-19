@@ -7,8 +7,7 @@ Application logic
   ├─ core: 120×160 logical dimensions, Color and geometry
   ├─ graphics: Canvas → read-only FrameView → driver.DisplaySink
   ├─ input: Up / Down / Ok and InputState
-  ├─ music: immutable Song → Sequencer + TickClock
-  ├─ audio: Player → Synth → signed PCM16 → audio.PcmSink
+  ├─ audio: temporary signed PCM16 Host transport → audio.PcmSink
   └─ battery: cached Battery → BatterySource
 
                     semantic SDK contracts
@@ -22,7 +21,7 @@ Application logic
 
 `Canvas` stores canonical RGB565 pixels in a private `FixedArray[UInt16]`. `FrameView` shares that storage, exposes dimensions and row copies, and is consumed synchronously before the canvas mutates. Presentation details stay behind `DisplaySink`.
 
-`Player` is the authoritative audio sample clock. It advances `TickClock` at sample boundaries, drives the sequencer's preallocated event path, triggers up to four monophonic synth voices, and reports elapsed dotted-quarter beats across loop wraps. A backend feeds the actual sample count to `Player::render`; frame pacing does not advance music time. A song is a deep-copied authoring snapshot, so sequencer and player capacities stay stable.
+The core SDK does not own audio composition, synthesis, sequencing, or codecs. The existing `PcmSink` contract is a temporary transport retained to preserve current Host behavior until resource-backed Sound playback replaces the legacy single-PCM paths. Host audio implementation details remain behind the Host boundary.
 
 The module also ships the tooling that turns an application into a runnable Host bundle: `src/hosts` is the Host registry, `src/cli` holds project/Host-independent CLI logic, and `src/cmd/passport` is the `passport` executable. The Web Host implementation and browser assets remain under `hosts/web`; the FoloToy physical Host's ESP-IDF glue and flash tooling live under `hosts/folotoy/ai-passport` (its BSP is an external pinned dependency) and are materialized into a per-project build workspace by the CLI. A physical Host owns ESP-IDF/BSP/flashing details under its Host implementation; those details are not application APIs and are not copied into downstream application projects (the CLI copies host implementation files only into the generated device workspace, never into project sources).
 

@@ -8,7 +8,7 @@ test "BufferSink records one defensive copy per write" {
   let chunk : FixedArray[Int] = [7, -8, 32767, -32768]
   sink.write(samples=chunk)
   // Mutating the caller's buffer after the write must not leak into the
-  // stored chunk: render reuses its output buffers, so sinks must copy.
+  // stored chunk: callers may reuse their buffers, so sinks must copy.
   chunk[0] = 999
   let stored = buffer.chunks()
   inspect(stored.length(), content="1")
@@ -31,20 +31,16 @@ test "BufferSink chunks length matches the number of writes" {
 }
 
 ///|
-test "BufferSink captures render output through the trait" {
-  let synth = @audio.Synth::new()
-  synth.trigger(voice=0, on=note(69, @music.Pulse12), gate_samples=256)
+test "BufferSink captures PCM through the trait" {
   let buffer = @audio.BufferSink::new()
   let sink : &PcmSink = buffer
-  let chunk : FixedArray[Int] = FixedArray::make(256, 0)
-  synth.render(out=chunk)
+  let chunk : FixedArray[Int] = [1200, -1200, 32767, -32768]
   sink.write(samples=chunk)
   chunk[0] = 0
   let stored = buffer.chunks()
   inspect(stored.length(), content="1")
-  inspect(stored[0].length(), content="256")
-  // The copied chunk still holds the rendered celesta pluck.
-  inspect(stored[0][255] != 0, content="true")
+  inspect(stored[0].length(), content="4")
+  inspect(stored[0][0], content="1200")
 }
 
 ///|

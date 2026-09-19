@@ -1,8 +1,7 @@
 ///|
-/// Device baseline sample rate: 16000 Hz signed PCM16 mono (docs/MUSIC.md
-/// engine target; docs/DRIVER.md carries the same number for the audio
-/// backend). All sample-count envelopes and gates in this package are
-/// expressed in samples at this rate.
+/// Device baseline sample rate for the temporary PCM Host transport:
+/// 16000 Hz signed PCM16 mono. This transport preserves the existing Host
+/// behavior while the resource-backed Sound API is introduced separately.
 ///
 /// # Example
 /// ```mbt check
@@ -13,29 +12,15 @@
 pub const SAMPLE_RATE : Int = 16000
 
 ///|
-/// Fixed voice count for v0.1 (AGENTS.md rule 7: music supports at most four
-/// monophonic voices). Voice indices passed to `Synth::trigger` and
-/// `Synth::release` must be in `0..<VOICES`.
-///
-/// # Example
-/// ```mbt check
-/// test {
-///   inspect(VOICES, content="4")
-/// }
-/// ```
-pub const VOICES : Int = 4
-
-///|
 /// Bounded PCM output contract, implemented by each backend (the same
 /// semantics on host and device — AGENTS.md rule 3). `write` receives one
 /// chunk of mono signed 16-bit samples as Int (-32768..32767); on device it
-/// may block until the codec drains. Chunk sizes are the caller's choice
-/// (~256 frames typical per docs/MUSIC.md).
+/// may block until the physical output drains. Chunk sizes are the caller's
+/// choice.
 ///
 /// Implementations must consume the samples before returning and must not
-/// retain the caller's array: `render` reuses its output buffer, so a sink
-/// that needs to keep the data must copy it (`BufferSink` shows the
-/// defensive-copy pattern).
+/// retain the caller's array. A sink that needs to keep the data must copy it
+/// (`BufferSink` shows the defensive-copy pattern).
 ///
 /// The trait is declared `pub(open)` so each backend implements it outside
 /// this package; app-facing code only consumes `&PcmSink` values.
@@ -71,7 +56,7 @@ pub(open) trait PcmSink {
 ///|
 /// Collects a defensive copy of every written chunk, in write order. Serves
 /// as the test double for `&PcmSink` consumers and as backend tooling for
-/// host development previews (docs/SDK_CORE_TRACKING.md: PR 5 pure).
+/// Host development previews.
 ///
 /// # Example
 /// ```mbt check
@@ -105,8 +90,7 @@ pub fn BufferSink::new() -> BufferSink {
 
 ///|
 /// Records a defensive copy of `samples` as the next chunk. Mutating the
-/// caller's array afterwards never changes what was stored, because `render`
-/// and other producers reuse their output buffers.
+/// caller's array afterwards never changes what was stored.
 ///
 /// # Example
 /// ```mbt check

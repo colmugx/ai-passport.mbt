@@ -19,8 +19,7 @@ Platform details such as browser APIs, ESP-IDF, BSPs, GPIO, buses, codecs, and f
 | `core` | `Point`, `Size`, `Rect`, `Color` (RGB565 conversion), `LOGICAL_WIDTH = 120`, `LOGICAL_HEIGHT = 160` |
 | `graphics` | `Canvas` drawing (`clear`, `pixel`, `line`, `rect`, `fill_rect`, `sprite`, bitmap text), `SpriteSheet`, text metrics, read-only `FrameView` |
 | `input` | Semantic `Button` (`Up` / `Down` / `Ok`), `ButtonEvent` (`Press` / `Click` / `DoubleClick` / `LongPress`), edge-detecting `InputState` |
-| `music` | `Meter` (6/8), `Tempo` (dotted-quarter BPM), `Pitch` / `Note` / `Track` / `Song` (max four tracks), `Sequencer`, `TickClock` |
-| `audio` | 16 kHz PCM16 mono `Synth` with four monophonic voices, five waveforms (`Pulse12`, `Pulse25`, `Pulse50`, `Triangle`, `Noise`), and a sample-accurate `Player` that owns the music transport (loop, pause/resume, beat sync) |
+| `audio` | Temporary 16 kHz signed PCM16 mono Host transport contracts (`PcmSink`, `BufferSink`) while resource-backed Sound playback is introduced |
 | `battery` | `BatterySource` trait and caching `Battery`; readings are `Int?` so unavailable values are explicit |
 | `driver` | Backend-facing `Clock` and `DisplaySink` contracts, plus test fixtures (`ZeroClock`, `SinkProbe`) |
 | `hostabi` | Internal, experimental wasm host-boundary package: ABI v0 constants, the closure-injected `HostBridge` (`DisplaySink` / `PcmSink` / `BatterySource` / `Clock` adapters), wasm-gated `passport.*` externs, and inline-WAT `u16` store/load helpers |
@@ -35,13 +34,9 @@ The logical screen is fixed at **120×160** pixels for v0.1. Applications draw w
 
 Buttons are semantic values — `Up`, `Down`, `Ok` — never GPIO or ADC channels. `InputState` turns raw press/release feeds into `pressed`, `just_pressed`, and `just_released` edges per frame via `advance()`.
 
-## Music and audio
+## Audio scope
 
-- 6/8 meter with dotted-quarter BPM tempo (default 76). Song time is measured in ticks, with four ticks per eighth note by default and twelve ticks per dotted-quarter beat.
-- `Song::new` accepts at most four tracks (raising `SongError::TooManyVoices` for more) and stores an **immutable snapshot**: the caller's authoring arrays are deep-copied, so mutating them afterwards cannot change a constructed song. Read access: `meter()`, `tempo()`, `ticks_per_eighth()`, `track_count()`.
-- `Sequencer` walks a song with deterministic looping (arrival-based: the first step fires the tick-0 note starts); `length()` is the loop length in song ticks. `TickClock` converts elapsed samples into song ticks with exact integer accumulation (no drift), and `ticks_to_samples_exact` measures from the current clock phase to a future tick boundary.
-- `Synth` renders 16 kHz signed PCM16 mono, mixes up to four monophonic voices, and clamps to `[-32768, 32767]`. Instrument articulation defines envelope, volume, and optional vibrato; the waveform defines oscillator shape. Integer envelope ramps reach their targets at the configured sample duration, including release from the level where it begins.
-- `Player` owns the authoritative sample clock and transport. It fires tick-0 notes before the first sample, processes later starts at exact sample boundaries, and uses a preallocated event buffer through `Sequencer::step_into`. Note gates end on their musical tick boundary despite fractional clock carry. `beat()` counts elapsed dotted-quarter beats across loops, including one-tick loops, and pause freezes that count.
+The core SDK does not provide music composition, notes, tracks, songs, synthesis, sequencing, oscillators, or envelopes. Applications prepare audio outside the SDK. The existing `PcmSink` transport remains temporarily so current Hosts keep their playback behavior while the resource-backed Sound model is introduced in later changes.
 
 ## Battery
 

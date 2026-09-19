@@ -1,14 +1,8 @@
 // Generated using `moon info`, DON'T EDIT IT
 package "colmugx/ai-passport/audio"
 
-import {
-  "colmugx/ai-passport/music",
-}
-
 // Values
 pub const SAMPLE_RATE : Int = 16000
-
-pub const VOICES : Int = 4
 
 // Errors
 
@@ -19,26 +13,6 @@ pub struct BufferSink {
 pub fn BufferSink::chunks(Self) -> Array[FixedArray[Int]]
 pub fn BufferSink::new() -> Self
 pub impl PcmSink for BufferSink
-
-pub struct Player {
-  // private fields
-}
-pub fn Player::beat(Self) -> Int
-pub fn Player::new(song~ : @music.Song) -> Self
-pub fn Player::pause(Self) -> Unit
-pub fn Player::paused(Self) -> Bool
-pub fn Player::position_ticks(Self) -> Int
-pub fn Player::render(Self, out~ : FixedArray[Int]) -> Unit
-pub fn Player::unpause(Self) -> Unit
-
-pub struct Synth {
-  // private fields
-}
-pub fn Synth::new() -> Self
-pub fn Synth::release(Self, voice~ : Int) -> Unit
-pub fn Synth::render(Self, out~ : FixedArray[Int]) -> Unit
-pub fn Synth::render_range(Self, out~ : FixedArray[Int], offset~ : Int, len~ : Int) -> Unit
-pub fn Synth::trigger(Self, voice~ : Int, on~ : @music.NoteOn, gate_samples~ : Int) -> Unit
 
 // Type aliases
 
