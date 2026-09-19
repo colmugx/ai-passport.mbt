@@ -15,6 +15,8 @@
  *  3. fixture B          — a downstream-style PCM-asset app builds with the
  *                          asset materialized byte-identically and the
  *                          generic URL parameters on the printed entry;
+ *                          rebuilds are clean (removed assets / stale files
+ *                          cannot survive) and bundle cleanup is contained;
  *  4. fixture C          — a downstream-style SINGLE-ENTRY application (the
  *                          application contract: display, input, battery,
  *                          audio output state, playback position) builds
@@ -331,6 +333,56 @@ export function registerCliFixtureSuites({ suite, ok, eq, eqText, SuiteError, re
       "/index.html?pcm=./assets/tone.pcm&pcmLoop=1",
       `the printed entry must carry the generic PCM parameters from the project contract (got ${JSON.stringify(url)})`,
     );
+  });
+
+  // --- Suite: deterministic Web bundle -----------------------------------------
+
+  suite("cli: web bundle rebuild is clean and contained", () => {
+    const temp = fs.mkdtempSync(path.join(os.tmpdir(), "passport-web-bundle-"));
+    try {
+      const project = path.join(temp, "project");
+      const outside = path.join(temp, "outside");
+      fs.cpSync(fixtureDir(repoRoot, "fixture-b"), project, { recursive: true });
+
+      const first = runCli(repoRoot, ["build", "--host", "web", "--project", project]);
+      eq(first.status, 0, `first Web build must succeed; stderr: ${first.stderr}`);
+      const bundle = path.join(project, ".passport", "web");
+      const asset = path.join(bundle, "assets", "tone.pcm");
+      ok(fs.existsSync(asset), "the first build must materialize the declared PCM asset");
+
+      // Simulate output from an older contract / SDK revision.
+      fs.writeFileSync(path.join(bundle, "stale.txt"), "stale");
+      fs.mkdirSync(path.join(bundle, "legacy"), { recursive: true });
+      fs.writeFileSync(path.join(bundle, "legacy", "old.bin"), "stale");
+      fs.writeFileSync(path.join(project, "passport.toml"), 'entry = "main"\n');
+
+      const rebuilt = runCli(repoRoot, ["build", "--host", "web", "--project", project]);
+      eq(rebuilt.status, 0, `asset-free rebuild must succeed; stderr: ${rebuilt.stderr}`);
+      eq(printedEntryUrl(rebuilt.stdout), "/index.html", "removed PCM contract must produce the plain entry URL");
+      ok(!fs.existsSync(asset), "an asset removed from passport.toml must not survive the rebuild");
+      ok(!fs.existsSync(path.join(bundle, "stale.txt")), "arbitrary stale root files must not survive");
+      ok(!fs.existsSync(path.join(bundle, "legacy")), "arbitrary stale directories must not survive");
+      ok(!fs.existsSync(path.join(bundle, "assets")), "an asset-free rebuild must not retain an empty stale assets tree");
+
+      // The recursive cleanup owns exactly .passport/web. A symlink to an
+      // outside directory must fail closed before touching its contents.
+      fs.rmSync(bundle, { recursive: true, force: true });
+      fs.mkdirSync(outside, { recursive: true });
+      const sentinel = path.join(outside, "sentinel");
+      fs.writeFileSync(sentinel, "keep");
+      fs.symlinkSync(outside, bundle, "dir");
+      const escaped = runCli(repoRoot, ["build", "--host", "web", "--project", project]);
+      ok(escaped.status !== 0, "an escaping Web bundle symlink must be refused");
+      ok(
+        `${escaped.stdout}\n${escaped.stderr}`.includes(
+          "refusing to clear Web bundle outside the CLI-owned .passport/web directory",
+        ),
+        "the refusal must identify the owned Web bundle boundary",
+      );
+      ok(fs.existsSync(sentinel), "refused bundle cleanup must preserve outside files");
+    } finally {
+      fs.rmSync(temp, { recursive: true, force: true });
+    }
   });
 
   // --- Suite: doctor ------------------------------------------------------------

@@ -69,7 +69,7 @@ moon build --target wasm --release      # fixture app.wasm, release profile
 moon build --target wasm                # fixture app.wasm, debug profile (the suite pins both)
 node hosts/web/tools/gen-test-pcm.mjs   # once; creates the committed PCM asset
 node hosts/web/tools/make-bundle.mjs    # assembles _build/passport-bundle
-node hosts/web/test/run-tests.mjs       # 23 suites; exits 2 if the fixture artifacts are missing
+node hosts/web/test/run-tests.mjs       # 24 suites; exits 2 if the fixture artifacts are missing
 ```
 
 CI runs the same gate in a dedicated `wasm-host` job (`.github/workflows/ci.yml`): `moon check` and `moon test` with `--target wasm`, both fixture build profiles, `passport hosts` / `passport doctor` smoke runs, the package-list proof, and the full integration suite — including the real-browser suites and the passport-CLI fixture suites through pinned playwright chromium — with no skip flags.
