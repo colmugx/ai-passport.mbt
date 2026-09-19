@@ -7,9 +7,9 @@
 
 ///|
 /// Remembers the last audio-output state mirrored to the transport. Seed it
-/// from the App's current facts: the transport receives the same facts
-/// explicitly at music start, so a freshly created mirror crosses no
-/// redundant write.
+/// from the startup facts the transport already received (the App's initial
+/// output, or the device's existing silent startup facts when the App had
+/// none), so a freshly created mirror crosses no redundant write.
 pub struct DeviceAudioMirror {
   mut applied_volume : Int
   mut applied_muted : Bool
