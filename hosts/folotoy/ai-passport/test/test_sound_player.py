@@ -13,7 +13,7 @@ import unittest
 from pathlib import Path
 
 HOST_ROOT = Path(__file__).resolve().parent.parent
-COMPONENT = HOST_ROOT / "components" / "sound_player"
+COMPONENT = HOST_ROOT / "main"
 
 HEADERS = {
     "esp_err.h": r"""
@@ -272,7 +272,7 @@ class SoundPlayerTest(unittest.TestCase):
                     "-Wextra",
                     "-Werror",
                     f"-I{include}",
-                    f"-I{COMPONENT / 'include'}",
+                    f"-I{COMPONENT}",
                     str(COMPONENT / "sound_player.c"),
                     str(root / "shim.c"),
                     str(root / "harness.c"),

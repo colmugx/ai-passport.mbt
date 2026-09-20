@@ -23,6 +23,7 @@ This repository and its published Mooncakes archive carry **no third-party produ
 11. Do not add QEMU or a hardware emulator unless the project explicitly chooses that direction in a later round.
 12. Generated application artifacts are never hand-authored. Host adapters belong under the ignored `passport-generated/` tree; the Rule-produced sound binding is the ignored `dev_build` output inside an application-owned package beside its `moon.pkg`.
 13. Sound bindings have one generator: `passport generate-sounds INPUT OUTPUT` consumes the shared sound metadata compiler. Downstream packages invoke it through `rule` / `dev_build`; never duplicate name, symbol, or ID generation in scripts or Host tooling.
+14. The FoloToy firmware is one ESP-IDF `main` component. Keep ai-passport-owned bridges, sound playback, generated MoonBit C, pinned MoonBit runtime sources, and the explicitly selected external BSP sources under that single build boundary; do not recreate a `components/<adapter>` hierarchy for glue code.
 
 Forest Walk is a downstream reference application, not SDK/tooling semantics. CLI/Host tooling must remain application-generic.
 

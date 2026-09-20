@@ -22,7 +22,7 @@ from pathlib import Path
 HOST_ROOT = Path(__file__).resolve().parent.parent
 SDK_ROOT = HOST_ROOT.parent.parent.parent
 MAIN = HOST_ROOT / "main" / "app_main.c"
-BSP_MANIFEST = HOST_ROOT / "components" / "folotoy_bsp" / "bsp.sha256"
+BSP_MANIFEST = HOST_ROOT / "bsp.sha256"
 CLI_SOURCES = sorted(
     (SDK_ROOT / "src" / "cli").glob("*.mbt")
 ) + sorted((SDK_ROOT / "src" / "cmd" / "passport").glob("*.mbt"))
@@ -88,15 +88,35 @@ class DeviceAbiBoundaryTests(unittest.TestCase):
             )
 
 
+class FirmwareLayoutTests(unittest.TestCase):
+    def test_host_glue_is_one_main_component(self):
+        legacy_files = [
+            path.relative_to(HOST_ROOT)
+            for path in (HOST_ROOT / "components").rglob("*")
+            if path.is_file()
+        ]
+        self.assertEqual(
+            legacy_files,
+            [],
+            "Host glue must not recreate an ESP-IDF components/<adapter> tree",
+        )
+        cmake = (HOST_ROOT / "main" / "CMakeLists.txt").read_text()
+        self.assertEqual(
+            cmake.count("idf_component_register("),
+            1,
+            "all Host glue and selected external sources share one main component",
+        )
+
+
 class BspSubmoduleBoundaryTests(unittest.TestCase):
     def test_no_bsp_sources_tracked_inside_the_host_tree(self):
-        upstream = HOST_ROOT / "components" / "folotoy_bsp" / "upstream"
+        upstream = HOST_ROOT / "upstream"
         self.assertFalse(
             upstream.exists(),
             "BSP sources must come from an external checkout, never be "
-            "tracked under components/folotoy_bsp/upstream/",
+            "tracked under the Host root's upstream/ path",
         )
-        generated = HOST_ROOT / "components" / "folotoy_bsp" / "upstream.cmake"
+        generated = HOST_ROOT / "upstream.cmake"
         self.assertFalse(
             generated.exists(),
             "upstream.cmake is generated per build into the workspace; the "

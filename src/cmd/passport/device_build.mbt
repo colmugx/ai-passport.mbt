@@ -278,10 +278,10 @@ async fn ensure_bsp_checkout(project : @cli.Project) -> (String, Bool) {
 
 ///|
 /// Verifies the resolved checkout against the tracked content manifest and
-/// connects it to the generated ESP-IDF project: the folotoy_bsp component
-/// compiles the upstream sources in place through the generated one-line
-/// cmake include. Third-party source never enters the SDK release or the
-/// build workspace as files.
+/// connects it to the generated ESP-IDF project. The Host's one main
+/// component compiles the selected upstream sources in place through the
+/// generated one-line CMake include. Third-party source never enters the SDK
+/// release or the build workspace as files.
 async fn connect_bsp(
   project : @cli.Project,
   sdk_host : String,
@@ -296,7 +296,7 @@ async fn connect_bsp(
   println(
     "passport: folotoy-ai-passport dependency: \{repo} @ \{revision} (\{origin})",
   )
-  let manifest = "\{sdk_host}/components/folotoy_bsp/bsp.sha256"
+  let manifest = "\{sdk_host}/bsp.sha256"
   guard @fs.exists(manifest) else {
     @cli.fail_cli("the SDK device Host has no BSP manifest: \{manifest}")
   }
@@ -308,13 +308,10 @@ async fn connect_bsp(
     None => ()
   }
   @fs.write_file(
-    "\{workspace}/components/folotoy_bsp/upstream.cmake",
+    "\{workspace}/upstream.cmake",
     @utf8.encode("set(FOTOLOY_BSP_ROOT \"\{repo}/components/bsp\")\n"),
   ) catch {
-    _ =>
-      @cli.fail_cli(
-        "cannot write \{workspace}/components/folotoy_bsp/upstream.cmake",
-      )
+    _ => @cli.fail_cli("cannot write \{workspace}/upstream.cmake")
   }
 }
 
@@ -584,7 +581,7 @@ async fn device_build_command(sub : @argparse.Matches) -> Unit {
     copy_tree("\{sdk_host}/\{name}", "\{workspace}/\{name}")
   }
   write_sound_bank("\{workspace}/\{@cli.SOUND_BANK_FILE}", sound_compilation)
-  let generated_dir = "\{workspace}/components/moonbit_device/generated"
+  let generated_dir = "\{workspace}/main/generated"
   match plan_device_music(project) {
     Music(asset) => {
       let pcm_path = @cli.under_root(project.root, asset.source)
@@ -727,9 +724,9 @@ async fn device_build_command(sub : @argparse.Matches) -> Unit {
       )
     None => ()
   }
-  // The moonbit_runtime CMake component reads $MOON_HOME directly, so the
-  // resolved location must cross into the idf env even when the invoking
-  // shell never exported it.
+  // The Host's main CMake component reads $MOON_HOME directly, so the resolved
+  // location must cross into the idf env even when the invoking shell never
+  // exported it.
   let moon_home = moon_home_dir()
   run_step(
     @shell.Cmd::Cmd("idf.py", ["reconfigure"], cwd=workspace, env={

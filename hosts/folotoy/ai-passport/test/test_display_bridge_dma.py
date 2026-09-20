@@ -13,7 +13,7 @@ import unittest
 from pathlib import Path
 
 HOST_ROOT = Path(__file__).resolve().parent.parent
-COMPONENT = HOST_ROOT / "components" / "display_bridge"
+COMPONENT = HOST_ROOT / "main"
 
 SHIM_HEADERS = {
     "esp_err.h": r"""
@@ -364,7 +364,7 @@ class DisplayBridgeDmaTests(unittest.TestCase):
             [
                 "cc", "-std=c11", "-Wall", "-Werror",
                 "-I", str(shim),
-                "-I", str(COMPONENT / "include"),
+                "-I", str(COMPONENT),
                 str(shim / "shim.c"),
                 str(COMPONENT / "display_bridge.c"),
                 str(harness),
