@@ -28,12 +28,13 @@ transformation are rejected.
 
 ## Typed MoonBit mapping
 
-An application owns a small `<source-root>/sounds/moon.pkg`; the generated
-`generated.mbt` beside it is ignored and never edited. For the conventional
-`source = "src"` layout, use:
+An application owns a package for the generated mapping. Its directory and
+package name are application choices; import that package as `@sounds` to get
+the intended call site. The `dev_build` output beside its `moon.pkg` is
+ignored and never edited. For example, with `source = "src"`:
 
 ```gitignore
-src/sounds/generated.mbt
+src/audio_resources/generated.mbt
 ```
 
 ```moonbit
@@ -43,7 +44,7 @@ import {
 
 rule(
   name: "passport-sounds",
-  command: "passport generate-sounds",
+  command: "passport generate-sounds $input $output",
 )
 
 dev_build(
@@ -54,11 +55,12 @@ dev_build(
 ```
 
 Moon resolves `dev_build` input and output paths from the package directory,
-while the command runs from the module root. `generate-sounds` therefore needs
-no path arguments: it discovers `moon.mod`, `passport.toml`, the source root,
-and `sounds/generated.mbt` from its current directory. If packages live
-directly at the module root, the input is `../passport.toml`. The co-versioned
-`passport` CLI must be on `PATH`, just as it is for Host builds.
+then supplies their normalized module-root paths as `$input` and `$output`;
+the command runs from the module root. `generate-sounds` validates that the
+input is the root `passport.toml` and writes exactly the declared `.mbt`
+output inside the invoking package. If packages live directly at the module
+root, the input is `../passport.toml`. The co-versioned `passport` CLI must
+be on `PATH`, just as it is for Host builds.
 
 The Rule runs automatically before `moon check`, `moon build`, and `moon test`.
 It emits a typed enum implementing `@audio.Sound`, so application code imports

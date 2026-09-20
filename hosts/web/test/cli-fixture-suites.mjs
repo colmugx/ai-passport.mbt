@@ -366,10 +366,10 @@ export function registerCliFixtureSuites({ suite, ok, eq, eqText, SuiteError, re
     try {
       const project = path.join(temp, "project");
       const audio = path.join(project, "src", "audio");
-      const sounds = path.join(project, "src", "sounds");
+      const resources = path.join(project, "src", "audio_resources");
       const app = path.join(project, "src", "app");
       fs.mkdirSync(audio, { recursive: true });
-      fs.mkdirSync(sounds, { recursive: true });
+      fs.mkdirSync(resources, { recursive: true });
       fs.mkdirSync(app, { recursive: true });
       fs.writeFileSync(
         path.join(project, "moon.mod"),
@@ -396,20 +396,20 @@ export function registerCliFixtureSuites({ suite, ok, eq, eqText, SuiteError, re
         "_build", "wasm", "release", "build", "cmd", "passport", "passport.wasm",
       );
       const ruleCommand = [
-        "moonrun", cliWasm, "generate-sounds",
+        "moonrun", cliWasm, "generate-sounds", "$input", "$output",
       ].join(" ");
       fs.writeFileSync(
-        path.join(sounds, "moon.pkg"),
+        path.join(resources, "moon.pkg"),
         [
           'import { "colmugx/ai-passport/audio" @audio }',
           `rule(name: "passport-sounds", command: "${ruleCommand}")`,
-          'dev_build(rule: "passport-sounds", input: "../../passport.toml", output: "generated.mbt")',
+          'dev_build(rule: "passport-sounds", input: "../../passport.toml", output: "bindings.mbt")',
           "",
         ].join("\n"),
       );
       fs.writeFileSync(
         path.join(app, "moon.pkg"),
-        'import { "colmugx/ai-passport/sounds" @sounds }\n',
+        'import { "colmugx/ai-passport/audio_resources" @sounds }\n',
       );
       const writeApp = (symbol) => fs.writeFileSync(
         path.join(app, "app.mbt"),
@@ -440,7 +440,7 @@ export function registerCliFixtureSuites({ suite, ok, eq, eqText, SuiteError, re
         { name: "jump", source: "assets/jump.pcm" },
       ]);
       writeApp("ForestWalk");
-      const generated = path.join(sounds, "generated.mbt");
+      const generated = path.join(resources, "bindings.mbt");
       const outside = path.join(temp, "outside-generated.mbt");
       fs.writeFileSync(outside, "keep");
       fs.symlinkSync(outside, generated);
