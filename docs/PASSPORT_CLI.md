@@ -55,7 +55,7 @@ The CLI is the executable package `src/cmd/passport` (package path
   # examples:
   moon run --target wasm src/cmd/passport -- --help
   moon run --target wasm src/cmd/passport hosts
-  moon run --target wasm src/cmd/passport generate-sounds
+  moon run --target wasm src/cmd/passport generate-sounds <input> <output>
   moon run --target wasm src/cmd/passport doctor --host web --project <dir>
   moon run --target wasm src/cmd/passport build --host web --project <dir>
   moon run --target wasm src/cmd/passport dev --host web --project <dir> --port 8000
@@ -101,10 +101,12 @@ The CLI is the executable package `src/cmd/passport` (package path
   would use, whether it matches the pinned content manifest, or (when
   absent) where the build would clone the pinned revision. Doctor never
   downloads anything.
-- `passport generate-sounds` — the narrow generator invoked by the
-  application's Moon `rule` / `dev_build`. It runs at the project root,
-  requires `moon.mod` and `passport.toml`, derives the source root, and owns
-  exactly `<source-root>/sounds/generated.mbt`. It compiles ordered metadata
+- `passport generate-sounds INPUT OUTPUT` — the narrow generator invoked by
+  the application's Moon `rule` / `dev_build` as
+  `passport generate-sounds $input $output`. It runs at the project root,
+  validates `INPUT` as the root `passport.toml`, and writes exactly the
+  `.mbt` `OUTPUT` declared by an application-owned package under the source
+  root. The package name and output filename are not fixed. It compiles ordered metadata
   into a typed enum implementing `@audio.Sound`; it does not read PCM payloads
   or build a bank. Normal Host builds use the same metadata compiler and
   additionally validate PCM bytes.
@@ -251,8 +253,8 @@ path = "external/folotoy-ai-passport"
   input contract is signed PCM16 little-endian, mono, 16000 Hz and headerless;
   the CLI cannot infer sample rate or channel count from headerless bytes.
   Every build emits a deterministic `sounds.bank`, including a valid empty
-  bank when the list is absent. The application-owned `sounds/moon.pkg` uses
-  Moon `rule` / `dev_build` to invoke `passport generate-sounds`, producing
+  bank when the list is absent. An application-owned package uses Moon `rule`
+  / `dev_build` to invoke `passport generate-sounds $input $output`, producing
   `@sounds.Name` constructors before IDE checks and builds. See
   `SOUND_BANK.md` for the exact package configuration.
 - `hostDependencies` (optional) — project-provided checkouts of external

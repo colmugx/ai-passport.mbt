@@ -50,6 +50,18 @@ fn build_cli() -> @argparse.Command {
   let generate_sounds_cmd = @argparse.Command::Command(
     "generate-sounds",
     about="Generate the typed @sounds mapping used by Moon Rule/dev_build.",
+    positionals=[
+      @argparse.PositionArg::PositionArg(
+        "input",
+        about="Rule input: the project's passport.toml.",
+        num_args=@argparse.ValueRange::single(),
+      ),
+      @argparse.PositionArg::PositionArg(
+        "output",
+        about="Rule output: a .mbt file in the invoking package.",
+        num_args=@argparse.ValueRange::single(),
+      ),
+    ],
   )
   let dev_cmd = @argparse.Command::Command(
     "dev",
@@ -97,7 +109,11 @@ async fn main {
       "doctor" => doctor_command(sub)
       "build" => build_command(sub)
       "dev" => dev_command(sub)
-      "generate-sounds" => generate_sounds_command()
+      "generate-sounds" =>
+        generate_sounds_command(
+          option_value(sub, "input", ""),
+          option_value(sub, "output", ""),
+        )
       unknown => @cli.fail_cli("unknown subcommand \"\{unknown}\"")
     }
   } catch {
