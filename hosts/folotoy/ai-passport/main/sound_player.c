@@ -145,11 +145,7 @@ static void apply_desired_output(void) {
     if (desired == s_applied_output) {
         return;
     }
-    const esp_err_t err = bsp_audio_set_volume((uint8_t)codec_volume(desired));
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "codec volume update failed: %s", esp_err_to_name(err));
-        return;
-    }
+    bsp_audio_set_volume((uint8_t)codec_volume(desired));
     ESP_LOGI(TAG, "output volume=%u muted=%d",
              desired & OUTPUT_VOLUME_MASK,
              (desired & OUTPUT_MUTED_BIT) != 0u ? 1 : 0);
