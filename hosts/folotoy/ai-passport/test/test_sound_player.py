@@ -38,7 +38,7 @@ const char *esp_err_to_name(esp_err_t err);
 #include "esp_err.h"
 esp_err_t bsp_audio_init(void);
 esp_err_t bsp_audio_set_format(int rate, int bits, int channels);
-esp_err_t bsp_audio_set_volume(uint8_t volume);
+void bsp_audio_set_volume(uint8_t volume);
 esp_err_t bsp_audio_write(const void *bytes, size_t length);
 """,
     "freertos/FreeRTOS.h": r"""
@@ -110,9 +110,8 @@ esp_err_t bsp_audio_set_format(int rate, int bits, int channels) {
     assert(rate == 16000 && bits == 16 && channels == 1);
     return ESP_OK;
 }
-esp_err_t bsp_audio_set_volume(uint8_t volume) {
+void bsp_audio_set_volume(uint8_t volume) {
     shim_codec_volume = volume;
-    return ESP_OK;
 }
 esp_err_t bsp_audio_write(const void *bytes, size_t length) {
     assert(length == sizeof(shim_first_chunk));
