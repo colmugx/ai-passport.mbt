@@ -1,15 +1,14 @@
 ///|
 /// One frame tick (exported as `passport_frame`), in the frozen order:
 /// advance the clock, apply the input edges, refresh the battery, draw the
-/// deterministic frame, stream the frozen PCM square wave, present the
-/// canvas frame through the bridge display sink (marks the framebuffer
+/// deterministic frame, present the canvas frame through the bridge display
+/// sink (marks the framebuffer
 /// dirty), and finally clear the input latches at the frame boundary.
 pub fn passport_frame(now_us : Int64) -> Unit {
   state.bridge.advance(now_us)
   apply_input()
   state.battery.refresh()
   draw_frame()
-  push_pcm()
   let sink : &@driver.DisplaySink = state.bridge
   sink.present(frame=state.canvas.frame_view())
   state.input.advance()
@@ -89,21 +88,4 @@ fn draw_frame() -> Unit {
       )
     None => ()
   }
-}
-
-///|
-/// Refills the reused PCM chunk with the frozen integer square wave
-/// `sample(n) = ((n >> 4) & 1) == 1 ? -4000 : 4000` (500 Hz at 16000 Hz,
-/// amplitude 4000 PCM16) starting at the global sample counter, advances the
-/// counter by 266, and pushes the chunk through the bridge `PcmSink`, which
-/// stages it into linear memory and hands it to `host_pcm_write`.
-fn push_pcm() -> Unit {
-  let pcm = state.pcm
-  for i in 0..<PCM_CHUNK {
-    let n = state.sample_counter + i
-    pcm[i] = if ((n >> 4) & 1) == 1 { -4000 } else { 4000 }
-  }
-  state.sample_counter += PCM_CHUNK
-  let sink : &@audio.PcmSink = state.bridge
-  sink.write(samples=pcm)
 }

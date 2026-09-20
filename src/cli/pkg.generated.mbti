@@ -55,8 +55,6 @@ pub fn moon_mod_scalar(String, String) -> String? raise
 
 pub fn parse_contract(String) -> ProjectContract raise
 
-pub fn percent_encode(String) -> String
-
 pub fn render_host(@hosts.HostDescriptor) -> String
 
 pub fn render_sound_mapping(Array[SoundMetadata]) -> String
@@ -84,7 +82,6 @@ pub(all) suberror CliError {
 pub(all) struct AssetEntry {
   source : String
   bundle_path : String
-  pcm_loop : Bool
 } derive(Eq, @debug.Debug)
 
 pub(all) struct CompiledSound {

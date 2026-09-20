@@ -2,7 +2,6 @@ import {
   "colmugx/ai-passport/core",
   "colmugx/ai-passport/graphics",
   "colmugx/ai-passport/driver",
-  "colmugx/ai-passport/audio",
   "colmugx/ai-passport/battery",
   "colmugx/ai-passport/input",
 }

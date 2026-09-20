@@ -22,7 +22,7 @@ Platform details such as browser APIs, ESP-IDF, BSPs, GPIO, buses, codecs, and f
 | `audio` | Typed `Sound` resources, opaque `Playback` instances and portable playback controls; Host mixing stays internal |
 | `battery` | `BatterySource` trait and caching `Battery`; readings are `Int?` so unavailable values are explicit |
 | `driver` | Backend-facing `Clock` and `DisplaySink` contracts, plus test fixtures (`ZeroClock`, `SinkProbe`) |
-| `hostabi` | Internal, experimental wasm host-boundary package: ABI v0 constants, the closure-injected `HostBridge` (`DisplaySink` / `PcmSink` / `BatterySource` / `Clock` adapters), wasm-gated `passport.*` externs, and inline-WAT `u16` store/load helpers |
+| `hostabi` | Internal, experimental wasm host boundary: ABI v0 constants, the closure-injected `HostBridge` (`DisplaySink` / `BatterySource` / `Clock` adapters), wasm-gated `passport.*` externs, and inline-WAT `u16` store/load helpers |
 
 ## Display model
 
@@ -48,26 +48,23 @@ A Host implements the relevant `pub(open)` traits:
 
 - `Clock` — `monotonic_ms()` and `sleep_ms()` for frame pacing.
 - `DisplaySink` — `present(frame~ : @graphics.FrameView)` receives a synchronous, read-only view of the finished RGB565 canvas.
-- `PcmSink` (in `audio`) — `write(samples~ : FixedArray[Int])` receives signed PCM16 mono sample blocks.
 - `BatterySource` (in `battery`) — `percent()` and `millivolts()` return optional readings.
 
 Host glue stays behind the Host boundary; reusable application semantics remain MoonBit SDK/application code.
 
 ## Web host (wasm backend)
 
-The SDK ships an application-agnostic web host backend for compiled MoonBit `wasm` apps: `hosts/web/passport-host.js` with `hosts/web/pcm-worklet.js` and `hosts/web/index.html` implements the internal, experimental ABI v0 contract specified in `docs/WEB_HOST.md`. It is a host **backend**, not an application preview or template — it holds no application state, and all browser code lives in the `hosts/web/*.js` assets, not in SDK MoonBit packages. `src/hostabi` adapts the SDK contracts to the raw wasm boundary, and `src/fixture` is the smallest main package that proves the boundary end-to-end with deterministic pixels and PCM. ABI v0 is internal and not a frozen public SDK API; the CLI-produced bundle includes `app.wasm`, `sounds.bank`, the Host files and declared ordinary assets (`hosts/web/README.md`).
+The SDK ships an application-agnostic web host backend for compiled MoonBit `wasm` apps: `hosts/web/passport-host.js` with `hosts/web/sound-worklet.js` and `hosts/web/index.html` implements the internal, experimental ABI v0 contract specified in `docs/WEB_HOST.md`. It is a host **backend**, not an application preview or template — it holds no application state, and all browser code lives in the `hosts/web/*.js` assets, not in SDK MoonBit packages. `src/hostabi` adapts the SDK contracts to the raw wasm boundary, and `src/fixture` is the smallest main package that proves the framebuffer, input, battery, clock, and master-output boundary end to end. ABI v0 is internal and not a frozen public SDK API; the CLI-produced bundle includes `app.wasm`, `sounds.bank`, the Host files and declared ordinary assets (`hosts/web/README.md`).
 
 Verify the boundary with the fixture and integration suite, from the repository root:
 
 ```sh
 moon build --target wasm --release      # fixture app.wasm, release profile
 moon build --target wasm                # fixture app.wasm, debug profile (the suite pins both)
-node hosts/web/tools/gen-test-pcm.mjs   # once; creates the committed PCM asset
-node hosts/web/tools/make-bundle.mjs    # assembles _build/passport-bundle
 node hosts/web/test/run-tests.mjs       # integration suites; exits 2 if fixture artifacts are missing
 ```
 
-CI runs the same gate in a dedicated `wasm-host` job (`.github/workflows/ci.yml`): `moon check` and `moon test` with `--target wasm`, both fixture build profiles, `passport hosts` / `passport doctor` smoke runs, the package-list proof, and the full integration suite — including the real-browser suites and the passport-CLI fixture suites through pinned playwright chromium — with no skip flags.
+CI runs the same gate in a dedicated `wasm-host` job (`.github/workflows/ci.yml`): `moon check` and `moon test` with `--target wasm`, both fixture build profiles, `passport hosts`, the package-list proof, and the full integration suite — including `passport doctor`, the real-browser suites, and the passport-CLI fixture suites through pinned playwright chromium — with no skip flags.
 
 ## Passport CLI
 

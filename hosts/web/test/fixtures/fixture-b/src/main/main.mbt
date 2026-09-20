@@ -1,8 +1,7 @@
 ///|
-/// Fixture B: a downstream-style application with one generic looping PCM
-/// asset. The app itself remains ordinary graphics/input code; passport.toml
-/// configures the Host audio asset. Together with fixture A this proves the
-/// CLI is application-generic and audio is project data, not app semantics.
+/// Fixture B: a downstream-style application whose passport.toml declares
+/// two PCM sounds. The app remains ordinary graphics/input code; this fixture
+/// proves the CLI compiles project data into one deterministic APSB bank.
 ///
 /// Deterministic frame content:
 /// - an 8x8 block at (0,0): red/green cycling on frame parity, flipping to
@@ -24,9 +23,6 @@ struct AppState {
 let state : AppState = {
   bridge: @hostabi.HostBridge::new(
     store_u16=@hostabi.store_u16,
-    // Asset-mode PCM is owned by the Web Host, so this app deliberately does
-    // NOT import `passport.host_pcm_write`.
-    pcm_write=fn(_ptr : Int, _samples : Int) { () },
     battery_percent=@hostabi.host_battery_percent,
   ),
   canvas: @graphics.Canvas::logical(),

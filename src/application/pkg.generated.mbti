@@ -19,7 +19,6 @@ pub(all) struct AudioOutput {
 
 pub(all) struct FrameContext {
   now_us : Int64
-  playback_position_us : Int64?
   presentation_lead_us : Int64
 } derive(Eq, @debug.Debug)
 

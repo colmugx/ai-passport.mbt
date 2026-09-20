@@ -19,37 +19,11 @@ pub const FRAMEBUFFER_PTR : Int = 4096
 pub const FRAMEBUFFER_LEN : Int = 38400
 
 ///|
-/// Byte offset of the PCM staging buffer in linear memory (ABI v0 memory
-/// map). Immediately follows the framebuffer region.
-///
-/// `HostBridge`'s `PcmSink` adapter stages one chunk here — as PCM16
-/// little-endian uint16 samples — before handing the region to the host via
-/// `host_pcm_write(PCM_STAGE_PTR, samples)`. The host copies the samples out
-/// before the call returns, so the next write may reuse the region.
-pub const PCM_STAGE_PTR : Int = 42496
-
-///|
-/// Byte capacity of the PCM staging buffer: 16384 bytes.
-///
-/// At 2 bytes per PCM16 sample this stages exactly `PCM_STAGE_CAPACITY_SAMPLES`
-/// samples per `host_pcm_write` call.
-pub const PCM_STAGE_CAPACITY_BYTES : Int = 16384
-
-///|
-/// Sample capacity of the PCM staging buffer: `PCM_STAGE_CAPACITY_BYTES / 2 =
-/// 8192` PCM16 samples.
-///
-/// `PcmSink::write` chunks caller requests larger than this into consecutive
-/// full-capacity staging rounds (plus one short tail chunk), so the staging
-/// region is never overrun.
-pub const PCM_STAGE_CAPACITY_SAMPLES : Int = 8192
-
-///|
 /// First byte address of the MoonBit heap in the wasm app (the fixture app's
 /// `moon.pkg` sets `heap-start-address = 65536`, one 64 KiB page).
 ///
-/// Region `[0, ABI_HEAP_START)` is ABI-reserved (framebuffer + PCM staging +
-/// guard/reserve); the MoonBit GC never allocates there, which is what makes
+/// Region `[0, ABI_HEAP_START)` is ABI-reserved (framebuffer + guard/reserve);
+/// the MoonBit GC never allocates there, which is what makes
 /// raw byte-addressed access through inline WAT safe.
 pub const ABI_HEAP_START : Int = 65536
 
@@ -65,12 +39,3 @@ pub const BTN_DOWN : Int = 1
 ///|
 /// Wire code for the semantic `Ok` button on the `passport_input` import.
 pub const BTN_OK : Int = 2
-
-///|
-/// Sample rate of the PCM stream crossing the ABI: 16000 Hz signed PCM16
-/// mono, the device baseline also pinned by `@audio.SAMPLE_RATE`.
-///
-/// The equality with `@audio.SAMPLE_RATE` is asserted by the package tests;
-/// if the audio baseline ever moves, this ABI fact must move with it (and the
-/// host must be updated in lockstep).
-pub const PCM_SAMPLE_RATE : Int = 16000

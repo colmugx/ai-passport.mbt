@@ -114,14 +114,13 @@ fn require_runtime() -> DeviceRuntime {
 }
 
 ///|
-/// `ai_passport_mbt_app_update`: one device frame tick. The obsolete
-/// frame-global playback position stays absent; applications query the
-/// particular `Playback` they care about through `@audio.position`.
+/// `ai_passport_mbt_app_update`: one device frame tick. `FrameContext`
+/// contains only Host-global presentation facts; sound position belongs to
+/// the particular `Playback` queried through `@audio.position`.
 pub fn device_update() -> Unit {
   let runtime = require_runtime()
   runtime.app.update({
     now_us: @hostabi.device_now_us(),
-    playback_position_us: @hostabi.device_playback_position_us(),
     presentation_lead_us: PRESENTATION_LEAD_US,
   })
   match runtime.app.audio_output() {

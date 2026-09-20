@@ -12,10 +12,6 @@ pub(all) struct AssetEntry {
   source : String
   /// Destination path relative to the bundle root (`.passport/web/`).
   bundle_path : String
-  /// When true, this asset is the Host's normalized PCM playback asset: the
-  /// dev/build entry URL carries `?pcm=<bundle_path>&pcmLoop=1`. At most one
-  /// asset per project may set it.
-  pcm_loop : Bool
 } derive(Eq, Debug)
 
 ///|
@@ -109,7 +105,7 @@ fn reserved_bundle_path(path : String) -> Bool {
   path == "app.wasm" ||
   path == "index.html" ||
   path == "passport-host.js" ||
-  path == "pcm-worklet.js" ||
+  path == "sound-worklet.js" ||
   path == SOUND_BANK_FILE
 }
 
@@ -226,12 +222,6 @@ pub fn parse_contract(text : String) -> ProjectContract raise {
     Some(_) => fail_cli("passport.toml: \"assets\" must be an array")
     None => ()
   }
-  let pcm_assets = assets.filter(fn(a) { a.pcm_loop })
-  if pcm_assets.length() > 1 {
-    fail_cli(
-      "passport.toml: at most one asset may set \"pcmLoop\": true (found \{pcm_assets.length()})",
-    )
-  }
   let sounds : Array[SoundEntry] = []
   match root.get("sounds") {
     Some(@toml.TomlArray(list)) => {
@@ -297,6 +287,11 @@ fn parse_asset(value : @toml.TomlValue) -> AssetEntry raise {
   guard value is @toml.TomlTable(obj) else {
     fail_cli("passport.toml: each asset must be a table")
   }
+  for (key, _) in obj {
+    if key != "source" && key != "bundlePath" {
+      fail_cli("passport.toml: asset field \"\{key}\" is not supported")
+    }
+  }
   guard obj.get("source") is Some(@toml.TomlString(source)) else {
     fail_cli("passport.toml: asset is missing required string field \"source\"")
   }
@@ -312,10 +307,5 @@ fn parse_asset(value : @toml.TomlValue) -> AssetEntry raise {
       "passport.toml: asset \"bundlePath\" \"\{bundle_path}\" is reserved by the Web Host",
     )
   }
-  let pcm_loop = match obj.get("pcmLoop") {
-    Some(@toml.TomlBoolean(value)) => value
-    Some(_) => fail_cli("passport.toml: asset \"pcmLoop\" must be a boolean")
-    None => false
-  }
-  { source, bundle_path, pcm_loop, }
+  { source, bundle_path, }
 }

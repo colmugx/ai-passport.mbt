@@ -1,6 +1,6 @@
 ///|
 /// Resolution of the SDK's own Web Host files (index.html,
-/// passport-host.js, pcm-worklet.js) for a downstream project. The files
+/// passport-host.js, sound-worklet.js) for a downstream project. The files
 /// always come from the SDK release Moon materialized for the project — never
 /// from GitHub and never from MoonBit's private dependency-cache layout.
 

@@ -2,13 +2,12 @@
 /// Closure-injected adapter stack between SDK driver traits and the raw
 /// Wasm host ABI v0 (internal, experimental).
 ///
-/// `HostBridge` implements `&driver.DisplaySink`, `&audio.PcmSink`,
-/// `&battery.BatterySource` and `&driver.Clock` for one app, but every raw
+/// `HostBridge` implements `&driver.DisplaySink`, `&battery.BatterySource`
+/// and `&driver.Clock` for one app, but every raw
 /// linear-memory or host-import operation is injected as a closure:
 ///
 /// - `store_u16(addr, value)` writes one 16-bit pattern (`0..=65535`) at byte
 ///   address `addr` of linear memory, little-endian.
-/// - `pcm_write(ptr, samples)` is the raw `host_pcm_write` import.
 /// - `battery_percent()` is the raw `host_battery_percent` import.
 ///
 /// On wasm, `new_wasm_bridge` (in the target-gated `wasm_ffi.mbt`) wires the
@@ -29,7 +28,6 @@
 /// equal or earlier timestamp.
 pub struct HostBridge {
   priv store_u16 : (Int, Int) -> Unit
-  priv pcm_write : (Int, Int) -> Unit
   priv battery_percent : () -> Int
   priv scratch_row : FixedArray[Int]
   priv mut dirty : Bool
@@ -40,9 +38,8 @@ pub struct HostBridge {
 /// Creates a bridge over injected raw operations.
 ///
 /// `store_u16` receives only validated 16-bit patterns (`0..=65535`) at
-/// in-region addresses; `pcm_write` receives `(PCM_STAGE_PTR, n)` with `n`
-/// never exceeding `PCM_STAGE_CAPACITY_SAMPLES`; `battery_percent` returns
-/// the raw wire value (`-1` = unavailable).
+/// in-region addresses; `battery_percent` returns the raw wire value (`-1` =
+/// unavailable).
 ///
 /// The bridge also allocates its one row-decode scratch buffer here: a
 /// `LOGICAL_WIDTH`-pixel `FixedArray` reused by `present` for every frame,
@@ -51,12 +48,10 @@ pub struct HostBridge {
 /// The bridge starts clean and at `monotonic_ms == 0`.
 pub fn HostBridge::new(
   store_u16~ : (Int, Int) -> Unit,
-  pcm_write~ : (Int, Int) -> Unit,
   battery_percent~ : () -> Int,
 ) -> HostBridge {
   {
     store_u16,
-    pcm_write,
     battery_percent,
     scratch_row: FixedArray::make(@core.LOGICAL_WIDTH, 0),
     dirty: false,
@@ -126,32 +121,6 @@ pub impl @driver.DisplaySink for HostBridge with fn present(
     }
   }
   self.dirty = true
-}
-
-///|
-/// `PcmSink` adapter: clamps and encodes each sample with `pcm16_le_bits`,
-/// stages at most `PCM_STAGE_CAPACITY_SAMPLES` into the PCM region (pixel
-/// offset `PCM_STAGE_PTR + 2 * i`), then flushes the region with one
-/// `host_pcm_write(PCM_STAGE_PTR, n)` call per chunk. Larger writes are
-/// chunked in order — the host sees the sample stream intact across calls.
-/// An empty write stages nothing and performs no host call.
-pub impl @audio.PcmSink for HostBridge with fn write(
-  self : HostBridge,
-  samples~ : FixedArray[Int],
-) -> Unit {
-  let total = samples.length()
-  for base = 0; base < total; {
-    let n = if total - base < PCM_STAGE_CAPACITY_SAMPLES {
-      total - base
-    } else {
-      PCM_STAGE_CAPACITY_SAMPLES
-    }
-    for i in 0..<n {
-      (self.store_u16)(PCM_STAGE_PTR + i * 2, pcm16_le_bits(samples[base + i]))
-    }
-    (self.pcm_write)(PCM_STAGE_PTR, n)
-    continue base + n
-  }
 }
 
 ///|

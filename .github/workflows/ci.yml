@@ -76,20 +76,11 @@ jobs:
       - name: Passport CLI smoke (hosts)
         run: moon run --target wasm src/cmd/passport hosts
 
-      # Run doctor against a clean nested project. doctor uses `moon check` on
-      # the declared entry, which both validates it and lets Moon materialize
-      # declared dependencies without relying on deprecated installer behavior.
-      - name: Passport CLI smoke (doctor on a fresh fixture project)
-        run: moon run --target wasm src/cmd/passport doctor --host web --project hosts/web/test/fixtures/fixture-a
-
       - name: Build fixture wasm (release, then debug)
         run: |
           moon build --target wasm --release
           moon build --target wasm
           ls -l _build/wasm/release/build/fixture/fixture.wasm _build/wasm/debug/build/fixture/fixture.wasm
-
-      - name: Generate PCM test asset
-        run: node hosts/web/tools/gen-test-pcm.mjs
 
       - name: Install pinned playwright and its chromium
         run: npx -y playwright@1.63.0 install chromium --with-deps
@@ -110,7 +101,7 @@ jobs:
             src/runtime/device.mbt \
             hosts/web/index.html \
             hosts/web/passport-host.js \
-            hosts/web/pcm-worklet.js \
+            hosts/web/sound-worklet.js \
             hosts/folotoy/ai-passport/main/app_main.c \
             hosts/folotoy/ai-passport/bsp.sha256 \
             hosts/folotoy/ai-passport/tools/moon_cc_capture.py; do
@@ -130,15 +121,14 @@ jobs:
           fi
           for forbidden in \
             hosts/web/test/run-tests.mjs \
-            hosts/web/tools/make-bundle.mjs \
-            hosts/web/assets/test.pcm \
             hosts/folotoy/ai-passport/upstream.cmake \
             hosts/folotoy/ai-passport/test/test_button_bridge_queue.py \
             hosts/folotoy/ai-passport/test/test_display_bridge_dma.py \
             hosts/folotoy/ai-passport/test/test_device_button_contract.py \
             hosts/folotoy/ai-passport/test/test_moon_cc_capture.py \
             hosts/folotoy/ai-passport/test/fixtures/no-audio/moon.mod \
-            src/fixture/main.mbt; do
+            src/fixture/main.mbt \
+            src/sound_host_fixture/main.mbt; do
             if grep -x "$forbidden" /tmp/passport-package-list.txt; then
               echo "TEST-ONLY file leaked into package: $forbidden"
               exit 1

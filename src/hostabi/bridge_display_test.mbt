@@ -3,7 +3,6 @@ test "present copies every logical pixel into the framebuffer region" {
   let writes : Array[(Int, Int)] = []
   let bridge = @hostabi.HostBridge::new(
     store_u16=(addr, value) => writes.push((addr, value)),
-    pcm_write=(_, _) => (),
     battery_percent=() => -1,
   )
   let canvas = @graphics.Canvas::logical()
@@ -38,7 +37,6 @@ test "present maps canvas pixel (x, y) to byte offset (y * 120 + x) * 2" {
   let writes : Array[(Int, Int)] = []
   let bridge = @hostabi.HostBridge::new(
     store_u16=(addr, value) => writes.push((addr, value)),
-    pcm_write=(_, _) => (),
     battery_percent=() => -1,
   )
   let canvas = @graphics.Canvas::logical()
@@ -63,7 +61,6 @@ test "a narrower canvas copies prefix rows at the logical stride" {
   let writes : Array[(Int, Int)] = []
   let bridge = @hostabi.HostBridge::new(
     store_u16=(addr, value) => writes.push((addr, value)),
-    pcm_write=(_, _) => (),
     battery_percent=() => -1,
   )
   let canvas = @graphics.Canvas::new(width=8, height=2)
@@ -80,7 +77,6 @@ test "frames larger than the logical display are clipped into the region" {
   let writes : Array[(Int, Int)] = []
   let bridge = @hostabi.HostBridge::new(
     store_u16=(addr, value) => writes.push((addr, value)),
-    pcm_write=(_, _) => (),
     battery_percent=() => -1,
   )
   let canvas = @graphics.Canvas::new(width=130, height=170)
@@ -110,7 +106,6 @@ test "repeated presents on one bridge leave the region holding the last frame ex
   let writes : Array[(Int, Int)] = []
   let bridge = @hostabi.HostBridge::new(
     store_u16=(addr, value) => writes.push((addr, value)),
-    pcm_write=(_, _) => (),
     battery_percent=() => -1,
   )
   let sink : &@driver.DisplaySink = bridge

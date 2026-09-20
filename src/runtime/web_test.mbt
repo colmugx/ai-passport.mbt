@@ -69,7 +69,6 @@ fn make_bridge(
   let _ = app
   @hostabi.HostBridge::new(
     store_u16=fn(_addr : Int, value : Int) { calls.pixels.push(value) },
-    pcm_write=fn(_ptr : Int, _samples : Int) { () },
     battery_percent=fn() { battery },
   )
 }
@@ -79,12 +78,10 @@ fn make_runtime(
   app~ : FakeApp,
   calls~ : HostCalls,
   battery? : Int = 55,
-  playback? : Int64 = 0L,
 ) -> @runtime.WebRuntime {
   @runtime.WebRuntime::new(
     app~,
     bridge=make_bridge(app~, calls~, battery~),
-    playback_pos_us=fn() { playback },
     set_volume=fn(volume : Int) { calls.volumes.push(volume) },
     set_muted=fn(muted : Bool) { calls.muted.push(muted) },
   )
@@ -94,20 +91,11 @@ fn make_runtime(
 test "one frame delivers host facts, battery, presentation, and dirty state" {
   let app = FakeApp::make()
   let calls = HostCalls::{ volumes: [], muted: [], pixels: [], }
-  let runtime = make_runtime(app~, calls~, battery=90, playback=250_000L)
+  let runtime = make_runtime(app~, calls~, battery=90)
   runtime.frame(1_000_000L)
-  // Playback heuristic: a positive raw position is live playback.
   debug_inspect(
     app.updates,
-    content=(
-      #|[
-      #|  {
-      #|    now_us: 1000000,
-      #|    playback_position_us: Some(250000),
-      #|    presentation_lead_us: 0,
-      #|  },
-      #|]
-    ),
+    content="[{ now_us: 1000000, presentation_lead_us: 0 }]",
   )
   assert_eq(app.battery_seen, Some(90))
   // Presenting wrote framebuffer pixels and marked the frame dirty.
@@ -115,15 +103,6 @@ test "one frame delivers host facts, battery, presentation, and dirty state" {
   assert_eq(runtime.frame_dirty(), 1)
   runtime.frame_consume()
   assert_eq(runtime.frame_dirty(), 0)
-}
-
-///|
-test "a zero raw playback position maps to unavailable" {
-  let app = FakeApp::make()
-  let calls = HostCalls::{ volumes: [], muted: [], pixels: [], }
-  let runtime = make_runtime(app~, calls~, playback=0L)
-  runtime.frame(0L)
-  debug_inspect(app.updates[0].playback_position_us, content="None")
 }
 
 ///|

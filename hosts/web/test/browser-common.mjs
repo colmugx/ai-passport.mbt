@@ -124,14 +124,14 @@ const MIME_BY_EXTENSION = {
   ".js": "text/javascript",
   ".mjs": "text/javascript",
   ".wasm": "application/wasm",
-  ".pcm": "application/octet-stream",
+  ".bank": "application/octet-stream",
   ".json": "application/json",
   ".png": "image/png",
 };
 
 /** A generic static file server over one directory tree (the bundle
  *  directory contract: the server must serve whatever the bundle contains —
- *  index.html, app.wasm, passport-host.js, pcm-worklet.js and assets/ —
+ *  index.html, app.wasm, passport-host.js, sound-worklet.js and sounds.bank —
  *  without any per-suite route table). Query strings are ignored; only
  *  in-tree regular files are served. */
 export function startStaticServer(rootDir) {

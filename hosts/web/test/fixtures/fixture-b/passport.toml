@@ -1,10 +1,5 @@
 entry = "main"
 
-[[assets]]
-source = "assets/tone.pcm"
-bundlePath = "assets/tone.pcm"
-pcmLoop = true
-
 [[sounds]]
 name = "forest_walk"
 source = "assets/tone.pcm"

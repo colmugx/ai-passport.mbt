@@ -2,8 +2,6 @@
 package "colmugx/ai-passport/audio"
 
 // Values
-pub const SAMPLE_RATE : Int = 16000
-
 pub fn pause(Playback) -> Unit
 
 pub fn[T : Sound] play(T, looping? : Bool) -> Playback?
@@ -17,13 +15,6 @@ pub fn stop(Playback) -> Unit
 // Errors
 
 // Types and methods
-pub struct BufferSink {
-  // private fields
-}
-pub fn BufferSink::chunks(Self) -> Array[FixedArray[Int]]
-pub fn BufferSink::new() -> Self
-pub impl PcmSink for BufferSink
-
 pub struct Playback {
   // private fields
 }
@@ -31,10 +22,6 @@ pub struct Playback {
 // Type aliases
 
 // Traits
-pub(open) trait PcmSink {
-  fn write(Self, samples~ : FixedArray[Int]) -> Unit
-}
-
 pub(open) trait Sound {
   fn resource_id(Self) -> UInt
 }

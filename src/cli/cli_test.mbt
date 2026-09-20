@@ -17,15 +17,13 @@ test "parse_contract accepts entry plus assets" {
     #|entry = "runtime_wasm"
     #|
     #|[[assets]]
-    #|source = ".passport/assets/tone.pcm"
-    #|bundlePath = "assets/tone.pcm"
-    #|pcmLoop = true
+    #|source = "assets/map.bin"
+    #|bundlePath = "assets/map.bin"
   let contract = @cli.parse_contract(text)
   inspect(contract.entry, content="runtime_wasm")
   inspect(contract.assets.length(), content="1")
-  inspect(contract.assets[0].source, content=".passport/assets/tone.pcm")
-  inspect(contract.assets[0].bundle_path, content="assets/tone.pcm")
-  inspect(contract.assets[0].pcm_loop, content="true")
+  inspect(contract.assets[0].source, content="assets/map.bin")
+  inspect(contract.assets[0].bundle_path, content="assets/map.bin")
   inspect(contract.sounds.length(), content="0")
 }
 
@@ -69,27 +67,19 @@ test "parse_contract rejects broken documents with clear messages" {
   } noraise {
     _ => fail("expected incomplete asset to fail")
   }
-  let two_pcm =
-    #|entry = "main"
-    #|
-    #|[[assets]]
-    #|source = "a"
-    #|bundlePath = "b"
-    #|pcmLoop = true
-    #|
-    #|[[assets]]
-    #|source = "c"
-    #|bundlePath = "d"
-    #|pcmLoop = true
-  try @cli.parse_contract(two_pcm) catch {
+  try
+    @cli.parse_contract(
+      "entry = \"main\"\n[[assets]]\nsource = \"a\"\nbundlePath = \"b\"\npcmLoop = true",
+    )
+  catch {
     @cli.Fail(message) =>
       inspect(
         message,
-        content="passport.toml: at most one asset may set \"pcmLoop\": true (found 2)",
+        content="passport.toml: asset field \"pcmLoop\" is not supported",
       )
     _ => fail("expected a CliError failure")
   } noraise {
-    _ => fail("expected two pcm assets to fail")
+    _ => fail("expected legacy pcmLoop to fail")
   }
 }
 
@@ -160,41 +150,19 @@ test "parse_contract reads hostDependencies as host-id to path entries" {
 }
 
 ///|
-test "entry_url_path derives the generic host parameters" {
-  // No audio: the plain entry page.
+test "entry_url_path is independent of assets and sounds" {
   inspect(
     @cli.entry_url_path(@cli.parse_contract("entry = \"main\"")),
     content="index.html",
   )
-  // One looping PCM asset: the generic URL parameters only.
   inspect(
     @cli.entry_url_path(
       @cli.parse_contract(
-        "entry = \"main\"\n\n[[assets]]\nsource = \"s.pcm\"\nbundlePath = \"assets/tone.pcm\"\npcmLoop = true",
-      ),
-    ),
-    content="index.html?pcm=./assets/tone.pcm&pcmLoop=1",
-  )
-  // A plain asset (pcmLoop absent) is materialized but configures no host
-  // audio: the minimal contract expresses looping host audio only.
-  inspect(
-    @cli.entry_url_path(
-      @cli.parse_contract(
-        "entry = \"main\"\n\n[[assets]]\nsource = \"s.pcm\"\nbundlePath = \"assets/once.pcm\"",
+        "entry = \"main\"\n\n[[assets]]\nsource = \"map.bin\"\nbundlePath = \"assets/map.bin\"\n\n[[sounds]]\nname = \"jump\"\nsource = \"assets/jump.pcm\"",
       ),
     ),
     content="index.html",
   )
-}
-
-///|
-test "percent_encode keeps unreserved path characters and escapes the rest" {
-  inspect(@cli.percent_encode("./assets/tone.pcm"), content="./assets/tone.pcm")
-  inspect(
-    @cli.percent_encode("assets/my tone.pcm"),
-    content="assets/my%20tone.pcm",
-  )
-  inspect(@cli.percent_encode("a&b=c"), content="a%26b%3Dc")
 }
 
 ///|
@@ -208,10 +176,7 @@ test "render_host is deterministic and names the microphone for the wearable" {
   inspect(text.contains("folotoy-ai-passport"), content="true")
   inspect(text.contains("audio_input"), content="true")
   inspect(text.contains("backend: implemented"), content="true")
-  inspect(
-    text.contains("normalized PCM16 LE mono 16000 Hz playback asset"),
-    content="true",
-  )
+  inspect(text.contains("shared APSB sound-bank playback"), content="true")
   // The user-facing backend vocabulary is Host, everywhere. The forbidden
   // terms are assembled from parts so this structural gate never sees them
   // as literals in CLI/host sources.

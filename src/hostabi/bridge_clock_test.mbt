@@ -1,10 +1,8 @@
 ///|
 test "the frame clock starts at zero and tracks frame time in milliseconds" {
-  let bridge = @hostabi.HostBridge::new(
-    store_u16=(_, _) => (),
-    pcm_write=(_, _) => (),
-    battery_percent=() => -1,
-  )
+  let bridge = @hostabi.HostBridge::new(store_u16=(_, _) => (), battery_percent=() => {
+    -1
+  })
   let clock : &@driver.Clock = bridge
   assert_eq(clock.monotonic_ms(), 0)
   bridge.advance(1500000L)
@@ -13,11 +11,9 @@ test "the frame clock starts at zero and tracks frame time in milliseconds" {
 
 ///|
 test "equal or backwards frame timestamps never rewind the clock" {
-  let bridge = @hostabi.HostBridge::new(
-    store_u16=(_, _) => (),
-    pcm_write=(_, _) => (),
-    battery_percent=() => -1,
-  )
+  let bridge = @hostabi.HostBridge::new(store_u16=(_, _) => (), battery_percent=() => {
+    -1
+  })
   let clock : &@driver.Clock = bridge
   bridge.advance(2000000L)
   assert_eq(clock.monotonic_ms(), 2000)
@@ -31,11 +27,9 @@ test "equal or backwards frame timestamps never rewind the clock" {
 
 ///|
 test "the clock stays monotonic across many frame advances" {
-  let bridge = @hostabi.HostBridge::new(
-    store_u16=(_, _) => (),
-    pcm_write=(_, _) => (),
-    battery_percent=() => -1,
-  )
+  let bridge = @hostabi.HostBridge::new(store_u16=(_, _) => (), battery_percent=() => {
+    -1
+  })
   let clock : &@driver.Clock = bridge
   // A host that jitters around an increasing timeline (60 us/frame step,
   // occasionally repeating or dipping).
@@ -54,11 +48,9 @@ test "the clock stays monotonic across many frame advances" {
 
 ///|
 test "advancing to a larger time resumes millisecond tracking" {
-  let bridge = @hostabi.HostBridge::new(
-    store_u16=(_, _) => (),
-    pcm_write=(_, _) => (),
-    battery_percent=() => -1,
-  )
+  let bridge = @hostabi.HostBridge::new(store_u16=(_, _) => (), battery_percent=() => {
+    -1
+  })
   let clock : &@driver.Clock = bridge
   bridge.advance(5000000L)
   bridge.advance(1000L)
