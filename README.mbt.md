@@ -19,7 +19,7 @@ Platform details such as browser APIs, ESP-IDF, BSPs, GPIO, buses, codecs, and f
 | `core` | `Point`, `Size`, `Rect`, `Color` (RGB565 conversion), `LOGICAL_WIDTH = 120`, `LOGICAL_HEIGHT = 160` |
 | `graphics` | `Canvas` drawing (`clear`, `pixel`, `line`, `rect`, `fill_rect`, `sprite`, bitmap text), `SpriteSheet`, text metrics, read-only `FrameView` |
 | `input` | Semantic `Button` (`Up` / `Down` / `Ok`), `ButtonEvent` (`Press` / `Click` / `DoubleClick` / `LongPress`), edge-detecting `InputState` |
-| `audio` | Temporary 16 kHz signed PCM16 mono Host transport contracts (`PcmSink`, `BufferSink`) while resource-backed Sound playback is introduced |
+| `audio` | Typed `Sound` resources, opaque `Playback` instances and portable playback controls; temporary `PcmSink` transport remains until Host cutover |
 | `battery` | `BatterySource` trait and caching `Battery`; readings are `Int?` so unavailable values are explicit |
 | `driver` | Backend-facing `Clock` and `DisplaySink` contracts, plus test fixtures (`ZeroClock`, `SinkProbe`) |
 | `hostabi` | Internal, experimental wasm host-boundary package: ABI v0 constants, the closure-injected `HostBridge` (`DisplaySink` / `PcmSink` / `BatterySource` / `Clock` adapters), wasm-gated `passport.*` externs, and inline-WAT `u16` store/load helpers |
@@ -36,7 +36,7 @@ Buttons are semantic values — `Up`, `Down`, `Ok` — never GPIO or ADC channel
 
 ## Audio scope
 
-The core SDK does not provide music composition, notes, tracks, songs, synthesis, sequencing, oscillators, or envelopes. Applications prepare audio outside the SDK. The existing `PcmSink` transport remains temporarily so current Hosts keep their playback behavior while the resource-backed Sound model is introduced in later changes.
+The core SDK does not provide music composition, notes, tracks, songs, synthesis, sequencing, oscillators, or envelopes. Applications prepare audio outside the SDK. `@audio.play` creates an independent optional `Playback` for one generated `Sound`; `pause`, `resume`, `stop` and `position` address that playback rather than the resource. The play option is named `looping` because `loop` is a MoonBit keyword. The existing `PcmSink` transport remains temporarily so current Hosts keep their playback behavior until the sound-bank runtime cutover.
 
 ## Battery
 
@@ -64,7 +64,7 @@ moon build --target wasm --release      # fixture app.wasm, release profile
 moon build --target wasm                # fixture app.wasm, debug profile (the suite pins both)
 node hosts/web/tools/gen-test-pcm.mjs   # once; creates the committed PCM asset
 node hosts/web/tools/make-bundle.mjs    # assembles _build/passport-bundle
-node hosts/web/test/run-tests.mjs       # 28 suites; exits 2 if the fixture artifacts are missing
+node hosts/web/test/run-tests.mjs       # 29 suites; exits 2 if the fixture artifacts are missing
 ```
 
 CI runs the same gate in a dedicated `wasm-host` job (`.github/workflows/ci.yml`): `moon check` and `moon test` with `--target wasm`, both fixture build profiles, `passport hosts` / `passport doctor` smoke runs, the package-list proof, and the full integration suite — including the real-browser suites and the passport-CLI fixture suites through pinned playwright chromium — with no skip flags.

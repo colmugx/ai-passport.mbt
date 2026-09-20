@@ -18,6 +18,14 @@ applications use generated constructors rather than numeric IDs. It is not a
 driver, mixer node, stream, codec, or claim that future audio sources must use
 sound banks.
 
+`audio.Playback` is an opaque instance handle. `audio.play(sound,
+looping=false)` returns `Playback?` so a Host with no free playback slot fails
+explicitly without stealing another sound. `pause`, `resume`, `stop` and
+`position` operate on that instance, allowing one `Sound` to overlap with
+itself. `position` returns microseconds as `Int64?` and becomes `None` when the
+Host no longer has a live position for the handle. MoonBit reserves `loop` as
+a keyword, so the labeled play option is `looping`.
+
 ## Display lifetime and row contract
 
 `DisplaySink::present` receives a read-only `@graphics.FrameView` sharing the canvas's private `FixedArray[UInt16]` RGB565 storage. Consume it synchronously; after the source canvas mutates, the view no longer represents the presented frame. Use `width()`, `height()`, and `copy_rgb565_row(y~, out~ : FixedArray[Int]) -> Int`. The copy returns zero for an out-of-range row, copies a fitting prefix into an undersized output, and leaves surplus output cells unchanged. Compare the returned count with `width()` when a complete row is required. No framebuffer ownership or strip-rendering detail is exposed.
