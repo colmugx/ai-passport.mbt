@@ -1,1 +1,3 @@
-
+import {
+  "colmugx/ai-passport/audio/internal" @sound_runtime,
+}

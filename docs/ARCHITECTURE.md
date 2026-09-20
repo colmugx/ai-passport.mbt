@@ -7,7 +7,7 @@ Application logic
   ├─ core: 120×160 logical dimensions, Color and geometry
   ├─ graphics: Canvas → read-only FrameView → driver.DisplaySink
   ├─ input: Up / Down / Ok and InputState
-  ├─ audio: temporary signed PCM16 Host transport → audio.PcmSink
+  ├─ audio: Sound → Playback controls → internal Host sound runtime
   └─ battery: cached Battery → BatterySource
 
                     semantic SDK contracts
@@ -21,7 +21,7 @@ Application logic
 
 `Canvas` stores canonical RGB565 pixels in a private `FixedArray[UInt16]`. `FrameView` shares that storage, exposes dimensions and row copies, and is consumed synchronously before the canvas mutates. Presentation details stay behind `DisplaySink`.
 
-The core SDK does not own audio composition, synthesis, sequencing, or codecs. The existing `PcmSink` contract is a temporary transport retained to preserve current Host behavior until resource-backed Sound playback replaces the legacy single-PCM paths. Host audio implementation details remain behind the Host boundary.
+The core SDK does not own audio composition, synthesis, sequencing, or codecs. Its public resource API separates generated `Sound` values from opaque `Playback` instances: playing the same sound twice creates independently controlled playbacks, capacity exhaustion returns `None`, and loop behavior belongs to the play call. A narrow internal operation table carries only sound IDs, playback handles and positions to the Host; it is not a public mixer graph or middleware API. The existing `PcmSink` contract is a temporary transport retained to preserve current Host behavior until resource-backed Sound playback replaces the legacy single-PCM paths.
 
 Sound resources have one build-time source of truth. `passport.toml` declares ordered `[[sounds]]` entries; the filesystem-free metadata compiler validates names and sources, assigns declaration-order IDs, and derives MoonBit symbols. An application-owned package invokes `passport generate-sounds $input $output` through Moon `rule` / `dev_build` to produce its typed enum and is conventionally imported as `@sounds`; its package name is not fixed. Web and device builds call the same metadata compiler, additionally validate PCM bytes, and serialize the APSB v1 bank. The current Host runtimes still use the legacy PCM paths; consuming the bank is a later runtime cutover, not a second resource model.
 

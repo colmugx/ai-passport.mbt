@@ -4,6 +4,16 @@ package "colmugx/ai-passport/audio"
 // Values
 pub const SAMPLE_RATE : Int = 16000
 
+pub fn pause(Playback) -> Unit
+
+pub fn[T : Sound] play(T, looping? : Bool) -> Playback?
+
+pub fn position(Playback) -> Int64?
+
+pub fn resume(Playback) -> Unit
+
+pub fn stop(Playback) -> Unit
+
 // Errors
 
 // Types and methods
@@ -13,6 +23,10 @@ pub struct BufferSink {
 pub fn BufferSink::chunks(Self) -> Array[FixedArray[Int]]
 pub fn BufferSink::new() -> Self
 pub impl PcmSink for BufferSink
+
+pub struct Playback {
+  // private fields
+}
 
 // Type aliases
 

@@ -1,0 +1,27 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "colmugx/ai-passport/audio/internal"
+
+// Values
+pub fn install(SoundRuntime) -> Unit
+
+pub fn pause(Int) -> Unit
+
+pub fn play(UInt, Bool) -> Int?
+
+pub fn position(Int) -> Int64?
+
+pub fn resume_playback(Int) -> Unit
+
+pub fn stop(Int) -> Unit
+
+// Errors
+
+// Types and methods
+pub struct SoundRuntime {
+  // private fields
+}
+pub fn SoundRuntime::new(play_sound~ : (UInt, Bool) -> Int?, pause_playback~ : (Int) -> Unit, resume_playback~ : (Int) -> Unit, stop_playback~ : (Int) -> Unit, playback_position_us~ : (Int) -> Int64?) -> Self
+
+// Type aliases
+
+// Traits

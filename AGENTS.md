@@ -17,7 +17,7 @@ This repository and its published Mooncakes archive carry **no third-party produ
 5. The v0.1 logical display contract is 120×160 RGB565. Host presentation details remain behind display contracts.
 6. Buttons are semantic `Up`, `Down`, and `Ok` values.
 7. Graphics public APIs do not expose framebuffer, strip-rendering, or device-controller details.
-8. The core SDK does not provide audio composition, synthesis, sequencing, codecs, or resampling. Sound resources are headerless signed PCM16 little-endian, mono, 16000 Hz files prepared outside the SDK and compiled into the shared APSB sound bank format.
+8. The core SDK does not provide audio composition, synthesis, sequencing, codecs, or resampling. Sound resources are headerless signed PCM16 little-endian, mono, 16000 Hz files prepared outside the SDK and compiled into the shared APSB sound bank format. Generated `Sound` resources and opaque `Playback` instances are distinct; loop behavior belongs to `play`, and capacity exhaustion fails explicitly without stealing another playback.
 9. Prefer reusable pure MoonBit logic. Keep Host glue narrow, measurable, and replaceable within the Host implementation.
 10. SDK library, CLI, and Host assets are one release unit. Do not fetch an unpinned "latest" Host implementation at build time.
 11. Do not add QEMU or a hardware emulator unless the project explicitly chooses that direction in a later round.

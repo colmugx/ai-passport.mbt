@@ -78,6 +78,25 @@ Playback properties are not resource metadata. `loop`, `autoplay`, `volume`,
 `channel`, `pcmLoop` and every other undeclared field are rejected in a sound
 table.
 
+## Playback API
+
+The generated value identifies a resource; it is not a live playback. Each
+`@audio.play` call asks the Host for a distinct opaque `Playback`:
+
+```moonbit
+let music = @audio.play(@sounds.ForestWalk, looping=true)
+let hit1 = @audio.play(@sounds.Hit)
+let hit2 = @audio.play(@sounds.Hit)
+```
+
+`play` returns `None` when the Host has no free playback slot. A successful
+handle is controlled with `pause`, `resume` and `stop`, and
+`position(playback)` returns its position in microseconds as `Int64?`. The
+`looping` label is playback behavior; it is named this way because `loop` is a
+MoonBit keyword. Master volume and mute remain application-wide
+`AudioOutput` state. Mixer nodes, buses, effects and streaming sources are not
+public APIs.
+
 ## Binary format
 
 All integers are little-endian. Offsets are absolute byte offsets from the
