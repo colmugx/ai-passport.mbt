@@ -47,6 +47,20 @@ fn build_cli() -> @argparse.Command {
     about="Build the application bundle for one Host.",
     options=[host_option, project_option],
   )
+  let generate_sounds_cmd = @argparse.Command::Command(
+    "generate-sounds",
+    about="Generate the typed @sounds mapping used by Moon Rule/dev_build.",
+    options=[
+      project_option,
+      @argparse.OptionArg::OptionArg(
+        "output",
+        long="output",
+        about="Rule output path (must be <source>/sounds/generated.mbt).",
+        action=@argparse.OptionAction::Set,
+        default_values=[""],
+      ),
+    ],
+  )
   let dev_cmd = @argparse.Command::Command(
     "dev",
     about="Build the bundle, serve it over local HTTP and print the URL.",
@@ -65,7 +79,7 @@ fn build_cli() -> @argparse.Command {
   @argparse.Command::Command(
     "passport",
     about="AI Passport application platform CLI. The only backend abstraction is the Host.",
-    subcommands=[hosts_cmd, doctor_cmd, build_cmd, dev_cmd],
+    subcommands=[hosts_cmd, doctor_cmd, build_cmd, dev_cmd, generate_sounds_cmd],
   )
 }
 
@@ -76,12 +90,16 @@ async fn main {
   let cmd = build_cli()
   if rest.length() == 0 {
     println(cmd.render_help())
-    @cli.fail_cli("a subcommand is required (hosts, doctor, build, dev)")
+    @cli.fail_cli(
+      "a subcommand is required (hosts, doctor, build, dev, generate-sounds)",
+    )
   }
   let matches = cmd.parse(argv=rest[:])
   guard matches.subcommand is Some((name, sub)) else {
     println(cmd.render_help())
-    @cli.fail_cli("a subcommand is required (hosts, doctor, build, dev)")
+    @cli.fail_cli(
+      "a subcommand is required (hosts, doctor, build, dev, generate-sounds)",
+    )
   }
   try {
     match name {
@@ -89,6 +107,7 @@ async fn main {
       "doctor" => doctor_command(sub)
       "build" => build_command(sub)
       "dev" => dev_command(sub)
+      "generate-sounds" => generate_sounds_command(sub)
       unknown => @cli.fail_cli("unknown subcommand \"\{unknown}\"")
     }
   } catch {

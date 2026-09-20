@@ -55,6 +55,7 @@ The CLI is the executable package `src/cmd/passport` (package path
   # examples:
   moon run --target wasm src/cmd/passport -- --help
   moon run --target wasm src/cmd/passport hosts
+  moon run --target wasm src/cmd/passport generate-sounds --project <dir> --output <source>/sounds/generated.mbt
   moon run --target wasm src/cmd/passport doctor --host web --project <dir>
   moon run --target wasm src/cmd/passport build --host web --project <dir>
   moon run --target wasm src/cmd/passport dev --host web --project <dir> --port 8000
@@ -100,6 +101,12 @@ The CLI is the executable package `src/cmd/passport` (package path
   would use, whether it matches the pinned content manifest, or (when
   absent) where the build would clone the pinned revision. Doctor never
   downloads anything.
+- `passport generate-sounds --project <dir> --output <path>` — the narrow
+  generator invoked by the application's Moon `rule` / `dev_build`. The only
+  accepted output is `<source-root>/sounds/generated.mbt` (Moon may prefix it
+  with `./`). It compiles ordered metadata into a typed enum implementing
+  `@audio.Sound`; it does not read PCM payloads or build a bank. Normal Host
+  builds use the same metadata compiler and additionally validate PCM bytes.
 - `passport build --host web [--project <dir>]` — the complete generic web
   build: compiles only the project's declared entry package for wasm release,
   then assembles `.passport/web/`:
@@ -243,7 +250,10 @@ path = "external/folotoy-ai-passport"
   input contract is signed PCM16 little-endian, mono, 16000 Hz and headerless;
   the CLI cannot infer sample rate or channel count from headerless bytes.
   Every build emits a deterministic `sounds.bank`, including a valid empty
-  bank when the list is absent. See `SOUND_BANK.md`.
+  bank when the list is absent. The application-owned `sounds/moon.pkg` uses
+  Moon `rule` / `dev_build` to invoke `passport generate-sounds`, producing
+  `@sounds.Name` constructors before IDE checks and builds. See
+  `SOUND_BANK.md` for the exact package configuration.
 - `hostDependencies` (optional) — project-provided checkouts of external
   Host dependencies (third-party hardware code the SDK itself never
   carries). Each entry maps a registered host id to a `path` relative to the

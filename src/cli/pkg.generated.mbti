@@ -23,6 +23,8 @@ pub const SOUND_BANK_VERSION : Int = 1
 
 pub fn application_package_import(Project) -> String
 
+pub fn compile_sound_metadata(Array[SoundEntry]) -> Array[SoundMetadata] raise
+
 pub fn compile_sounds(Array[SoundInput]) -> SoundCompilation raise
 
 pub fn device_entry_package_dir(Project, String) -> String
@@ -56,6 +58,8 @@ pub fn parse_contract(String) -> ProjectContract raise
 pub fn percent_encode(String) -> String
 
 pub fn render_host(@hosts.HostDescriptor) -> String
+
+pub fn render_sound_mapping(Array[SoundMetadata]) -> String
 
 pub fn require_implemented_host(String) -> @hosts.HostDescriptor raise
 
@@ -125,6 +129,13 @@ pub(all) struct SoundEntry {
 pub(all) struct SoundInput {
   entry : SoundEntry
   pcm : Bytes
+} derive(Eq, @debug.Debug)
+
+pub(all) struct SoundMetadata {
+  id : Int
+  name : String
+  symbol : String
+  source : String
 } derive(Eq, @debug.Debug)
 
 // Type aliases

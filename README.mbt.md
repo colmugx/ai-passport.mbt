@@ -85,8 +85,11 @@ The entry path is relative to the module source root: with the normal `source = 
 
 Each `[[sounds]]` entry names one externally prepared, headerless signed PCM16 little-endian mono 16000 Hz file. The CLI validates its path and byte-level PCM contract, then compiles every declared sound in order into the same deterministic `sounds.bank` format for Web and device builds. The SDK does not decode media formats or infer sample rate/channel metadata from headerless PCM. See `docs/SOUND_BANK.md`.
 
+An application-owned `sounds/moon.pkg` wires Moon `rule` / `dev_build` to the co-versioned `passport generate-sounds` command. Consequently `moon check`, IDE checks, builds, and tests regenerate the typed `@sounds` enum directly from `passport.toml`; application code uses constructors such as `@sounds.Jump`, never numeric IDs. The Rule and final Host build share the same metadata compiler.
+
 ```sh
 moon run --target wasm src/cmd/passport hosts
+moon run --target wasm src/cmd/passport generate-sounds --project <app-dir> --output <source>/sounds/generated.mbt
 moon run --target wasm src/cmd/passport build --host web --project <app-dir>
 moon run --target wasm src/cmd/passport build --host folotoy-ai-passport --project <app-dir>
 moon run --target wasm src/cmd/passport dev --host web --project <app-dir>
