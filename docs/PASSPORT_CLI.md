@@ -55,7 +55,7 @@ The CLI is the executable package `src/cmd/passport` (package path
   # examples:
   moon run --target wasm src/cmd/passport -- --help
   moon run --target wasm src/cmd/passport hosts
-  moon run --target wasm src/cmd/passport generate-sounds --project <dir> --output <source>/sounds/generated.mbt
+  moon run --target wasm src/cmd/passport generate-sounds
   moon run --target wasm src/cmd/passport doctor --host web --project <dir>
   moon run --target wasm src/cmd/passport build --host web --project <dir>
   moon run --target wasm src/cmd/passport dev --host web --project <dir> --port 8000
@@ -101,12 +101,13 @@ The CLI is the executable package `src/cmd/passport` (package path
   would use, whether it matches the pinned content manifest, or (when
   absent) where the build would clone the pinned revision. Doctor never
   downloads anything.
-- `passport generate-sounds --project <dir> --output <path>` — the narrow
-  generator invoked by the application's Moon `rule` / `dev_build`. The only
-  accepted output is `<source-root>/sounds/generated.mbt` (Moon may prefix it
-  with `./`). It compiles ordered metadata into a typed enum implementing
-  `@audio.Sound`; it does not read PCM payloads or build a bank. Normal Host
-  builds use the same metadata compiler and additionally validate PCM bytes.
+- `passport generate-sounds` — the narrow generator invoked by the
+  application's Moon `rule` / `dev_build`. It runs at the project root,
+  requires `moon.mod` and `passport.toml`, derives the source root, and owns
+  exactly `<source-root>/sounds/generated.mbt`. It compiles ordered metadata
+  into a typed enum implementing `@audio.Sound`; it does not read PCM payloads
+  or build a bank. Normal Host builds use the same metadata compiler and
+  additionally validate PCM bytes.
 - `passport build --host web [--project <dir>]` — the complete generic web
   build: compiles only the project's declared entry package for wasm release,
   then assembles `.passport/web/`:

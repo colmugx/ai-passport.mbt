@@ -89,7 +89,7 @@ An application-owned `sounds/moon.pkg` wires Moon `rule` / `dev_build` to the co
 
 ```sh
 moon run --target wasm src/cmd/passport hosts
-moon run --target wasm src/cmd/passport generate-sounds --project <app-dir> --output <source>/sounds/generated.mbt
+moon run --target wasm src/cmd/passport generate-sounds
 moon run --target wasm src/cmd/passport build --host web --project <app-dir>
 moon run --target wasm src/cmd/passport build --host folotoy-ai-passport --project <app-dir>
 moon run --target wasm src/cmd/passport dev --host web --project <app-dir>

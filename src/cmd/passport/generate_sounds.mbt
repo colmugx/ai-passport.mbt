@@ -1,28 +1,8 @@
 ///|
-/// Exact module-root-relative path owned by the sound Rule. Fixing the package
-/// name to `sounds` gives every application the stable `@sounds` alias.
-fn sound_mapping_output(project : @cli.Project) -> String {
-  if project.source_dir == "" {
-    "sounds/generated.mbt"
-  } else {
-    "\{project.source_dir}/sounds/generated.mbt"
-  }
-}
-
-///|
 /// Refuses missing package setup and symlink escapes before writing the Rule
 /// output. The package directory and its moon.pkg are application-owned; only
 /// generated.mbt is generated.
-async fn validate_sound_mapping_output(
-  project : @cli.Project,
-  output : String,
-) -> String {
-  let expected = sound_mapping_output(project)
-  guard output == expected || output == "./\{expected}" else {
-    @cli.fail_cli(
-      "sound mapping output must be \"\{expected}\" (got \"\{output}\")",
-    )
-  }
+async fn validate_sound_mapping_output(project : @cli.Project) -> String {
   let source_root = @fs.realpath(@cli.source_root(project)) catch {
     _ => @cli.fail_cli("cannot resolve the module source root")
   }
@@ -68,10 +48,9 @@ async fn validate_sound_mapping_output(
 ///|
 /// `passport generate-sounds`: the command invoked by the application's
 /// Rule/dev_build. It uses the same metadata compiler as final Host builds.
-async fn generate_sounds_command(sub : @argparse.Matches) -> Unit {
-  let project = load_project(option_value(sub, "project", "."))
-  let output = option_value(sub, "output", "")
-  let path = validate_sound_mapping_output(project, output)
+async fn generate_sounds_command() -> Unit {
+  let project = load_project(".")
+  let path = validate_sound_mapping_output(project)
   let metadata = @cli.compile_sound_metadata(project.contract.sounds)
   write_generated_file(path, @cli.render_sound_mapping(metadata))
   println("passport: generated sound mapping at \{path}")
