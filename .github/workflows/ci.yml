@@ -36,6 +36,9 @@ jobs:
       - name: Test (js)
         run: moon test --target js --output-json
 
+      - name: FoloToy Host C regressions
+        run: python3 -m unittest discover -s hosts/folotoy/ai-passport/test -p 'test_*.py'
+
       - name: Refresh generated interfaces and formatting
         run: |
           moon info
