@@ -4,6 +4,7 @@
  * contract documented in hosts/web/README.md):
  *
  *     <outdir>/app.wasm          copy of the RELEASE fixture wasm
+ *     <outdir>/sounds.bank       valid empty APSB v1 bank
  *     <outdir>/assets/test.pcm   copy of the generated PCM test asset
  *
  * Usage:
@@ -19,7 +20,7 @@
  * This is test tooling for the distribution contract — NOT project
  * scaffolding and NOT an application.
  */
-import { copyFileSync, existsSync, mkdirSync, readFileSync, statSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -50,8 +51,13 @@ if (!existsSync(assetSrc)) {
 mkdirSync(path.join(outDir, "assets"), { recursive: true });
 copyFileSync(wasmPath, path.join(outDir, "app.wasm"));
 copyFileSync(assetSrc, path.join(outDir, "assets", "test.pcm"));
+writeFileSync(
+  path.join(outDir, "sounds.bank"),
+  Buffer.from([0x41, 0x50, 0x53, 0x42, 1, 0, 16, 0, 0, 0, 0, 0, 8, 0, 0, 0]),
+);
 
 const wasmSize = statSync(path.join(outDir, "app.wasm")).size;
 console.log(`bundle: ${outDir}`);
 console.log(`  app.wasm          (${wasmSize} bytes, from ${path.relative(repoRoot, wasmPath) || wasmPath})`);
+console.log("  sounds.bank       (empty APSB v1)");
 console.log(`  assets/test.pcm   (from ${path.relative(repoRoot, assetSrc)})`);

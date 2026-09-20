@@ -13,7 +13,7 @@
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include "music_stream.h"
+#include "sound_player.h"
 
 extern void moonbit_runtime_init(int argc, char **argv);
 extern void moonbit_init(void);
@@ -57,25 +57,23 @@ void app_main(void) {
 
     ESP_ERROR_CHECK(ai_passport_display_init());
     bsp_display_backlight(60);
+    // Bring up the sound Host muted before application initialization so
+    // play() is valid even inside passport_main. The application publishes
+    // its authoritative master output immediately after initialization,
+    // before the first audible chunk can leave the codec.
+    log_heap("before_audio_init");
+    const esp_err_t sound_err = ai_passport_sound_player_start(0, true);
+    if (sound_err != ESP_OK) {
+        ESP_LOGE(TAG, "Sound runtime unavailable (%s); running silent",
+                 esp_err_to_name(sound_err));
+    }
+    log_heap(sound_err == ESP_OK ? "after_audio_init" : "after_audio_init_failed");
+
     log_heap("before_app_init");
     (void)ai_passport_mbt_app_init();
-    log_heap("after_app_init");
-
-    // Music first: the ES8311 init is quick and also brings up the shared
-    // BSP I2C bus, so the battery task below finds it ready. One FreeRTOS
-    // task owns every PCM write; the frame loop never touches audio. The
-    // App is authoritative before the first PCM sample: the transport is
-    // started with the App's own output facts (80 / unmuted), never a C
-    // constant. A failure only means silence — the App keeps running and
-    // its output states keep mirroring into a transport nobody consumes.
-    log_heap("before_audio_init");
-    const esp_err_t music_err = ai_passport_music_start(
+    ai_passport_sound_set_output(
         ai_passport_mbt_audio_volume(), ai_passport_mbt_audio_muted() != 0);
-    if (music_err != ESP_OK) {
-        ESP_LOGE(TAG, "Music unavailable (%s); running silent",
-                 esp_err_to_name(music_err));
-    }
-    log_heap(music_err == ESP_OK ? "after_audio_init" : "after_audio_init_failed");
+    log_heap("after_app_init");
 
     // Battery never blocks the frame loop: the bridge task does the
     // possibly-slow first CW2017 SOC computation and then polls at 1 Hz.
@@ -83,9 +81,9 @@ void app_main(void) {
 
     // Physical buttons last: the bridge only enqueues raw UP/DOWN/OK press
     // codes onto its own bounded queue, so buttons may also come up when
-    // music failed (the App's semantics still run; the output setter then
+    // sound failed (the App's semantics still run; the output setter then
     // reaches no codec). A button failure only disables the controls; the
-    // application and music keep running.
+    // application and sound keep running.
     if (ai_passport_button_bridge_init() != ESP_OK) {
         ESP_LOGW(TAG, "Continuing without button controls");
     }

@@ -36,6 +36,25 @@ pub fn host_set_muted(muted : Int) -> Unit = "passport" "host_set_muted"
 pub fn host_playback_pos_us() -> Int64 = "passport" "host_playback_pos_us"
 
 ///|
+/// Starts one sound-bank entry. Returns a non-negative playback handle, or
+/// -1 when the Host has no free playback slot.
+pub fn host_sound_play(sound_id : Int, looping : Int) -> Int = "passport" "host_sound_play"
+
+///|
+pub fn host_sound_pause(handle : Int) -> Unit = "passport" "host_sound_pause"
+
+///|
+pub fn host_sound_resume(handle : Int) -> Unit = "passport" "host_sound_resume"
+
+///|
+pub fn host_sound_stop(handle : Int) -> Unit = "passport" "host_sound_stop"
+
+///|
+/// Returns a playback position in microseconds, or -1 when the handle is no
+/// longer live.
+pub fn host_sound_position_us(handle : Int) -> Int64 = "passport" "host_sound_position_us"
+
+///|
 /// Inline-WAT store of one 16-bit little-endian value at byte address `addr`.
 ///
 /// `i32.store16` writes the low 16 bits of `value` in little-endian byte

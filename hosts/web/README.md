@@ -12,8 +12,8 @@ Files:
 
 | File | Purpose |
 |---|---|
-| `passport-host.js` | Host module: instantiation, imports, frame lifecycle, framebuffer blit, PCM transport (streamed + optional PCM asset mode), input, HUD. Exported factory `createHost()`; browser auto-boot at the bottom. Importable in Node with no DOM. |
-| `pcm-worklet.js` | AudioWorklet processor `passport-pcm`: mono Float32 ring buffer, gapless scheduling at 16000 Hz, silence on underrun. |
+| `passport-host.js` | Host module: instantiation, imports, frame lifecycle, framebuffer blit, APSB sound playback, legacy PCM transport, input, HUD. Exported factory `createHost()`; browser auto-boot at the bottom. Importable in Node with no DOM. |
+| `pcm-worklet.js` | AudioWorklet processor `passport-pcm`: independent sound playbacks, internal mixing, and the legacy mono Float32 ring while it remains. |
 | `index.html` | Minimal page: canvas, host-facts HUD, key hints. No frameworks, no CDN, no inline app logic. |
 | `README.md` | This document. |
 
@@ -114,9 +114,10 @@ bundle/
 
 - The host fetches `app.wasm` relative to its own module URL (i.e. the bundle
   directory); `index.html` loads `./passport-host.js` from the same directory.
-- The CLI always emits `sounds.bank`, including a valid empty bank. The
-  current legacy Web runtime does not consume it yet; the Sound runtime
-  cutover is tracked separately from the resource format.
+- The CLI always emits `sounds.bank`, including a valid empty bank. The Host
+  fetches and strictly validates it before starting the application. Each
+  `host_sound_play` call creates an independent playback; up to eight can be
+  live and are mixed internally before master volume/mute.
 - The host **never** reads `assets/` itself and never knows about `src/`,
   authored PNG/MP3/WAV sources, or ESP-IDF configuration. `assets/` belongs to
   the test wave (`hosts/web/test/**` exercises the normalized-PCM path via
@@ -142,6 +143,11 @@ bundle/
 | `host_set_volume` | `(volume: i32) -> ()` | Master gain, clamped 0..100, mapped linearly to a GainNode (`volume/100`). |
 | `host_set_muted` | `(muted: i32) -> ()` | 0/1. Muted forces gain 0; the playback-position clock keeps running. |
 | `host_playback_pos_us` | `() -> i64` | Best-effort µs of normalized PCM scheduled to output since playback start (BigInt at the boundary). Returns `0n` before any playback and when no audio backend exists. |
+| `host_sound_play` | `(sound_id: i32, looping: i32) -> i32` | Starts one bank entry and returns a positive independent handle, or `-1` for an invalid ID, unavailable audio, or eight exhausted slots. |
+| `host_sound_pause` | `(handle: i32) -> ()` | Pauses one live playback; unknown/dead handles are no-ops. |
+| `host_sound_resume` | `(handle: i32) -> ()` | Resumes one paused playback; unknown/dead handles are no-ops. |
+| `host_sound_stop` | `(handle: i32) -> ()` | Stops one playback and invalidates its handle. |
+| `host_sound_position_us` | `(handle: i32) -> i64` | Loop-relative position in µs, or `-1n` once the handle is dead. |
 
 ### Exports — app provides (host validates and drives)
 

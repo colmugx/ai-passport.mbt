@@ -70,6 +70,11 @@ the JS host (`hosts/web/passport-host.js`).
 | `passport.host_set_volume` | `(volume: i32) -> ()` | Master output gain, clamped 0..100 by the host, mapped linearly to a GainNode (`volume/100`). |
 | `passport.host_set_muted` | `(muted: i32) -> ()` | `0` = audible, `1` = muted. Muting forces gain 0 but the playback-position clock keeps running. |
 | `passport.host_playback_pos_us` | `() -> i64` | Host best-effort microseconds of normalized PCM output since playback start (BigInt at the JS boundary; `0n` before any playback and with no audio backend). Apps must compare deltas, never absolute values. |
+| `passport.host_sound_play` | `(sound_id: i32, looping: i32) -> i32` | Starts one APSB entry and returns a positive independent playback handle. Returns `-1` for invalid IDs, unavailable audio or eight exhausted slots; it never steals another playback. |
+| `passport.host_sound_pause` | `(handle: i32) -> ()` | Pauses one live playback. Unknown/dead handles are no-ops. |
+| `passport.host_sound_resume` | `(handle: i32) -> ()` | Resumes one paused playback. Unknown/dead handles are no-ops. |
+| `passport.host_sound_stop` | `(handle: i32) -> ()` | Stops one playback and invalidates its handle. |
+| `passport.host_sound_position_us` | `(handle: i32) -> i64` | Loop-relative playback position in microseconds, or `-1` for a dead handle. |
 
 ## Export table
 

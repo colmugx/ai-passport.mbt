@@ -1,14 +1,8 @@
 ///|
 /// Host probes into the hostabi native test stubs (see
 /// `src/hostabi/native_stub.c`): drive the frozen device clocks and read
-/// the recorded music-transport output exactly as the device firmware
+/// the recorded sound-runtime output exactly as the device firmware
 /// would report them.
-extern "c" fn test_set_music_available(available : Int) -> Unit = "ai_passport_test_set_music_available"
-
-///|
-extern "c" fn test_set_music_position(position_us : Int64) -> Unit = "ai_passport_test_set_music_position"
-
-///|
 extern "c" fn test_set_now_us(now_us : Int64) -> Unit = "ai_passport_test_set_now_us"
 
 ///|
@@ -72,8 +66,6 @@ impl @application.Application for DeviceApp with fn audio_output(self) -> @appli
 test "the device runtime drives one application through the C ABI shape" {
   reset_device_slot()
   test_set_now_us(9_000_000L)
-  test_set_music_available(1)
-  test_set_music_position(150_000L)
   let app = DeviceApp::{
     last_ctx: None,
     ok_edges: 0,
@@ -93,7 +85,7 @@ test "the device runtime drives one application through the C ABI shape" {
       #|Some(
       #|  {
       #|    now_us: 9000000,
-      #|    playback_position_us: Some(150000),
+      #|    playback_position_us: None,
       #|    presentation_lead_us: 100000,
       #|  },
       #|)
@@ -117,8 +109,6 @@ test "the device runtime drives one application through the C ABI shape" {
   assert_eq(device_audio_volume(), 70)
   assert_eq(device_audio_muted(), 1)
   // Restore the shared stub state for other tests.
-  test_set_music_available(0)
-  test_set_music_position(0L)
   test_set_now_us(0L)
 }
 
@@ -126,7 +116,6 @@ test "the device runtime drives one application through the C ABI shape" {
 test "a no-audio device application answers silence, never a default volume" {
   reset_device_slot()
   test_set_now_us(1_000L)
-  test_set_music_available(0)
   let app = DeviceApp::{
     last_ctx: None,
     ok_edges: 0,
@@ -148,7 +137,6 @@ test "a no-audio device application answers silence, never a default volume" {
 test "a device app can acquire audio output after boot" {
   reset_device_slot()
   test_set_now_us(1_000L)
-  test_set_music_available(0)
   let app = DeviceApp::{
     last_ctx: None,
     ok_edges: 0,
