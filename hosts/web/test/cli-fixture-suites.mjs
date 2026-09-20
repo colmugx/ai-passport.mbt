@@ -385,10 +385,18 @@ export function registerCliFixtureSuites({ suite, ok, eq, eqText, SuiteError, re
         path.join(audio, "sound.mbt"),
         "pub(open) trait Sound {\n  fn resource_id(Self) -> UInt\n}\n",
       );
+      const cliBuild = spawnSync(
+        "moon",
+        ["build", "src/cmd/passport", "--target", "wasm", "--release"],
+        { cwd: repoRoot, encoding: "utf8", timeout: 240_000, maxBuffer: 16 * 1024 * 1024 },
+      );
+      eq(cliBuild.status, 0, `passport CLI build must pass; stderr: ${cliBuild.stderr}`);
+      const cliWasm = path.join(
+        repoRoot,
+        "_build", "wasm", "release", "build", "cmd", "passport", "passport.wasm",
+      );
       const ruleCommand = [
-        "moon", "-C", repoRoot, "run", "--target", "wasm",
-        "src/cmd/passport", "generate-sounds", "--project", project,
-        "--output", "$output",
+        "moonrun", cliWasm, "generate-sounds",
       ].join(" ");
       fs.writeFileSync(
         path.join(sounds, "moon.pkg"),

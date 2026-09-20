@@ -43,7 +43,7 @@ import {
 
 rule(
   name: "passport-sounds",
-  command: "passport generate-sounds --project . --output $output",
+  command: "passport generate-sounds",
 )
 
 dev_build(
@@ -54,9 +54,11 @@ dev_build(
 ```
 
 Moon resolves `dev_build` input and output paths from the package directory,
-while the command runs from the module root. If packages live directly at the
-module root, the input is `../passport.toml`. The co-versioned `passport` CLI
-must be on `PATH`, just as it is for Host builds.
+while the command runs from the module root. `generate-sounds` therefore needs
+no path arguments: it discovers `moon.mod`, `passport.toml`, the source root,
+and `sounds/generated.mbt` from its current directory. If packages live
+directly at the module root, the input is `../passport.toml`. The co-versioned
+`passport` CLI must be on `PATH`, just as it is for Host builds.
 
 The Rule runs automatically before `moon check`, `moon build`, and `moon test`.
 It emits a typed enum implementing `@audio.Sound`, so application code imports
