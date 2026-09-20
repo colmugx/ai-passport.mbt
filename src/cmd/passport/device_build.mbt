@@ -13,8 +13,7 @@ const MOON_VERSION_PIN : String = "moon 0.1.20260915 (2e1a46d 2026-09-15)"
 const IDF_VERSION_PIN : String = "ESP-IDF v5.5.3"
 
 ///|
-/// Name of the capture cc inside the toolchain dir and of the firmware's
-/// music asset; the host components read these exact names.
+/// Name of the capture cc inside the toolchain dir.
 const CAPTURE_CC_NAME : String = "cc"
 
 ///|
@@ -26,9 +25,6 @@ const CAPTURE_TOOLCHAIN_DIR : String = "toolchain"
 
 ///|
 const CAPTURE_AR_NAME : String = "ar"
-
-///|
-const MUSIC_ASSET_NAME : String = "passport_music.pcm"
 
 ///|
 const APP_PARTITION_SIZE : Int64 = 0x380000L
@@ -316,35 +312,6 @@ async fn connect_bsp(
 }
 
 ///|
-fn pcm_loop_asset(project : @cli.Project) -> @cli.AssetEntry? {
-  let mut found : @cli.AssetEntry? = None
-  for asset in project.contract.assets {
-    if asset.pcm_loop {
-      found = Some(asset)
-    }
-  }
-  found
-}
-
-///|
-/// The application music decision for a device build. A project declares at
-/// most one looping PCM asset (the contract rejects more); declaring none is
-/// a valid no-audio application, so firmware builds without a music blob and
-/// the Host reports playback unavailable.
-enum DeviceMusicPlan {
-  Music(@cli.AssetEntry)
-  NoMusic
-} derive(Eq, Debug)
-
-///|
-fn plan_device_music(project : @cli.Project) -> DeviceMusicPlan {
-  match pcm_loop_asset(project) {
-    Some(asset) => Music(asset)
-    None => NoMusic
-  }
-}
-
-///|
 /// Host material never copied into a device workspace: the Host's own test
 /// tree and README are SDK development material.
 fn device_workspace_skip(name : String) -> Bool {
@@ -535,8 +502,8 @@ fn config_has_line(text : String, expected : String) -> Bool {
 
 ///|
 /// The physical Host build flow, in order: contract device entry, SDK host
-/// resolution, workspace materialization, the optional looping PCM asset,
-/// native C capture, pinned toolchain verification, then the idf.py
+/// resolution, workspace materialization, sound-bank compilation, native C
+/// capture, pinned toolchain verification, then the idf.py
 /// reconfigure and build pair inside the workspace.
 async fn device_build_command(sub : @argparse.Matches) -> Unit {
   let project = load_project(option_value(sub, "project", "."))
@@ -582,26 +549,6 @@ async fn device_build_command(sub : @argparse.Matches) -> Unit {
   }
   write_sound_bank("\{workspace}/\{@cli.SOUND_BANK_FILE}", sound_compilation)
   let generated_dir = "\{workspace}/main/generated"
-  match plan_device_music(project) {
-    Music(asset) => {
-      let pcm_path = @cli.under_root(project.root, asset.source)
-      guard @fs.exists(pcm_path) else {
-        @cli.fail_cli("contract asset source is missing: \{asset.source}")
-      }
-      copy_file(pcm_path, "\{workspace}/\{MUSIC_ASSET_NAME}")
-    }
-    NoMusic => {
-      // A no-audio application is valid: the firmware embeds no music and
-      // the Host reports playback unavailable. A stale blob from an earlier
-      // build of the same workspace must never survive into it.
-      @fs.remove("\{workspace}/\{MUSIC_ASSET_NAME}") catch {
-        _ => ()
-      }
-      println(
-        "passport: no pcmLoop asset declared; firmware embeds no application music",
-      )
-    }
-  }
   connect_bsp(project, sdk_host, workspace)
   let capture_dir = "\{generated_dir}/moonbit"
   let toolchain_dir = "\{workspace}/\{CAPTURE_TOOLCHAIN_DIR}"

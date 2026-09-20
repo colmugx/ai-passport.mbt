@@ -1,7 +1,6 @@
 import {
   "bobzhang/toml",
   "moonbitlang/core/buffer",
-  "moonbitlang/core/encoding/utf8",
   "colmugx/ai-passport/hosts",
 }
 

@@ -13,13 +13,6 @@
 pub fn host_battery_percent() -> Int = "passport" "host_battery_percent"
 
 ///|
-/// Hands `samples` PCM16 LE mono samples (16000 Hz) at byte offset `ptr` in
-/// linear memory to the host. The host copies the region before returning,
-/// so the app may restage immediately. `samples` never exceeds
-/// `PCM_STAGE_CAPACITY_SAMPLES` when written through `HostBridge`.
-pub fn host_pcm_write(ptr : Int, samples : Int) -> Unit = "passport" "host_pcm_write"
-
-///|
 /// Master output gain, `0..=100`. Called directly by app code (no bridge
 /// adapter owns volume in v0).
 pub fn host_set_volume(volume : Int) -> Unit = "passport" "host_set_volume"
@@ -28,12 +21,6 @@ pub fn host_set_volume(volume : Int) -> Unit = "passport" "host_set_volume"
 /// Master mute switch, `0` = audible, `1` = muted. Called directly by app
 /// code (the fixture's `Ok` button toggles it).
 pub fn host_set_muted(muted : Int) -> Unit = "passport" "host_set_muted"
-
-///|
-/// Host's best-effort playback position in microseconds of normalized PCM
-/// output since playback start. Monotonic while audio plays; apps must
-/// compare deltas, never absolute values (same discipline as `Clock`).
-pub fn host_playback_pos_us() -> Int64 = "passport" "host_playback_pos_us"
 
 ///|
 /// Starts one sound-bank entry. Returns a non-negative playback handle, or
@@ -87,12 +74,7 @@ pub fn load_u16(addr : Int) -> Int = "(func (param $addr i32) (result i32) (i32.
 /// sink.present(frame=canvas.frame_view())
 /// ```
 ///
-/// The remaining externs (`host_set_volume`, `host_set_muted`,
-/// `host_playback_pos_us`) stay direct app-level calls.
+/// The remaining master-output externs stay direct runtime calls.
 pub fn new_wasm_bridge() -> HostBridge {
-  HostBridge::new(
-    store_u16~,
-    pcm_write=host_pcm_write,
-    battery_percent=host_battery_percent,
-  )
+  HostBridge::new(store_u16~, battery_percent=host_battery_percent)
 }

@@ -4,7 +4,6 @@ test "the no-audio application exposes no audio state" {
   debug_inspect(app.audio_output(), content="None")
   app.update({
     now_us: 1_000L,
-    playback_position_us: None,
     presentation_lead_us: 100_000L,
   })
   app.button(@input.Ok, true)

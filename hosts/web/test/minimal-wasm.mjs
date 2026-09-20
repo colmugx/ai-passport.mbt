@@ -1,12 +1,7 @@
 /**
  * minimal-wasm.mjs — deterministic emitter for the smallest wasm module that
- * satisfies the passport ABI v0 EXPORT surface while importing NOTHING.
- *
- * Why it exists: PCM-asset-mode tests (hosts/web/test/pcm-asset-suites.mjs and
- * the browser PCM-asset probe) need a real running app whose module does NOT
- * declare `passport.host_pcm_write` — the host rejects an asset-configured
- * boot when the app imports the streamed-PCM producer, so the fixture wasm
- * (which streams PCM every frame) cannot be used there.
+ * satisfies the passport Host export surface while importing NOTHING. Sound
+ * runtime tests use it to exercise Host-side playback commands directly.
  *
  * Module contract (frozen like the rest of the test tooling):
  *   - imports: none

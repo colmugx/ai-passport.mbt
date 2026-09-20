@@ -129,49 +129,13 @@ test "managed_bsp_dir is per revision, never a moving ref" {
 }
 
 ///|
-fn device_music_project(assets : Array[@cli.AssetEntry]) -> @cli.Project {
-  {
-    root: "/work/app",
-    module_name: "colmugx/app",
-    source_dir: "src",
-    contract: {
-      entry: "runtime_wasm",
-      device_entry: Some("runtime_native"),
-      assets,
-      sounds: [],
-      host_dependencies: [],
-    },
-  }
-}
-
-///|
-test "device build planning accepts a no-audio project" {
-  debug_inspect(plan_device_music(device_music_project([])), content="NoMusic")
-}
-
-///|
-test "device build planning keeps a declared looping PCM asset" {
-  let asset : @cli.AssetEntry = {
-    source: "assets/tone.pcm",
-    bundle_path: "assets/tone.pcm",
-    pcm_loop: true,
-  }
-  guard plan_device_music(device_music_project([asset])) is Music(kept) else {
-    fail("expected the declared looping PCM asset to be kept")
-  }
-  inspect(kept.source, content="assets/tone.pcm")
-  inspect(kept.pcm_loop, content="true")
-}
-
-///|
 test "device workspace preserves only incremental ESP-IDF state" {
   for name in ["build", "managed_components", "sdkconfig", "sdkconfig.old"] {
     inspect(device_workspace_preserve(name), content="true")
   }
   for
     name in [
-      "components", "main", "tools", "dependencies.lock", "passport_music.pcm", "toolchain",
-      "legacy.c",
+      "components", "main", "tools", "dependencies.lock", "toolchain", "legacy.c",
     ] {
     inspect(device_workspace_preserve(name), content="false")
   }

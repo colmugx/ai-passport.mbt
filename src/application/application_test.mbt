@@ -59,11 +59,7 @@ test "an external type runs the whole contract through the trait object" {
   // No audio state before the first tick: distinct from any volume/mute
   // default, and never a fake music state.
   debug_inspect(application.audio_output(), content="None")
-  application.update({
-    now_us: 1_000_000L,
-    playback_position_us: Some(250_000L),
-    presentation_lead_us: 100_000L,
-  })
+  application.update({ now_us: 1_000_000L, presentation_lead_us: 100_000L, })
   assert_eq(app.updates, 1)
   assert_eq(app.last_now_us, 1_000_000L)
   application.button(@input.Ok, true)
@@ -82,13 +78,9 @@ test "an external type runs the whole contract through the trait object" {
 test "FrameContext and AudioOutput are plain data" {
   let ctx : @application.FrameContext = {
     now_us: 5L,
-    playback_position_us: None,
     presentation_lead_us: 0L,
   }
-  debug_inspect(
-    ctx,
-    content="{ now_us: 5, playback_position_us: None, presentation_lead_us: 0 }",
-  )
+  debug_inspect(ctx, content="{ now_us: 5, presentation_lead_us: 0 }")
   let output : @application.AudioOutput = { volume: 100, muted: true, }
   assert_eq(output, { volume: 100, muted: true, })
 }

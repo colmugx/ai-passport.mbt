@@ -37,7 +37,7 @@ pub fn WebRuntime::frame(Self, Int64) -> Unit
 pub fn WebRuntime::frame_consume(Self) -> Unit
 pub fn WebRuntime::frame_dirty(Self) -> Int
 pub fn WebRuntime::input(Self, Int, Int) -> Unit
-pub fn WebRuntime::new(app~ : &@application.Application, bridge~ : @hostabi.HostBridge, playback_pos_us~ : () -> Int64, set_volume~ : (Int) -> Unit, set_muted~ : (Bool) -> Unit) -> Self
+pub fn WebRuntime::new(app~ : &@application.Application, bridge~ : @hostabi.HostBridge, set_volume~ : (Int) -> Unit, set_muted~ : (Bool) -> Unit) -> Self
 pub fn WebRuntime::start(Self) -> Unit
 
 // Type aliases

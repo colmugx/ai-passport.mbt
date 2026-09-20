@@ -2,13 +2,12 @@
 /// SDK-owned Web Host runtime: drives one `&@application.Application`
 /// through the Wasm ABI v0 host boundary. The passport CLI's generated Web
 /// entry constructs this and re-exports the `passport_*` functions; every
-/// platform detail (bridge, clock, battery, input decode, playback
-/// position, audio mirroring) lives here, never in the application.
+/// platform detail (bridge, clock, battery, input decode, audio mirroring)
+/// lives here, never in the application.
 pub struct WebRuntime {
   priv app : &@application.Application
   priv bridge : @hostabi.HostBridge
   priv battery : @battery.Battery
-  priv playback_pos_us : () -> Int64
   priv set_volume : (Int) -> Unit
   priv set_muted : (Bool) -> Unit
   // Host-applied volume/mute mirrors; only deltas cross the imports.
@@ -23,7 +22,6 @@ pub struct WebRuntime {
 pub fn WebRuntime::new(
   app~ : &@application.Application,
   bridge~ : @hostabi.HostBridge,
-  playback_pos_us~ : () -> Int64,
   set_volume~ : (Int) -> Unit,
   set_muted~ : (Bool) -> Unit,
 ) -> WebRuntime {
@@ -32,7 +30,6 @@ pub fn WebRuntime::new(
     app,
     bridge,
     battery: @battery.Battery::new(source~),
-    playback_pos_us,
     set_volume,
     set_muted,
     applied_volume: None,
@@ -58,31 +55,11 @@ pub fn WebRuntime::start(self : WebRuntime) -> Unit {
 }
 
 ///|
-/// Web playback availability heuristic: ABI v0 has no availability import,
-/// so it is inferred from the raw position. Before the browser audio
-/// context unlocks, the host reports 0, which maps to `None`; once
-/// playback has begun the position is monotonic across loops and never
-/// sits at a loop-relative 0 boundary, so `raw > 0` stays exact for this
-/// Host. A device transport reports availability separately — do not reuse
-/// this mapping there.
-fn web_playback_position(raw_us : Int64) -> Int64? {
-  if raw_us > 0L {
-    Some(raw_us)
-  } else {
-    None
-  }
-}
-
-///|
 fn WebRuntime::frame_context(
-  self : WebRuntime,
+  _self : WebRuntime,
   now_us : Int64,
 ) -> @application.FrameContext {
-  {
-    now_us,
-    playback_position_us: web_playback_position((self.playback_pos_us)()),
-    presentation_lead_us: 0L,
-  }
+  { now_us, presentation_lead_us: 0L, }
 }
 
 ///|

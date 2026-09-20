@@ -10,10 +10,6 @@
 /// floating point anywhere (R1 frozen fixture contract).
 
 ///|
-/// Size of one PCM chunk: samples pushed per `passport_frame` (frozen).
-const PCM_CHUNK : Int = 266
-
-///|
 /// Highest selection row index (rows are `y = 20 + sel * 8`, `sel` in
 /// `0..=9`; frozen contract).
 const SEL_MAX : Int = 9
@@ -31,10 +27,6 @@ struct FixtureState {
   canvas : @graphics.Canvas
   input : @input.InputState
   battery : @battery.Battery
-  /// Reused PCM chunk buffer (frozen `PCM_CHUNK` samples per frame).
-  pcm : FixedArray[Int]
-  /// Absolute square-wave sample counter; advances by 266 per frame.
-  mut sample_counter : Int
   /// Frame index `N` (the first `passport_frame` call is frame 0).
   mut frame : Int
   /// Selection row index, `0..=9`.
@@ -43,11 +35,6 @@ struct FixtureState {
   mut muted : Bool
   /// Master volume (fixture constant 70), mirrored to the host at init.
   volume : Int
-  /// Write-only plumbing probe: keeps the `host_playback_pos_us` import in
-  /// the module's import table (the integration wave asserts all five
-  /// `passport.host_*` imports). The value is host-controlled and
-  /// nondeterministic, so it is stored but never read and never drawn.
-  mut pos_probe : Int64
 }
 
 ///|
@@ -62,13 +49,10 @@ fn FixtureState::make() -> FixtureState {
     canvas: @graphics.Canvas::logical(),
     input: @input.InputState::new(),
     battery: @battery.Battery::new(source~),
-    pcm: FixedArray::make(PCM_CHUNK, 0),
-    sample_counter: 0,
     frame: 0,
     sel: 0,
     muted: false,
     volume: FIXTURE_VOLUME,
-    pos_probe: 0L,
   }
 }
 
@@ -84,14 +68,6 @@ let state : FixtureState = FixtureState::make()
 /// calling `passport_frame`. Mirrors the master volume to the host exactly
 /// once; mute starts audible.
 fn main {
-  // Plumbing check for the fifth ABI import: the store keeps the call in the
-  // built module on every profile (a bare `let _ =` binding is optimized
-  // away in debug builds). The value is host-controlled and
-  // nondeterministic, so it is never read back and never drawn.
-  state.pos_probe = @hostabi.host_playback_pos_us()
-  // Marks the probe field read for the compiler; the import is kept by the
-  // store above regardless.
-  let _ = state.pos_probe
   @hostabi.host_set_volume(state.volume)
   @hostabi.host_set_muted(0)
 }

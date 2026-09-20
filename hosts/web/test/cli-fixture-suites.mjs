@@ -8,11 +8,11 @@
  *  3. Rule/dev_build typed sound mapping regeneration;
  *  4. device workspace stale-source pruning with ESP-IDF state preservation;
  *  5. fixture A no-audio Web bundle assembly plus device-entry refusal;
- *  6. fixture B looping-PCM Web bundle assembly;
+ *  6. fixture B APSB Web bundle assembly;
  *  7. deterministic Web bundle rebuild and cleanup containment;
  *  8. doctor on a resolvable downstream-style Web project;
  *  9. fixture A browser auto-boot/input proof;
- * 10. fixture B browser PCM fetch/loop/frame-continuation proof.
+ * 10. fixture B sound-bank determinism.
  *
  * The fixtures are complete nested MoonBit modules under
  * hosts/web/test/fixtures/ and depend on published ai-passport versions.
@@ -39,6 +39,30 @@ function runCli(repoRoot, args) {
 
 function fixtureDir(repoRoot, name) {
   return path.join(repoRoot, ...FIXTURES_DIR, name);
+}
+
+/** Fixed downstream fixtures keep a published module manifest, but every CI
+ * run must exercise this checkout's SDK packages and Host assets. Refresh the
+ * ignored dependency payload before invoking Moon so no stale 0.0.x API can
+ * masquerade as the implementation under test. */
+function syncFixtureSdk(repoRoot, project) {
+  const selected = path.join(project, ".mooncakes", "colmugx", "ai-passport");
+  fs.mkdirSync(selected, { recursive: true });
+  fs.writeFileSync(
+    path.join(selected, "moon.mod"),
+    'name = "colmugx/ai-passport"\nversion = "0.0.3"\nsource = "src"\n',
+  );
+  const selectedSrc = path.join(selected, "src");
+  fs.rmSync(selectedSrc, { recursive: true, force: true });
+  fs.mkdirSync(selectedSrc, { recursive: true });
+  for (const name of ["core", "graphics", "driver", "input", "battery", "hostabi"]) {
+    fs.cpSync(path.join(repoRoot, "src", name), path.join(selectedSrc, name), { recursive: true });
+  }
+  const selectedWeb = path.join(selected, "hosts", "web");
+  fs.mkdirSync(selectedWeb, { recursive: true });
+  for (const file of ["index.html", "passport-host.js", "sound-worklet.js"]) {
+    fs.copyFileSync(path.join(repoRoot, "hosts", "web", file), path.join(selectedWeb, file));
+  }
 }
 
 /** Extracts the entry URL the CLI printed ("passport: entry: /..."). */
@@ -110,62 +134,6 @@ async function runAutoBootBundle(url, waitFor) {
               frameCountAtSnapshot: frames0,
               framesDuring: host.frameCount - frames0,
               canvasWidth: document.getElementById("passport-canvas").width,
-              assetConfigured: host.audioAsset.configured,
-              audioKind: host.audio.kind,
-            });
-          }, 400);
-        }),
-    );
-  } finally {
-    await browser.close().catch(() => {});
-  }
-  return facts;
-}
-
-/** Playwright deep-proof run for fixture B: everything runAutoBootBundle
- *  proves plus the PCM asset transport facts (samples, loop count, ring
- *  health, playback position). */
-async function runAutoBootBundleWithAudio(url) {
-  const pw = await loadPlaywright();
-  if (!pw) return null;
-  if (!pw.chromium || typeof pw.chromium.launch !== "function") return null;
-  const browser = await pw.chromium.launch({ headless: true, args: BROWSER_LAUNCH_FLAGS });
-  const facts = { payload: null, pageErrors: [], consoleErrors: [] };
-  try {
-    const page = await browser.newPage();
-    page.on("pageerror", (err) => facts.pageErrors.push(String(err)));
-    page.on("console", (msg) => {
-      if (msg.type() === "error") facts.consoleErrors.push(msg.text());
-    });
-    await page.goto(url, { waitUntil: "load", timeout: 30_000 });
-    await page.waitForFunction(
-      () => {
-        const host = globalThis.__passportHost;
-        if (!host) return false;
-        host.resumeAudio();
-        return host.audioAssetLoaded && host.audioAssetLoops >= 2;
-      },
-      null,
-      { timeout: 45_000, polling: 100 },
-    );
-    facts.payload = await page.evaluate(
-      () =>
-        new Promise((resolve) => {
-          const host = globalThis.__passportHost;
-          const frames0 = host.frameCount;
-          setTimeout(() => {
-            resolve({
-              status: document.getElementById("passport-status").textContent,
-              hasFrameExport: typeof host.exports.passport_frame === "function",
-              framesDuring: host.frameCount - frames0,
-              assetConfigured: host.audioAsset.configured,
-              assetLoaded: host.audioAssetLoaded,
-              assetSamples: host.audioAssetSamples,
-              assetLooping: host.audioAssetLooping,
-              assetError: host.audioAsset.error,
-              loops: host.audioAssetLoops,
-              posUs: String(host.playbackPosUs()),
-              dropped: host.audio.dropped,
               audioKind: host.audio.kind,
             });
           }, 400);
@@ -197,8 +165,10 @@ function runShellBundleStatus(url) {
   return m ? m[1].trim() : null;
 }
 
-export function registerCliFixtureSuites({ suite, ok, eq, eqText, SuiteError, repoRoot, webHostDir }) {
+export function registerCliFixtureSuites({ suite, ok, eq, eqText, SuiteError, repoRoot, webHostDir, skipBrowser }) {
   const passportCli = path.join(repoRoot, CLI_PACKAGE);
+  syncFixtureSdk(repoRoot, fixtureDir(repoRoot, "fixture-a"));
+  syncFixtureSdk(repoRoot, fixtureDir(repoRoot, "fixture-b"));
 
   // --- Suite: structural gates -------------------------------------------------
 
@@ -541,7 +511,6 @@ export function registerCliFixtureSuites({ suite, ok, eq, eqText, SuiteError, re
       fs.writeFileSync(path.join(workspace, "obsolete.cmake"), "stale");
       fs.mkdirSync(path.join(workspace, "toolchain"), { recursive: true });
       fs.writeFileSync(path.join(workspace, "toolchain", "old-cc"), "stale");
-      fs.writeFileSync(path.join(workspace, "passport_music.pcm"), "stale");
 
       fs.mkdirSync(path.join(workspace, "build"), { recursive: true });
       fs.writeFileSync(path.join(workspace, "build", "sentinel"), "build-cache");
@@ -564,7 +533,6 @@ export function registerCliFixtureSuites({ suite, ok, eq, eqText, SuiteError, re
       ok(!fs.existsSync(path.join(workspace, "components", "legacy")), "removed Host components must not survive");
       ok(!fs.existsSync(path.join(workspace, "obsolete.cmake")), "stale root Host files must not survive");
       ok(!fs.existsSync(path.join(workspace, "toolchain")), "generated toolchain state must be rebuilt, not retained");
-      ok(!fs.existsSync(path.join(workspace, "passport_music.pcm")), "stale application music must not survive a no-audio build");
       ok(fs.existsSync(path.join(workspace, "main", "app_main.c")), "current Host sources must be rematerialized");
       const deviceBank = readSoundBank(path.join(workspace, "sounds.bank"));
       eq(deviceBank.entries.length, 1, "device workspace sound bank entry count");
@@ -618,7 +586,7 @@ export function registerCliFixtureSuites({ suite, ok, eq, eqText, SuiteError, re
     const emptyBank = readSoundBank(path.join(bundle, "sounds.bank"));
     eq(emptyBank.entries.length, 0, "no-audio project must emit an empty sound bank");
     eq(emptyBank.bytes.length, 16, "empty sound bank must contain only its header");
-    for (const file of ["index.html", "passport-host.js", "pcm-worklet.js"]) {
+    for (const file of ["index.html", "passport-host.js", "sound-worklet.js"]) {
       ok(
         fs.readFileSync(path.join(bundle, file)).equals(fs.readFileSync(path.join(selectedWebHost, file))),
         `bundle/${file} must be byte-identical to the project's selected SDK host file`,
@@ -643,7 +611,7 @@ export function registerCliFixtureSuites({ suite, ok, eq, eqText, SuiteError, re
 
   // --- Suite: fixture B bundle assembly ----------------------------------------
 
-  suite("cli: fixture-b (PCM asset) builds with the asset materialized", () => {
+  suite("cli: fixture-b builds one deterministic APSB sound bank", () => {
     const project = fixtureDir(repoRoot, "fixture-b");
     const selectedWebHost = path.join(
       project, ".mooncakes", "colmugx", "ai-passport", "hosts", "web",
@@ -652,18 +620,13 @@ export function registerCliFixtureSuites({ suite, ok, eq, eqText, SuiteError, re
     eq(res.status, 0, `passport build must succeed for fixture-b; stderr: ${res.stderr}`);
     const bundle = path.join(project, ".passport", "web");
     ok(fs.existsSync(path.join(bundle, "app.wasm")), "bundle/app.wasm must exist");
-    for (const file of ["index.html", "passport-host.js", "pcm-worklet.js"]) {
+    for (const file of ["index.html", "passport-host.js", "sound-worklet.js"]) {
       ok(
         fs.readFileSync(path.join(bundle, file)).equals(fs.readFileSync(path.join(selectedWebHost, file))),
         `bundle/${file} must be byte-identical to the project's selected SDK host file`,
       );
     }
-    ok(
-      fs.readFileSync(path.join(bundle, "assets", "tone.pcm")).equals(
-        fs.readFileSync(path.join(project, "assets", "tone.pcm")),
-      ),
-      "bundle/assets/tone.pcm must be byte-identical to the project asset",
-    );
+    ok(!fs.existsSync(path.join(bundle, "assets", "tone.pcm")), "sound PCM must not ship as a loose Web asset");
     const soundBank = readSoundBank(path.join(bundle, "sounds.bank"));
     eq(soundBank.entries.length, 2, "fixture-b sound bank entry count");
     eq(soundBank.entries[0].samples, 4000, "first sound sample count");
@@ -676,11 +639,7 @@ export function registerCliFixtureSuites({ suite, ok, eq, eqText, SuiteError, re
       );
     }
     const url = printedEntryUrl(res.stdout);
-    eq(
-      url,
-      "/index.html?pcm=./assets/tone.pcm&pcmLoop=1",
-      `the printed entry must carry the generic PCM parameters from the project contract (got ${JSON.stringify(url)})`,
-    );
+    eq(url, "/index.html", `sound banks must not configure the Host URL (got ${JSON.stringify(url)})`);
   });
 
   // --- Suite: deterministic Web bundle -----------------------------------------
@@ -695,8 +654,8 @@ export function registerCliFixtureSuites({ suite, ok, eq, eqText, SuiteError, re
       const first = runCli(repoRoot, ["build", "--host", "web", "--project", project]);
       eq(first.status, 0, `first Web build must succeed; stderr: ${first.stderr}`);
       const bundle = path.join(project, ".passport", "web");
-      const asset = path.join(bundle, "assets", "tone.pcm");
-      ok(fs.existsSync(asset), "the first build must materialize the declared PCM asset");
+      const firstBank = readSoundBank(path.join(bundle, "sounds.bank"));
+      eq(firstBank.entries.length, 2, "the first build must materialize both sounds");
 
       // Simulate output from an older contract / SDK revision.
       fs.writeFileSync(path.join(bundle, "stale.txt"), "stale");
@@ -706,8 +665,8 @@ export function registerCliFixtureSuites({ suite, ok, eq, eqText, SuiteError, re
 
       const rebuilt = runCli(repoRoot, ["build", "--host", "web", "--project", project]);
       eq(rebuilt.status, 0, `asset-free rebuild must succeed; stderr: ${rebuilt.stderr}`);
-      eq(printedEntryUrl(rebuilt.stdout), "/index.html", "removed PCM contract must produce the plain entry URL");
-      ok(!fs.existsSync(asset), "an asset removed from passport.toml must not survive the rebuild");
+      eq(printedEntryUrl(rebuilt.stdout), "/index.html", "an empty sound contract keeps the plain entry URL");
+      eq(readSoundBank(path.join(bundle, "sounds.bank")).entries.length, 0, "removed sounds must disappear from the rebuilt bank");
       ok(!fs.existsSync(path.join(bundle, "stale.txt")), "arbitrary stale root files must not survive");
       ok(!fs.existsSync(path.join(bundle, "legacy")), "arbitrary stale directories must not survive");
       ok(!fs.existsSync(path.join(bundle, "assets")), "an asset-free rebuild must not retain an empty stale assets tree");
@@ -749,6 +708,10 @@ export function registerCliFixtureSuites({ suite, ok, eq, eqText, SuiteError, re
   // --- Suite: browser, fixture A --------------------------------------------------
 
   suite("browser: CLI fixture-a bundle boots and answers input (no audio)", async () => {
+    if (skipBrowser) {
+      console.log("  skipped by --skip-browser / PASSPORT_SKIP_BROWSER=1");
+      return;
+    }
     const project = fixtureDir(repoRoot, "fixture-a");
     const build = runCli(repoRoot, ["build", "--host", "web", "--project", project]);
     eq(build.status, 0, `fixture-a CLI build must succeed; stderr: ${build.stderr}`);
@@ -771,57 +734,12 @@ export function registerCliFixtureSuites({ suite, ok, eq, eqText, SuiteError, re
         ok(p.frameCountAtSnapshot > 0, `app.wasm must tick (${p.frameCountAtSnapshot} frames before snapshot)`);
         ok(p.framesDuring > 0, `frames must continue during the snapshot (${p.framesDuring})`);
         eq(p.canvasWidth, 120, "canvas backing-store width");
-        eq(p.assetConfigured, false, "no-audio fixture must not configure a PCM asset");
-        console.log(`  fixture-a: playwright [${p.frameCountAtSnapshot}+${p.framesDuring} frames, asset=${p.assetConfigured}]`);
+        console.log(`  fixture-a: playwright [${p.frameCountAtSnapshot}+${p.framesDuring} frames]`);
       } else {
         const status = runShellBundleStatus(url);
         ok(status !== null, "no browser path produced a bundle page to inspect");
         ok(status !== null && status.startsWith("running"), `bundle status must be running (got [${status}])`);
         console.log("  fixture-a fallback (chrome-headless-shell): status-line proof only");
-      }
-    } finally {
-      server.close();
-    }
-  });
-
-  // --- Suite: browser, fixture B --------------------------------------------------
-
-  suite("browser: CLI fixture-b bundle plays its looping PCM asset", async () => {
-    const project = fixtureDir(repoRoot, "fixture-b");
-    const build = runCli(repoRoot, ["build", "--host", "web", "--project", project]);
-    eq(build.status, 0, `fixture-b CLI build must succeed; stderr: ${build.stderr}`);
-    const entry = printedEntryUrl(build.stdout);
-    ok(entry !== null && entry.includes("pcm=./assets/tone.pcm"), "the CLI must print the PCM-configured entry URL");
-    const server = await startStaticServer(path.join(project, ".passport", "web"));
-    try {
-      const url = `http://127.0.0.1:${server.address().port}${entry}`;
-      let facts = null;
-      try {
-        facts = await runAutoBootBundleWithAudio(url);
-      } catch (err) {
-        console.log(`  playwright CLI-bundle path failed (${err && err.message ? err.message : err}); trying chrome-headless-shell`);
-      }
-      if (facts && facts.payload) {
-        const p = facts.payload;
-        eq(facts.pageErrors.length, 0, `the page must throw nothing (got ${JSON.stringify(facts.pageErrors)})`);
-        ok(p.status.startsWith("running"), `#passport-status must say running (got [${p.status}])`);
-        eq(p.assetConfigured, true, "?pcm= from the project contract must configure asset mode");
-        eq(p.assetLoaded, true, "the PCM asset must be fetched over http and resident");
-        eq(p.assetSamples, 4000, "asset sample count (8000-byte tone.pcm / 2)");
-        eq(p.assetLooping, true, "pcmLoop from the project contract must enable looping");
-        ok(!p.assetError, `no asset error (got ${JSON.stringify(p.assetError)})`);
-        ok(Number(p.posUs) > 0, `playback position must be consumption-driven (> 0, got ${p.posUs})`);
-        ok(p.loops >= 2, `consumption must pass 2 full asset loops (got ${p.loops})`);
-        eq(p.dropped, 0, "the worklet ring must never overflow while looping");
-        ok(p.framesDuring > 0, `frames must continue during the audio snapshot (${p.framesDuring})`);
-        console.log(
-          `  fixture-b: playwright [kind=${p.audioKind} samples=${p.assetSamples} loops=${p.loops} pos=${p.posUs}us]`,
-        );
-      } else {
-        const status = runShellBundleStatus(url);
-        ok(status !== null, "no browser path produced a bundle page to inspect");
-        ok(status !== null && status.startsWith("running"), `bundle status must be running (got [${status}])`);
-        console.log("  fixture-b fallback (chrome-headless-shell): status-line proof only, no audio-consumption proof");
       }
     } finally {
       server.close();

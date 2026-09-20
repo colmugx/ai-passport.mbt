@@ -81,15 +81,7 @@ test "the device runtime drives one application through the C ABI shape" {
   device_update()
   debug_inspect(
     app.last_ctx,
-    content=(
-      #|Some(
-      #|  {
-      #|    now_us: 9000000,
-      #|    playback_position_us: None,
-      #|    presentation_lead_us: 100000,
-      #|  },
-      #|)
-    ),
+    content="Some({ now_us: 9000000, presentation_lead_us: 100000 })",
   )
   assert_eq(test_output_set_calls(), calls_before)
   // A changed output state mirrors once with the C integer encoding.
@@ -126,7 +118,7 @@ test "a no-audio device application answers silence, never a default volume" {
   let calls_before = test_output_set_calls()
   device_update()
   device_draw()
-  debug_inspect(app.last_ctx.unwrap().playback_position_us, content="None")
+  assert_eq(app.last_ctx.unwrap().now_us, 1_000L)
   assert_eq(test_output_set_calls(), calls_before)
   assert_eq(device_audio_volume(), 0)
   assert_eq(device_audio_muted(), 1)

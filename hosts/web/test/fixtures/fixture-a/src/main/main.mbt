@@ -24,9 +24,6 @@ struct AppState {
 let state : AppState = {
   bridge: @hostabi.HostBridge::new(
     store_u16=@hostabi.store_u16,
-    // No streamed PCM in this app: the write hook is a no-op and the module
-    // deliberately does NOT import `passport.host_pcm_write`.
-    pcm_write=fn(_ptr : Int, _samples : Int) { () },
     battery_percent=@hostabi.host_battery_percent,
   ),
   canvas: @graphics.Canvas::logical(),

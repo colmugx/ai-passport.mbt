@@ -164,7 +164,7 @@ pub const DEVICE_BUNDLE_DIR : String = ".passport/folotoy-ai-passport"
 ///|
 /// The three files a Web Host bundle needs from the SDK.
 pub fn sdk_host_files() -> Array[String] {
-  ["index.html", "passport-host.js", "pcm-worklet.js"]
+  ["index.html", "passport-host.js", "sound-worklet.js"]
 }
 
 ///|

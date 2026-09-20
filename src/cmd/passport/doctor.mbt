@@ -341,30 +341,13 @@ async fn doctor_device_project(
 
 ///|
 /// Device checks shared by the declared-entry and generated-entry contracts:
-/// the PCM music plan, the SDK device Host assets, the FoloToy dependency
-/// and the pinned MoonBit runtime manifest.
+/// sound resources, SDK device Host assets, the FoloToy dependency and the
+/// pinned MoonBit runtime manifest.
 async fn doctor_device_common(
   project : @cli.Project,
   failures : Array[String],
 ) -> Unit {
   doctor_sound_resources(project, failures)
-  match pcm_loop_asset(project) {
-    Some(asset) => {
-      let source = @cli.under_root(project.root, asset.source)
-      if @fs.exists(source) {
-        println("ok: looping PCM music asset (\{asset.source})")
-      } else {
-        println(
-          "FAIL: looping PCM music asset source is missing: \{asset.source}",
-        )
-        failures.push("looping PCM music asset")
-      }
-    }
-    None =>
-      println(
-        "ok: no looping PCM music asset declared (device playback will be unavailable)",
-      )
-  }
   let mut host_dir : String? = None
   try {
     host_dir = Some(

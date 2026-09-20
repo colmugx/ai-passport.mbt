@@ -2,7 +2,6 @@
 package "colmugx/ai-passport/hostabi"
 
 import {
-  "colmugx/ai-passport/audio",
   "colmugx/ai-passport/battery",
   "colmugx/ai-passport/driver",
   "colmugx/ai-passport/graphics",
@@ -22,25 +21,11 @@ pub const FRAMEBUFFER_LEN : Int = 38400
 
 pub const FRAMEBUFFER_PTR : Int = 4096
 
-pub const PCM_SAMPLE_RATE : Int = 16000
-
-pub const PCM_STAGE_CAPACITY_BYTES : Int = 16384
-
-pub const PCM_STAGE_CAPACITY_SAMPLES : Int = 8192
-
-pub const PCM_STAGE_PTR : Int = 42496
-
-pub fn clamp_pcm16(Int) -> Int
-
 pub fn device_battery_percent() -> Int?
 
 pub fn device_button(Int) -> @input.Button?
 
 pub fn device_now_us() -> Int64
-
-pub fn device_playback_position_us() -> Int64?
-
-pub fn pcm16_le_bits(Int) -> Int
 
 pub fn sound_pause(Int) -> Unit
 
@@ -76,8 +61,7 @@ pub struct HostBridge {
 pub fn HostBridge::advance(Self, Int64) -> Unit
 pub fn HostBridge::consume(Self) -> Unit
 pub fn HostBridge::frame_dirty(Self) -> Bool
-pub fn HostBridge::new(store_u16~ : (Int, Int) -> Unit, pcm_write~ : (Int, Int) -> Unit, battery_percent~ : () -> Int) -> Self
-pub impl @audio.PcmSink for HostBridge
+pub fn HostBridge::new(store_u16~ : (Int, Int) -> Unit, battery_percent~ : () -> Int) -> Self
 pub impl @battery.BatterySource for HostBridge
 pub impl @driver.Clock for HostBridge
 pub impl @driver.DisplaySink for HostBridge
