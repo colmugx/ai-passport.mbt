@@ -36,6 +36,16 @@ pub(all) struct SoundInput {
 } derive(Eq, Debug)
 
 ///|
+/// One validated declaration in the source-of-truth sound metadata mapping.
+/// IDs and symbols are shared by generated MoonBit bindings and sound banks.
+pub(all) struct SoundMetadata {
+  id : Int
+  name : String
+  symbol : String
+  source : String
+} derive(Eq, Debug)
+
+///|
 /// One validated sound and its exact location in the emitted bank.
 pub(all) struct CompiledSound {
   id : Int
@@ -52,6 +62,13 @@ pub(all) struct SoundCompilation {
   sounds : Array[CompiledSound]
   bank : Bytes
 } derive(Eq, Debug)
+
+///|
+priv struct SoundMetadataCompiler {
+  names : Set[String]
+  symbols : Set[String]
+  sounds : Array[SoundMetadata]
+}
 
 ///|
 fn sound_symbol(name : String) -> String raise {
@@ -97,6 +114,56 @@ fn sound_symbol(name : String) -> String raise {
 }
 
 ///|
+fn SoundMetadataCompiler::new(capacity : Int) -> SoundMetadataCompiler {
+  {
+    names: Set([], capacity~),
+    symbols: Set([], capacity~),
+    sounds: Array(capacity~),
+  }
+}
+
+///|
+fn SoundMetadataCompiler::add(
+  self : SoundMetadataCompiler,
+  entry : SoundEntry,
+) -> SoundMetadata raise {
+  guard self.names.add_and_check(entry.name) else {
+    fail_cli("duplicate sound name \"\{entry.name}\"")
+  }
+  guard entry.source.has_suffix(".pcm") else {
+    fail_cli(
+      "sound \"\{entry.name}\" source must use the .pcm extension: \{entry.source}",
+    )
+  }
+  let symbol = sound_symbol(entry.name)
+  guard self.symbols.add_and_check(symbol) else {
+    fail_cli(
+      "sound names collide after MoonBit symbol generation: \"\{symbol}\"",
+    )
+  }
+  let sound : SoundMetadata = {
+    id: self.sounds.length(),
+    name: entry.name,
+    symbol,
+    source: entry.source,
+  }
+  self.sounds.push(sound)
+  sound
+}
+
+///|
+/// Validates declarations and produces the exact IDs and MoonBit symbols used
+/// by both generated source and bank compilation. This is the single metadata
+/// compiler; neither Rule integration nor Host builds reimplement its rules.
+pub fn compile_sound_metadata(
+  entries : Array[SoundEntry],
+) -> Array[SoundMetadata] raise {
+  let compiler = SoundMetadataCompiler::new(entries.length())
+  entries.each(fn(entry) raise { ignore(compiler.add(entry)) })
+  compiler.sounds
+}
+
+///|
 /// Validates sound metadata and PCM bytes, assigns declaration-order IDs and
 /// emits one deterministic APSB v1 bank. Headerless PCM cannot prove sample
 /// rate or channel count; callers must supply PCM16 LE mono 16000 Hz data.
@@ -107,36 +174,22 @@ pub fn compile_sounds(inputs : Array[SoundInput]) -> SoundCompilation raise {
   guard payload_offset <= SOUND_BANK_MAX_SIZE else {
     fail_cli("sound bank exceeds the portable v1 size limit")
   }
-  let names : Set[String] = Set([], capacity=count)
-  let symbols : Set[String] = Set([], capacity=count)
+  let metadata = SoundMetadataCompiler::new(count)
   let sounds : Array[CompiledSound] = []
-  let total_size = for id, input in inputs; offset = payload_offset {
-    guard names.add_and_check(input.entry.name) else {
-      fail_cli("duplicate sound name \"\{input.entry.name}\"")
-    }
-    guard input.entry.source.has_suffix(".pcm") else {
-      fail_cli(
-        "sound \"\{input.entry.name}\" source must use the .pcm extension: \{input.entry.source}",
-      )
-    }
+  let total_size = for input in inputs; offset = payload_offset {
+    let resource = metadata.add(input.entry)
     guard !input.pcm.is_empty() else {
       fail_cli("sound \"\{input.entry.name}\" PCM file must not be empty")
     }
     guard input.pcm.length() % 2 == 0 else {
       fail_cli("sound \"\{input.entry.name}\" PCM byte length must be even")
     }
-    let symbol = sound_symbol(input.entry.name)
-    guard symbols.add_and_check(symbol) else {
-      fail_cli(
-        "sound names collide after MoonBit symbol generation: \"\{symbol}\"",
-      )
-    }
     let sample_count = input.pcm.length() / 2
     sounds.push({
-      id,
-      name: input.entry.name,
-      symbol,
-      source: input.entry.source,
+      id: resource.id,
+      name: resource.name,
+      symbol: resource.symbol,
+      source: resource.source,
       offset: offset.to_int(),
       sample_count,
     })

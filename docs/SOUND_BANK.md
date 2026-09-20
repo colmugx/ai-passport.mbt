@@ -26,6 +26,50 @@ underscores; empty underscore-separated segments are rejected. Each segment's
 first letter is uppercased for the generated symbol, and collisions after that
 transformation are rejected.
 
+## Typed MoonBit mapping
+
+An application owns a small `<source-root>/sounds/moon.pkg`; the generated
+`generated.mbt` beside it is ignored and never edited. For the conventional
+`source = "src"` layout, use:
+
+```gitignore
+src/sounds/generated.mbt
+```
+
+```moonbit
+import {
+  "colmugx/ai-passport/audio" @audio,
+}
+
+rule(
+  name: "passport-sounds",
+  command: "passport generate-sounds --project . --output $output",
+)
+
+dev_build(
+  rule: "passport-sounds",
+  input: "../../passport.toml",
+  output: "generated.mbt",
+)
+```
+
+Moon resolves `dev_build` input and output paths from the package directory,
+while the command runs from the module root. If packages live directly at the
+module root, the input is `../passport.toml`. The co-versioned `passport` CLI
+must be on `PATH`, just as it is for Host builds.
+
+The Rule runs automatically before `moon check`, `moon build`, and `moon test`.
+It emits a typed enum implementing `@audio.Sound`, so application code imports
+its module package as `@sounds` and writes constructors such as
+`@sounds.AmbientWalk` or `@sounds.Jump`. Adding, deleting, or renaming a
+`[[sounds]]` entry updates the constructors without a manually run script.
+
+The Rule depends on `passport.toml` because generated types depend only on
+ordered metadata. Final `passport build` still reads and validates every PCM
+file and emits the bank. Both paths call the same metadata compiler, so symbol
+and ID ordering cannot drift. Metadata validation completes before the output
+is written, so a metadata error preserves the previous valid mapping.
+
 Playback properties are not resource metadata. `loop`, `autoplay`, `volume`,
 `channel`, `pcmLoop` and every other undeclared field are rejected in a sound
 table.

@@ -21,7 +21,8 @@ This repository and its published Mooncakes archive carry **no third-party produ
 9. Prefer reusable pure MoonBit logic. Keep Host glue narrow, measurable, and replaceable within the Host implementation.
 10. SDK library, CLI, and Host assets are one release unit. Do not fetch an unpinned "latest" Host implementation at build time.
 11. Do not add QEMU or a hardware emulator unless the project explicitly chooses that direction in a later round.
-12. Generated application artifacts belong under ignored build/workspace directories; do not make generated project output part of the public authoring surface.
+12. Generated application artifacts are never hand-authored. Host adapters belong under the ignored `passport-generated/` tree; the Rule-produced sound binding is the ignored `<source-root>/sounds/generated.mbt` beside its application-owned `moon.pkg`.
+13. Sound bindings have one generator: `passport generate-sounds` consumes the shared sound metadata compiler. Downstream `sounds` packages invoke it through `rule` / `dev_build`; never duplicate name, symbol, or ID generation in scripts or Host tooling.
 
 Forest Walk is a downstream reference application, not SDK/tooling semantics. CLI/Host tooling must remain application-generic.
 

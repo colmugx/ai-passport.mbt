@@ -20,3 +20,7 @@ pub impl PcmSink for BufferSink
 pub(open) trait PcmSink {
   fn write(Self, samples~ : FixedArray[Int]) -> Unit
 }
+
+pub(open) trait Sound {
+  fn resource_id(Self) -> UInt
+}

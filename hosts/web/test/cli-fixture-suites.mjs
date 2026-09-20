@@ -2,16 +2,17 @@
  * cli-fixture-suites.mjs — integration suites for the passport CLI
  * (`src/cmd/passport`), registered into run-tests.mjs.
  *
- * The nine suites here cover the real CLI behavior exercised in CI:
+ * The ten suites here cover the real CLI behavior exercised in CI:
  *  1. structural terminology/application-semantics gates;
  *  2. project source-root traversal and symlink containment;
- *  3. device workspace stale-source pruning with ESP-IDF state preservation;
- *  4. fixture A no-audio Web bundle assembly plus device-entry refusal;
- *  5. fixture B looping-PCM Web bundle assembly;
- *  6. deterministic Web bundle rebuild and cleanup containment;
- *  7. doctor on a resolvable downstream-style Web project;
- *  8. fixture A browser auto-boot/input proof;
- *  9. fixture B browser PCM fetch/loop/frame-continuation proof.
+ *  3. Rule/dev_build typed sound mapping regeneration;
+ *  4. device workspace stale-source pruning with ESP-IDF state preservation;
+ *  5. fixture A no-audio Web bundle assembly plus device-entry refusal;
+ *  6. fixture B looping-PCM Web bundle assembly;
+ *  7. deterministic Web bundle rebuild and cleanup containment;
+ *  8. doctor on a resolvable downstream-style Web project;
+ *  9. fixture A browser auto-boot/input proof;
+ * 10. fixture B browser PCM fetch/loop/frame-continuation proof.
  *
  * The fixtures are complete nested MoonBit modules under
  * hosts/web/test/fixtures/ and depend on published ai-passport versions.
@@ -353,6 +354,136 @@ export function registerCliFixtureSuites({ suite, ok, eq, eqText, SuiteError, re
         "the PCM refusal must identify the even-byte contract",
       );
       ok(fs.existsSync(oldBundleSentinel), "invalid PCM input must preserve the previous Web bundle");
+    } finally {
+      fs.rmSync(temp, { recursive: true, force: true });
+    }
+  });
+
+  // --- Suite: generated sound Rule --------------------------------------------
+
+  suite("cli: Rule/dev_build regenerates typed sound mappings", () => {
+    const temp = fs.mkdtempSync(path.join(os.tmpdir(), "passport-sound-rule-"));
+    try {
+      const project = path.join(temp, "project");
+      const audio = path.join(project, "src", "audio");
+      const sounds = path.join(project, "src", "sounds");
+      const app = path.join(project, "src", "app");
+      fs.mkdirSync(audio, { recursive: true });
+      fs.mkdirSync(sounds, { recursive: true });
+      fs.mkdirSync(app, { recursive: true });
+      fs.writeFileSync(
+        path.join(project, "moon.mod"),
+        [
+          'name = "colmugx/ai-passport"',
+          'version = "0.0.0"',
+          'source = "src"',
+          "",
+        ].join("\n"),
+      );
+      fs.writeFileSync(path.join(audio, "moon.pkg"), "");
+      fs.writeFileSync(
+        path.join(audio, "sound.mbt"),
+        "pub(open) trait Sound {\n  fn resource_id(Self) -> UInt\n}\n",
+      );
+      const ruleCommand = [
+        "moon", "-C", repoRoot, "run", "--target", "wasm",
+        "src/cmd/passport", "generate-sounds", "--project", project,
+        "--output", "$output",
+      ].join(" ");
+      fs.writeFileSync(
+        path.join(sounds, "moon.pkg"),
+        [
+          'import { "colmugx/ai-passport/audio" @audio }',
+          `rule(name: "passport-sounds", command: "${ruleCommand}")`,
+          'dev_build(rule: "passport-sounds", input: "../../passport.toml", output: "generated.mbt")',
+          "",
+        ].join("\n"),
+      );
+      fs.writeFileSync(
+        path.join(app, "moon.pkg"),
+        'import { "colmugx/ai-passport/sounds" @sounds }\n',
+      );
+      const writeApp = (symbol) => fs.writeFileSync(
+        path.join(app, "app.mbt"),
+        symbol
+          ? `pub fn selected() -> @sounds.Sound { @sounds.${symbol} }\n`
+          : "pub fn no_sound() -> Unit { () }\n",
+      );
+      const writeContract = (soundsList) => {
+        const sections = soundsList.map(({ name, source }) => [
+          "[[sounds]]",
+          `name = "${name}"`,
+          `source = "${source}"`,
+          "",
+        ].join("\n"));
+        const contract = path.join(project, "passport.toml");
+        fs.writeFileSync(contract, ['entry = "app"', "", ...sections].join("\n"));
+        const future = new Date(Date.now() + 2000);
+        fs.utimesSync(contract, future, future);
+      };
+      const check = () => spawnSync(
+        "moon",
+        ["check", "--output-json"],
+        { cwd: project, encoding: "utf8", timeout: 240_000, maxBuffer: 16 * 1024 * 1024 },
+      );
+
+      writeContract([
+        { name: "forest_walk", source: "assets/forest.pcm" },
+        { name: "jump", source: "assets/jump.pcm" },
+      ]);
+      writeApp("ForestWalk");
+      const generated = path.join(sounds, "generated.mbt");
+      const outside = path.join(temp, "outside-generated.mbt");
+      fs.writeFileSync(outside, "keep");
+      fs.symlinkSync(outside, generated);
+      const escaped = check();
+      ok(escaped.status !== 0, "Rule output symlink must be refused");
+      ok(
+        `${escaped.stdout}\n${escaped.stderr}`.includes("must not be a symbolic link"),
+        "Rule output refusal must identify the symbolic link",
+      );
+      eq(fs.readFileSync(outside, "utf8"), "keep", "refused Rule output must preserve outside files");
+      fs.rmSync(generated);
+
+      const first = check();
+      eq(first.status, 0, `initial Rule-driven moon check must pass; stderr: ${first.stderr}`);
+      const firstSource = fs.readFileSync(generated, "utf8");
+      ok(firstSource.includes("ForestWalk => 0U"), "first sound constructor must map to ID 0");
+      ok(firstSource.includes("Jump => 1U"), "second sound constructor must map to ID 1");
+
+      writeContract([{ name: "forest_path", source: "assets/forest.pcm" }]);
+      writeApp("ForestPath");
+      const second = check();
+      eq(second.status, 0, `renamed Rule-driven moon check must pass; stderr: ${second.stderr}`);
+      const secondSource = fs.readFileSync(generated, "utf8");
+      ok(secondSource.includes("ForestPath => 0U"), "renamed constructor must be generated");
+      ok(!secondSource.includes("ForestWalk"), "renamed constructor must remove the old symbol");
+      ok(!secondSource.includes("Jump"), "deleted sound must remove the old symbol");
+
+      writeContract([]);
+      writeApp(null);
+      fs.writeFileSync(path.join(app, "moon.pkg"), "");
+      const empty = check();
+      eq(empty.status, 0, `empty sound mapping must type-check; stderr: ${empty.stderr}`);
+      const emptySource = fs.readFileSync(generated, "utf8");
+      ok(emptySource.includes("pub(all) enum Sound"), "empty project must retain the typed Sound enum");
+      ok(!emptySource.includes("ForestPath"), "removing every sound must remove every constructor");
+
+      writeContract([
+        { name: "ambient_walk", source: "assets/a.pcm" },
+        { name: "Ambient_walk", source: "assets/b.pcm" },
+      ]);
+      const collision = check();
+      ok(collision.status !== 0, "generated symbol collision must fail moon check");
+      ok(
+        `${collision.stdout}\n${collision.stderr}`.includes("collide after MoonBit symbol generation"),
+        "Rule failure must preserve the metadata compiler collision diagnostic",
+      );
+      eq(
+        fs.readFileSync(generated, "utf8"),
+        emptySource,
+        "failed generation must preserve the last valid mapping",
+      );
     } finally {
       fs.rmSync(temp, { recursive: true, force: true });
     }
