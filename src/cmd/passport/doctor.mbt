@@ -283,7 +283,7 @@ async fn report_bsp_dependency(
   sdk_host : String,
   failures : Array[String],
 ) -> Unit {
-  let manifest = "\{sdk_host}/components/folotoy_bsp/bsp.sha256"
+  let manifest = "\{sdk_host}/bsp.sha256"
   let declared = match
     @cli.host_dependency_path(project.contract, "folotoy-ai-passport") {
     Some(rel) => Some(@cli.under_root(project.root, rel))

@@ -2,7 +2,7 @@
 /// Native-target-gated raw device ABI (internal). This file is compiled ONLY
 /// for the `native` backend (`moon.pkg` targets gating): the `extern "c"`
 /// declarations bind to the C bridge symbols that the device firmware links
-/// (see `hosts/folotoy/ai-passport/components/`), so a js or wasm build
+/// (see `hosts/folotoy/ai-passport/main/`), so a js or wasm build
 /// would not link them. Host-side native builds and tests link the
 /// package's `native_stub.c` stand-ins instead — aborting display stubs, a
 /// "no gauge" battery, frozen clocks and a recording output setter — which

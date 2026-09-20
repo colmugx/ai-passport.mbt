@@ -112,13 +112,13 @@ jobs:
             hosts/web/passport-host.js \
             hosts/web/pcm-worklet.js \
             hosts/folotoy/ai-passport/main/app_main.c \
-            hosts/folotoy/ai-passport/components/folotoy_bsp/bsp.sha256 \
+            hosts/folotoy/ai-passport/bsp.sha256 \
             hosts/folotoy/ai-passport/tools/moon_cc_capture.py; do
             grep -x "$required" /tmp/passport-package-list.txt || { echo "MISSING from package: $required"; exit 1; }
           done
           # The archive must carry ai-passport-owned Host glue only: no
           # third-party product or hardware source may ever ship in it.
-          if grep -E '(^|/)(external|upstream)/|bsp_[a-z_]+\.c$|folotoy/ai-passport/components/bsp/' /tmp/passport-package-list.txt; then
+          if grep -E '(^|/)(external|upstream)/|bsp_[a-z_]+\.c$|folotoy/ai-passport/components/' /tmp/passport-package-list.txt; then
             echo "THIRD-PARTY source leaked into package"
             exit 1
           fi
@@ -132,7 +132,7 @@ jobs:
             hosts/web/test/run-tests.mjs \
             hosts/web/tools/make-bundle.mjs \
             hosts/web/assets/test.pcm \
-            hosts/folotoy/ai-passport/components/folotoy_bsp/upstream.cmake \
+            hosts/folotoy/ai-passport/upstream.cmake \
             hosts/folotoy/ai-passport/test/test_button_bridge_queue.py \
             hosts/folotoy/ai-passport/test/test_display_bridge_dma.py \
             hosts/folotoy/ai-passport/test/test_device_button_contract.py \

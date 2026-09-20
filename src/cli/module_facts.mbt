@@ -170,7 +170,7 @@ pub fn sdk_host_files() -> Array[String] {
 ///|
 /// The files that identify a resolved physical Host implementation.
 pub fn sdk_device_host_files() -> Array[String] {
-  ["main/app_main.c", "components/moonbit_device/CMakeLists.txt"]
+  ["main/app_main.c", "main/CMakeLists.txt"]
 }
 
 ///|

@@ -1,6 +1,6 @@
 """Host unit test for the device button-bridge event queue.
 
-Compiles the firmware's real components/button_bridge/button_bridge.c on the
+Compiles the firmware's real main/button_bridge.c on the
 host C compiler against a faithful shim of the tiny BSP/FreeRTOS surface it
 uses (bounded queue + callback registration), and drives the actual callback
 the way the shared esp_timer task would. Proves:
@@ -21,10 +21,10 @@ import unittest
 from pathlib import Path
 
 HOST_ROOT = Path(__file__).resolve().parent.parent
-COMPONENT = HOST_ROOT / "components" / "button_bridge"
+COMPONENT = HOST_ROOT / "main"
 
 # Faithful shims of the exact surface button_bridge.c consumes. The BSP
-# signatures mirror the vendored components/folotoy_bsp/upstream/include/
+# signatures mirror the pinned external FoloToy BSP include/
 # bsp_button.h; the queue mirrors FreeRTOS bounded-FIFO semantics with the
 # zero-wait behavior the callback contract requires.
 SHIM_HEADERS = {
@@ -260,7 +260,7 @@ class ButtonBridgeQueueTests(unittest.TestCase):
                 [
                     "cc", "-std=c11", "-Wall", "-Werror",
                     "-I", str(shim),
-                    "-I", str(COMPONENT / "include"),
+                    "-I", str(COMPONENT),
                     str(shim / "shim_bsp_button.c"),
                     str(COMPONENT / "button_bridge.c"),
                     str(harness),
