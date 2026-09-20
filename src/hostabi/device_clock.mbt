@@ -8,17 +8,10 @@ pub fn device_now_us() -> Int64 {
 }
 
 ///|
-/// Live device playback position in microseconds within the current loop
-/// iteration for the portable App: `Some(position)` — INCLUDING exactly 0
-/// at the track start and at the PCM loop boundary — when the transport is
-/// running, `None` when music is unavailable. Handed straight to
-/// `App::advance` as its playback Option; the App owns the loop wrap,
-/// presentation lead and fallback semantics. The C transport's availability
-/// fact decides the Option — the position value never infers it.
+/// The legacy frame-global playback clock has no meaning once independent
+/// Sound playbacks exist. Keep the old FrameContext field empty until that
+/// field is removed in the legacy-model cleanup; callers use
+/// `@audio.position(playback)` for the selected playback instead.
 pub fn device_playback_position_us() -> Int64? {
-  if music_available() == 1 {
-    Some(music_position_us())
-  } else {
-    None
-  }
+  None
 }

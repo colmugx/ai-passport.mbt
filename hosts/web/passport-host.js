@@ -54,6 +54,9 @@ const TARGET_BUFFERED_SAMPLES = 3200; // ~200 ms at 16 kHz kept in the worklet r
 const MAX_PENDING_SAMPLES = 160000; // ~10 s backstop when nothing drains the queue
 const SCRIPT_PROCESSOR_SAMPLES = 4096; // ScriptProcessor pull size (fallback transport)
 const ASSET_CHUNK_SAMPLES = 3200; // PCM asset decode granularity (~200 ms at 16 kHz)
+const MAX_SOUND_PLAYBACKS = 8;
+const SOUND_BANK_HEADER_SIZE = 16;
+const SOUND_BANK_ENTRY_SIZE = 8;
 const HUD_INTERVAL_MS = 250; // HUD refresh ~4x per second
 const DEFAULT_SCALE = 3; // CSS integer scale
 const DEFAULT_BATTERY_PERCENT = 82;
@@ -166,6 +169,81 @@ async function loadWasmBytes(options) {
     throw new Error(`passport-host: failed to fetch app.wasm at ${urlText}: HTTP ${response.status}`);
   }
   return response.arrayBuffer();
+}
+
+function emptySoundBankBytes() {
+  const bytes = new Uint8Array(SOUND_BANK_HEADER_SIZE);
+  bytes.set([0x41, 0x50, 0x53, 0x42, 0x01, 0x00, 0x10, 0x00]);
+  bytes[12] = SOUND_BANK_ENTRY_SIZE;
+  return bytes.buffer;
+}
+
+async function loadSoundBankBytes(options) {
+  if (options.soundBankBytes !== undefined) {
+    const input = options.soundBankBytes;
+    if (!(input instanceof ArrayBuffer) && !ArrayBuffer.isView(input)) {
+      throw new TypeError("createHost: options.soundBankBytes must be an ArrayBuffer or TypedArray");
+    }
+    return normalizeAssetBytes(input);
+  }
+  if (options.wasmBytes !== undefined && options.soundBankUrl === undefined) {
+    return emptySoundBankBytes();
+  }
+  const url = options.soundBankUrl ?? new URL("./sounds.bank", import.meta.url);
+  if (typeof url !== "string" && !(url instanceof URL)) {
+    throw new TypeError("createHost: options.soundBankUrl must be a string or URL");
+  }
+  if (typeof fetch !== "function") {
+    throw new Error(`passport-host: cannot load sounds.bank from ${url}: fetch() unavailable here; pass options.soundBankBytes`);
+  }
+  const response = await fetch(String(url));
+  if (!response.ok) {
+    throw new Error(`passport-host: failed to fetch sounds.bank at ${url}: HTTP ${response.status}`);
+  }
+  return response.arrayBuffer();
+}
+
+function parseSoundBank(buffer) {
+  if (!(buffer instanceof ArrayBuffer) || buffer.byteLength < SOUND_BANK_HEADER_SIZE) {
+    throw new Error("passport-host: sounds.bank header is truncated");
+  }
+  const bytes = new Uint8Array(buffer);
+  const view = new DataView(buffer);
+  if (bytes[0] !== 0x41 || bytes[1] !== 0x50 || bytes[2] !== 0x53 || bytes[3] !== 0x42) {
+    throw new Error("passport-host: sounds.bank magic is invalid");
+  }
+  if (view.getUint16(4, true) !== 1) throw new Error("passport-host: sounds.bank version is unsupported");
+  if (view.getUint16(6, true) !== SOUND_BANK_HEADER_SIZE) {
+    throw new Error("passport-host: sounds.bank header size is invalid");
+  }
+  if (view.getUint16(12, true) !== SOUND_BANK_ENTRY_SIZE) {
+    throw new Error("passport-host: sounds.bank entry size is invalid");
+  }
+  if (view.getUint16(14, true) !== 0) throw new Error("passport-host: sounds.bank flags are unsupported");
+  const count = view.getUint32(8, true);
+  const indexEnd = SOUND_BANK_HEADER_SIZE + count * SOUND_BANK_ENTRY_SIZE;
+  if (!Number.isSafeInteger(indexEnd) || indexEnd > buffer.byteLength) {
+    throw new Error("passport-host: sounds.bank index is truncated");
+  }
+  const entries = new Array(count);
+  let expectedOffset = indexEnd;
+  for (let id = 0; id < count; id++) {
+    const at = SOUND_BANK_HEADER_SIZE + id * SOUND_BANK_ENTRY_SIZE;
+    const offset = view.getUint32(at, true);
+    const sampleCount = view.getUint32(at + 4, true);
+    const end = offset + sampleCount * 2;
+    if (sampleCount === 0) throw new Error(`passport-host: sounds.bank entry ${id} is empty`);
+    if (offset !== expectedOffset) throw new Error("passport-host: sounds.bank payload offsets are not contiguous");
+    if (!Number.isSafeInteger(end) || end > buffer.byteLength) {
+      throw new Error(`passport-host: sounds.bank entry ${id} payload is truncated`);
+    }
+    entries[id] = { offset, sampleCount };
+    expectedOffset = end;
+  }
+  if (expectedOffset !== buffer.byteLength) {
+    throw new Error("passport-host: sounds.bank contains trailing payload bytes");
+  }
+  return { bytes: buffer, entries };
 }
 
 // ---------------------------------------------------------------------------
@@ -297,6 +375,7 @@ function pump(state) {
  *  dropped }. Also usable as a test seam to simulate worklet consumption. */
 function onAudioReport(state, report) {
   if (!report || typeof report !== "object") return;
+  onSoundReport(state, report);
   const ctx = state.audio.ctx;
   if (typeof report.consumed === "number" && ctx) {
     state.posSnapshot = { samples: report.consumed, ctxTime: ctx.currentTime };
@@ -498,6 +577,118 @@ function assetDetail(state) {
 
 function assetDurationUsValue(samples) {
   return BigInt(Math.round((samples * 1e6) / SAMPLE_RATE));
+}
+
+// ---------------------------------------------------------------------------
+// Sound-bank playback: independent handles, mixed only inside the Host
+// ---------------------------------------------------------------------------
+
+function postSoundCommand(state, message) {
+  if (state.audio.kind === "worklet" && state.audio.node) {
+    state.audio.node.port.postMessage(message);
+  }
+}
+
+function soundPlay(state, soundId, looping) {
+  const id = soundId | 0;
+  if (!state.audio.enabled || state.audio.kind === "none") return -1;
+  if (id < 0 || id >= state.soundBank.entries.length) return -1;
+  if (state.soundPlaybacks.size >= MAX_SOUND_PLAYBACKS) return -1;
+  let handle = state.nextSoundHandle;
+  while (state.soundPlaybacks.has(handle)) {
+    handle += 1;
+    if (handle > 0x7fffffff) handle = 1;
+  }
+  state.nextSoundHandle = handle === 0x7fffffff ? 1 : handle + 1;
+  const entry = state.soundBank.entries[id];
+  state.soundPlaybacks.set(handle, {
+    handle,
+    soundId: id,
+    looping: !!looping,
+    paused: false,
+    positionSamples: 0,
+    cursor: 0,
+    samples: new Int16Array(state.soundBank.bytes, entry.offset, entry.sampleCount),
+  });
+  postSoundCommand(state, { type: "sound-play", handle, soundId: id, looping: !!looping });
+  return handle;
+}
+
+function soundPause(state, handle) {
+  const playback = state.soundPlaybacks.get(handle | 0);
+  if (!playback) return;
+  playback.paused = true;
+  postSoundCommand(state, { type: "sound-pause", handle: playback.handle });
+}
+
+function soundResume(state, handle) {
+  const playback = state.soundPlaybacks.get(handle | 0);
+  if (!playback) return;
+  playback.paused = false;
+  postSoundCommand(state, { type: "sound-resume", handle: playback.handle });
+}
+
+function soundStop(state, handle) {
+  const key = handle | 0;
+  if (!state.soundPlaybacks.delete(key)) return;
+  postSoundCommand(state, { type: "sound-stop", handle: key });
+}
+
+function soundPositionUs(state, handle) {
+  const playback = state.soundPlaybacks.get(handle | 0);
+  if (!playback) return -1n;
+  return BigInt(playback.positionSamples) * 1000000n / BigInt(SAMPLE_RATE);
+}
+
+function onSoundReport(state, report) {
+  if (Array.isArray(report.playbacks)) {
+    for (const item of report.playbacks) {
+      const playback = state.soundPlaybacks.get(item.handle | 0);
+      if (playback && Number.isInteger(item.positionSamples) && item.positionSamples >= 0) {
+        playback.positionSamples = item.positionSamples;
+      }
+    }
+  }
+  if (Array.isArray(report.ended)) {
+    for (const handle of report.ended) state.soundPlaybacks.delete(handle | 0);
+  }
+}
+
+function mixScriptSounds(state, out) {
+  const ended = new Set();
+  for (let i = 0; i < out.length; i++) {
+    let mixed = out[i];
+    for (const playback of state.soundPlaybacks.values()) {
+      if (playback.paused || ended.has(playback.handle)) continue;
+      if (playback.cursor >= playback.samples.length) {
+        if (playback.looping) {
+          playback.cursor = 0;
+        } else {
+          ended.add(playback.handle);
+          continue;
+        }
+      }
+      mixed += playback.samples[playback.cursor] / 32768;
+      playback.cursor += 1;
+      if (playback.cursor >= playback.samples.length) {
+        if (playback.looping) playback.cursor = 0;
+        else ended.add(playback.handle);
+      }
+      playback.positionSamples = playback.cursor;
+    }
+    out[i] = Math.max(-1, Math.min(32767 / 32768, mixed));
+  }
+  for (const handle of ended) state.soundPlaybacks.delete(handle);
+}
+
+function soundPlaybackDetail(state) {
+  return [...state.soundPlaybacks.values()].map((playback) => ({
+    handle: playback.handle,
+    soundId: playback.soundId,
+    looping: playback.looping,
+    paused: playback.paused,
+    positionUs: soundPositionUs(state, playback.handle),
+  }));
 }
 
 // ---------------------------------------------------------------------------
@@ -796,6 +987,11 @@ async function setupAudio(state, options) {
       node.connect(gain);
       audio.node = node;
       audio.kind = "worklet";
+      const bankCopy = state.soundBank.bytes.slice(0);
+      node.port.postMessage(
+        { type: "sound-bank", bank: bankCopy, entries: state.soundBank.entries },
+        [bankCopy],
+      );
       return;
     } catch (err) {
       audio.workletError = String(err);
@@ -842,6 +1038,7 @@ function scriptProcessorPull(state, event) {
     }
   }
   while (i < out.length) out[i++] = 0; // underrun: silence
+  mixScriptSounds(state, out);
   const ctx = state.audio.ctx;
   if (ctx) state.posSnapshot = { samples: state.spConsumed, ctxTime: ctx.currentTime };
   serviceAudio(state); // pull drained the queue: top it up from the asset, if any
@@ -900,6 +1097,10 @@ function setStatusText(state, text) {
  *   Defaults to `new URL("app.wasm", import.meta.url)` (bundle dir contract:
  *   the page fetches app.wasm relative to the host module / page URL).
  * @param {string|URL} [options.fetch] - alias for wasmUrl.
+ * @param {string|URL} [options.soundBankUrl] - APSB v1 bank URL. Defaults to
+ *   a sibling sounds.bank for bundled apps.
+ * @param {ArrayBuffer|TypedArray} [options.soundBankBytes] - inline APSB v1
+ *   bank for embedded callers and tests.
  * @param {HTMLCanvasElement} [options.canvas] - presentation target; omitted
  *   (or Node) => presentation disabled, dirty/consume protocol still runs.
  * @param {(hint: {sampleRate: number}) => AudioContextLike} [options.audioContextFactory]
@@ -936,6 +1137,7 @@ export async function createHost(options = {}) {
   }
   const params = readUrlParams();
   const assetConfig = resolvePcmAssetConfig(options);
+  const soundBank = parseSoundBank(await loadSoundBankBytes(options));
 
   let assetState = null;
   if (assetConfig) {
@@ -994,6 +1196,9 @@ export async function createHost(options = {}) {
     spConsumed: 0,
     posSnapshot: null,
     pcmStats: { bytesReceived: 0, calls: 0, droppedSamples: 0 },
+    soundBank,
+    soundPlaybacks: new Map(),
+    nextSoundHandle: 1,
     asset: assetState,
     audio: {
       enabled: false,
@@ -1025,6 +1230,11 @@ export async function createHost(options = {}) {
       host_set_volume: (value) => setVolume(state, value),
       host_set_muted: (value) => setMuted(state, value),
       host_playback_pos_us: () => playbackPosUs(state),
+      host_sound_play: (soundId, looping) => soundPlay(state, soundId, looping),
+      host_sound_pause: (handle) => soundPause(state, handle),
+      host_sound_resume: (handle) => soundResume(state, handle),
+      host_sound_stop: (handle) => soundStop(state, handle),
+      host_sound_position_us: (handle) => soundPositionUs(state, handle),
     },
   };
   const overrides = options.imports && options.imports.passport;
@@ -1117,6 +1327,7 @@ export async function createHost(options = {}) {
  * @property {(v: number) => void} setVolume
  * @property {(b: boolean|number) => void} setMuted
  * @property {() => bigint} playbackPosUs - best-effort µs; 0n before playback.
+ * @property {Array<object>} soundPlaybacks - live playback facts.
  * @property {(button: number, pressed: boolean|number) => void} queueInput
  * @property {(pcm: Int16Array|ArrayBuffer) => void} feedNormalizedPcm
  * @property {(nowUs?: bigint|number) => {frameCount: number, presented: boolean}|null} tick
@@ -1195,6 +1406,9 @@ function buildHostApi(state, imports, appExports) {
     setVolume: (value) => setVolume(state, value),
     setMuted: (value) => setMuted(state, value),
     playbackPosUs: () => playbackPosUs(state),
+    get soundPlaybacks() {
+      return soundPlaybackDetail(state);
+    },
     queueInput: (button, pressed) => queueInput(state, button, pressed),
     feedNormalizedPcm: (input) => feedNormalizedPcm(state, input),
     tick: (nowUs) => tickOnce(state, nowUs),

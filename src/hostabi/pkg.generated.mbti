@@ -42,6 +42,16 @@ pub fn device_playback_position_us() -> Int64?
 
 pub fn pcm16_le_bits(Int) -> Int
 
+pub fn sound_pause(Int) -> Unit
+
+pub fn sound_play(Int, Int) -> Int
+
+pub fn sound_position_us(Int) -> Int64
+
+pub fn sound_resume(Int) -> Unit
+
+pub fn sound_stop(Int) -> Unit
+
 pub fn to_button(Int) -> @input.Button?
 
 // Errors

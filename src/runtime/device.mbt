@@ -21,6 +21,50 @@ priv struct DeviceSlot {
 let device_slot : DeviceSlot = { runtime: None, }
 
 ///|
+priv struct DeviceSoundRuntimeSlot {
+  mut installed : Bool
+}
+
+///|
+let device_sound_runtime_slot : DeviceSoundRuntimeSlot = { installed: false, }
+
+///|
+fn install_device_sound_runtime() -> Unit {
+  if device_sound_runtime_slot.installed {
+    return
+  }
+  install_sound_runtime(
+    play_sound=fn(sound_id, looping) {
+      let handle = @hostabi.sound_play(
+        sound_id.reinterpret_as_int(),
+        if looping {
+          1
+        } else {
+          0
+        },
+      )
+      if handle < 0 {
+        None
+      } else {
+        Some(handle)
+      }
+    },
+    pause_playback=@hostabi.sound_pause,
+    resume_playback=@hostabi.sound_resume,
+    stop_playback=@hostabi.sound_stop,
+    playback_position_us=fn(handle) {
+      let position = @hostabi.sound_position_us(handle)
+      if position < 0L {
+        None
+      } else {
+        Some(position)
+      }
+    },
+  )
+  device_sound_runtime_slot.installed = true
+}
+
+///|
 /// The value C expects from `ai_passport_mbt_probe` to prove MoonBit code
 /// is linked and running.
 pub const DEVICE_PROBE : Int = 0xA17E
@@ -40,6 +84,7 @@ const PRESENTATION_LEAD_US : Int64 = 100_000L
 /// the mirror with the transport's existing silent startup facts (volume 0,
 /// muted) without publishing an extra write.
 pub fn device_boot(create_app : () -> &@application.Application) -> Unit {
+  install_device_sound_runtime()
   if device_slot.runtime is Some(_) {
     abort("passport device runtime initialized twice")
   }
@@ -69,9 +114,9 @@ fn require_runtime() -> DeviceRuntime {
 }
 
 ///|
-/// `ai_passport_mbt_app_update`: one device frame tick. The transport's
-/// playback Option is `Some` (loop-boundary zero included) while the
-/// streaming task runs, `None` otherwise.
+/// `ai_passport_mbt_app_update`: one device frame tick. The obsolete
+/// frame-global playback position stays absent; applications query the
+/// particular `Playback` they care about through `@audio.position`.
 pub fn device_update() -> Unit {
   let runtime = require_runtime()
   runtime.app.update({
@@ -119,7 +164,7 @@ pub fn device_input(code : Int) -> Unit {
 
 ///|
 /// `ai_passport_mbt_audio_volume` / `ai_passport_mbt_audio_muted`, read by
-/// C once before the music transport starts. An application with no desired
+/// C after the sound runtime starts muted. An application with no desired
 /// audio output gets silence — volume 0, muted — never an invented default
 /// volume. Live output changes after startup cross through DeviceAudioMirror.
 pub fn device_audio_volume() -> Int {

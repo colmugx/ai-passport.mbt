@@ -608,6 +608,9 @@ export function registerCliFixtureSuites({ suite, ok, eq, eqText, SuiteError, re
 
   suite("cli: fixture-a (no audio) builds the full web bundle", () => {
     const project = fixtureDir(repoRoot, "fixture-a");
+    const selectedWebHost = path.join(
+      project, ".mooncakes", "colmugx", "ai-passport", "hosts", "web",
+    );
     const res = runCli(repoRoot, ["build", "--host", "web", "--project", project]);
     eq(res.status, 0, `passport build must succeed for fixture-a; stderr: ${res.stderr}`);
     const bundle = path.join(project, ".passport", "web");
@@ -617,8 +620,8 @@ export function registerCliFixtureSuites({ suite, ok, eq, eqText, SuiteError, re
     eq(emptyBank.bytes.length, 16, "empty sound bank must contain only its header");
     for (const file of ["index.html", "passport-host.js", "pcm-worklet.js"]) {
       ok(
-        fs.readFileSync(path.join(bundle, file)).equals(fs.readFileSync(path.join(webHostDir, file))),
-        `bundle/${file} must be byte-identical to the SDK's own host file`,
+        fs.readFileSync(path.join(bundle, file)).equals(fs.readFileSync(path.join(selectedWebHost, file))),
+        `bundle/${file} must be byte-identical to the project's selected SDK host file`,
       );
     }
     ok(!fs.existsSync(path.join(bundle, "app.html")), "no app.html may exist in the bundle");
@@ -642,14 +645,17 @@ export function registerCliFixtureSuites({ suite, ok, eq, eqText, SuiteError, re
 
   suite("cli: fixture-b (PCM asset) builds with the asset materialized", () => {
     const project = fixtureDir(repoRoot, "fixture-b");
+    const selectedWebHost = path.join(
+      project, ".mooncakes", "colmugx", "ai-passport", "hosts", "web",
+    );
     const res = runCli(repoRoot, ["build", "--host", "web", "--project", project]);
     eq(res.status, 0, `passport build must succeed for fixture-b; stderr: ${res.stderr}`);
     const bundle = path.join(project, ".passport", "web");
     ok(fs.existsSync(path.join(bundle, "app.wasm")), "bundle/app.wasm must exist");
     for (const file of ["index.html", "passport-host.js", "pcm-worklet.js"]) {
       ok(
-        fs.readFileSync(path.join(bundle, file)).equals(fs.readFileSync(path.join(webHostDir, file))),
-        `bundle/${file} must be byte-identical to the SDK's own host file`,
+        fs.readFileSync(path.join(bundle, file)).equals(fs.readFileSync(path.join(selectedWebHost, file))),
+        `bundle/${file} must be byte-identical to the project's selected SDK host file`,
       );
     }
     ok(

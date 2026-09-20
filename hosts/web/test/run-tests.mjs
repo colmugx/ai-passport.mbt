@@ -75,6 +75,9 @@ const webHostDir = path.resolve(testDir, ".."); // hosts/web
 const repoRoot = path.resolve(webHostDir, "..", ".."); // repository root
 const RELEASE_WASM = path.join(repoRoot, "_build", "wasm", "release", "build", "fixture", "fixture.wasm");
 const DEBUG_WASM = path.join(repoRoot, "_build", "wasm", "debug", "build", "fixture", "fixture.wasm");
+const SOUND_HOST_WASM = path.join(
+  repoRoot, "_build", "wasm", "debug", "build", "sound_host_fixture", "sound_host_fixture.wasm",
+);
 const PCM_ASSET = path.join(webHostDir, "assets", "test.pcm");
 const GEN_PCM_TOOL = path.join(webHostDir, "tools", "gen-test-pcm.mjs");
 const MAKE_BUNDLE_TOOL = path.join(webHostDir, "tools", "make-bundle.mjs");
@@ -108,6 +111,30 @@ const BAR_ROWS = 112; // 160 * 70 / 100
 const FIXTURE_BATTERY = 82;
 /** Frozen PCM waveform: 500 Hz square at 16000 Hz, amplitude 4000 PCM16. */
 const squareWave = (n) => (((n >> 4) & 1) === 1 ? -4000 : 4000);
+
+function soundBank(samplesBySound) {
+  const headerSize = 16;
+  const entrySize = 8;
+  const payloadOffset = headerSize + samplesBySound.length * entrySize;
+  const totalSamples = samplesBySound.reduce((sum, samples) => sum + samples.length, 0);
+  const buffer = new ArrayBuffer(payloadOffset + totalSamples * 2);
+  const bytes = new Uint8Array(buffer);
+  const view = new DataView(buffer);
+  bytes.set([0x41, 0x50, 0x53, 0x42]);
+  view.setUint16(4, 1, true);
+  view.setUint16(6, headerSize, true);
+  view.setUint32(8, samplesBySound.length, true);
+  view.setUint16(12, entrySize, true);
+  let offset = payloadOffset;
+  for (let id = 0; id < samplesBySound.length; id++) {
+    const samples = samplesBySound[id];
+    view.setUint32(headerSize + id * entrySize, offset, true);
+    view.setUint32(headerSize + id * entrySize + 4, samples.length, true);
+    new Int16Array(buffer, offset, samples.length).set(samples);
+    offset += samples.length * 2;
+  }
+  return buffer;
+}
 
 const PASSPORT_EXPORTS = [
   "_start",
@@ -693,6 +720,112 @@ suite("host-module: audio seams (pcmStats, feedNormalizedPcm, SP pull, position)
   host.dispose();
 });
 
+suite("host-module: sound-bank playback mixes independent handles", async () => {
+  const minimalBytes = buildMinimalPassportWasm();
+  const malformed = new Uint8Array(soundBank([]).byteLength + 1);
+  malformed.set(new Uint8Array(soundBank([])));
+  let malformedError = null;
+  try {
+    await hostModule.createHost({ wasmBytes: minimalBytes, soundBankBytes: malformed });
+  } catch (err) {
+    malformedError = err;
+  }
+  ok(
+    malformedError && String(malformedError.message).includes("trailing"),
+    "Host boot must fail observably on malformed APSB bytes",
+  );
+  let sp = null;
+  const fakeCtx = {
+    currentTime: 0,
+    destination: {},
+    createGain: () => ({ gain: { value: 0 }, connect() {} }),
+    createScriptProcessor: (size) => {
+      sp = { bufferSize: size, onaudioprocess: null, connect() {} };
+      return sp;
+    },
+  };
+  const sound0 = new Int16Array(5000).fill(10000);
+  const sound1 = new Int16Array(6000).fill(-4000);
+  const host = await hostModule.createHost({
+    wasmBytes: minimalBytes,
+    soundBankBytes: soundBank([sound0, sound1]),
+    audioContextFactory: () => fakeCtx,
+  });
+  const api = host.imports.passport;
+  const first = api.host_sound_play(0, 1);
+  const second = api.host_sound_play(0, 1);
+  ok(first > 0 && second > 0 && first !== second, "same Sound must produce distinct Playback handles");
+  const extras = [];
+  for (let i = 0; i < 6; i++) extras.push(api.host_sound_play(1, 0));
+  ok(extras.every((handle) => handle > 0), "eight playback slots must be available");
+  eq(api.host_sound_play(1, 0), -1, "a full playback table must fail without stealing");
+  for (const handle of extras) api.host_sound_stop(handle);
+
+  const pull = () => {
+    const out = new Float32Array(sp.bufferSize);
+    sp.onaudioprocess({ outputBuffer: { getChannelData: () => out } });
+    return out;
+  };
+  const mixed = pull();
+  eq(mixed[0], 20000 / 32768, "two equal PCM sources mix sample-for-sample");
+  eq(api.host_sound_position_us(first), 256000n, "first playback position follows consumed samples");
+  eq(api.host_sound_position_us(second), 256000n, "second playback has an independent position");
+
+  api.host_sound_pause(first);
+  pull();
+  eq(api.host_sound_position_us(first), 256000n, "paused playback position stays fixed");
+  eq(api.host_sound_position_us(second), 199500n, "unpaused playback continues across its loop");
+  api.host_sound_resume(first);
+  pull();
+  ok(api.host_sound_position_us(first) !== 256000n, "resumed playback advances again");
+  api.host_sound_stop(first);
+  eq(api.host_sound_position_us(first), -1n, "stopped handle has no position");
+
+  const oneShot = api.host_sound_play(1, 0);
+  pull();
+  pull();
+  eq(api.host_sound_position_us(oneShot), -1n, "one-shot handle expires at EOF");
+  ok(host.soundPlaybacks.every((playback) => playback.handle !== oneShot), "expired one-shot leaves the live table");
+  host.dispose();
+});
+
+suite("host-module: MoonBit Sound API reaches the Web sound runtime", async () => {
+  const wasmBytes = fs.readFileSync(SOUND_HOST_WASM);
+  let sp = null;
+  const fakeCtx = {
+    currentTime: 0,
+    destination: {},
+    createGain: () => ({ gain: { value: 0 }, connect() {} }),
+    createScriptProcessor: (size) => {
+      sp = { bufferSize: size, onaudioprocess: null, connect() {} };
+      return sp;
+    },
+  };
+  const host = await hostModule.createHost({
+    wasmBytes,
+    soundBankBytes: soundBank([
+      new Int16Array(5000).fill(3000),
+      new Int16Array(1000).fill(7000),
+    ]),
+    audioContextFactory: () => fakeCtx,
+  });
+  eq(host.soundPlaybacks.length, 0, "application has not played sounds before its first update");
+  host.tick(0n);
+  const playbacks = host.soundPlaybacks;
+  eq(playbacks.length, 3, "one loop plus two overlapping one-shots cross the MoonBit Host ABI");
+  const ambient = playbacks.filter((playback) => playback.soundId === 0);
+  const hits = playbacks.filter((playback) => playback.soundId === 1);
+  eq(ambient.length, 1, "ambient Sound produces one Playback");
+  eq(hits.length, 2, "playing the same hit Sound twice produces two Playbacks");
+  ok(hits[0].handle !== hits[1].handle, "overlapping hits have independent handles");
+  const out = new Float32Array(sp.bufferSize);
+  sp.onaudioprocess({ outputBuffer: { getChannelData: () => out } });
+  eq(out[0], 17000 / 32768, "MoonBit-started playbacks are mixed sample-for-sample");
+  eq(host.soundPlaybacks.length, 1, "both one-shots retire independently at EOF");
+  eq(host.soundPlaybacks[0].soundId, 0, "looping playback remains live");
+  host.dispose();
+});
+
 // --- Suite 6: host-module canvas-less run + dispose --------------------------
 
 suite("host-module: canvas-less run and dispose", async () => {
@@ -755,6 +888,10 @@ suite("bundle: make-bundle assembly, default outdir, refusal", () => {
     const res = spawnSync(process.execPath, [MAKE_BUNDLE_TOOL, tmp], { encoding: "utf8" });
     eq(res.status, 0, `make-bundle into temp dir must succeed; stderr: ${res.stderr}`);
     ok(fs.readFileSync(path.join(tmp, "app.wasm")).equals(release), "bundle/app.wasm byte-equals the release fixture wasm");
+    ok(
+      fs.readFileSync(path.join(tmp, "sounds.bank")).equals(Buffer.from(soundBank([]))),
+      "bundle/sounds.bank is the canonical empty APSB v1 bank",
+    );
     ok(
       fs.readFileSync(path.join(tmp, "assets", "test.pcm")).equals(asset),
       "bundle/assets/test.pcm byte-equals the generated asset",
@@ -844,6 +981,7 @@ function startProbeServer(bundleDir) {
     const urlPath = decodeURIComponent((req.url || "/").split("?")[0]);
     let filePath = null;
     if (urlPath === "/bundle/app.wasm") filePath = path.join(bundleDir, "app.wasm");
+    else if (urlPath === "/sounds.bank") filePath = path.join(bundleDir, "sounds.bank");
     else if (urlPath === "/passport-host.js") filePath = HOST_MODULE;
     else if (urlPath === "/pcm-worklet.js") filePath = path.join(webHostDir, "pcm-worklet.js");
     else if (urlPath === "/" || urlPath === "/test/browser-probe.html") filePath = PROBE_PAGE;
@@ -1413,6 +1551,7 @@ function startAutoBootServer(bundleDir) {
     "/passport-host.js": HOST_MODULE,
     "/pcm-worklet.js": path.join(webHostDir, "pcm-worklet.js"),
     "/app.wasm": path.join(bundleDir, "app.wasm"),
+    "/sounds.bank": path.join(bundleDir, "sounds.bank"),
     "/assets/test.pcm": path.join(bundleDir, "assets", "test.pcm"),
     "/favicon.ico": null, // 204: keep the console free of favicon-404 noise
   };
@@ -1512,6 +1651,12 @@ async function runAutoBootInPlaywright(url, waitFor) {
               loops: host.audioAssetLoops,
               posUs: String(host.playbackPosUs()),
               dropped: host.audio.dropped,
+              volume: host.volume,
+              muted: host.muted,
+              soundPlaybacks: host.soundPlaybacks.map((playback) => ({
+                ...playback,
+                positionUs: String(playback.positionUs),
+              })),
             });
           }, 400);
         }),
@@ -1544,6 +1689,53 @@ function runShellAutoBootStatus(url) {
   const m = res.stdout ? /<div id="passport-status">([^<]*)<\/div>/.exec(res.stdout) : null;
   return m ? m[1].trim() : null;
 }
+
+suite("browser: MoonBit Sound playbacks reach the real AudioWorklet", async () => {
+  if (SKIP_BROWSER) {
+    console.log("  skipped by --skip-browser / PASSPORT_SKIP_BROWSER=1");
+    return;
+  }
+  const bundleDir = fs.mkdtempSync(path.join(os.tmpdir(), "passport-sound-autoboot-"));
+  let server = null;
+  try {
+    fs.mkdirSync(path.join(bundleDir, "assets"), { recursive: true });
+    fs.copyFileSync(SOUND_HOST_WASM, path.join(bundleDir, "app.wasm"));
+    fs.writeFileSync(
+      path.join(bundleDir, "sounds.bank"),
+      Buffer.from(soundBank([
+        new Int16Array(32000).fill(3000),
+        new Int16Array(32000).fill(7000),
+      ])),
+    );
+    server = await startAutoBootServer(bundleDir);
+    const url = `http://127.0.0.1:${server.address().port}/index.html`;
+    const facts = await runAutoBootInPlaywright(url, false);
+    ok(facts && facts.payload, "Playwright must return the Sound auto-boot facts");
+    const p = facts.payload;
+    eq(facts.pageErrors.length, 0, `Sound page must throw nothing (got ${JSON.stringify(facts.pageErrors)})`);
+    ok(p.status.startsWith("running"), `Sound auto-boot status must be running (got [${p.status}])`);
+    eq(p.audioKind, "worklet", "Sound playback must use the real AudioWorklet");
+    eq(p.volume, 80, "application master volume reaches the Host GainNode state");
+    eq(p.muted, false, "application master mute reaches the Host GainNode state");
+    eq(p.soundPlaybacks.length, 3, "one loop and two same-Sound hits stay independently live");
+    const ambient = p.soundPlaybacks.filter((playback) => playback.soundId === 0);
+    const hits = p.soundPlaybacks.filter((playback) => playback.soundId === 1);
+    eq(ambient.length, 1, "one looping ambient playback is live");
+    eq(hits.length, 2, "the same hit Sound owns two live Playback handles");
+    ok(hits[0].handle !== hits[1].handle, "overlapping hits keep distinct handles in the worklet");
+    ok(
+      p.soundPlaybacks.every((playback) => Number(playback.positionUs) > 0),
+      "every independent playback position advances from AudioWorklet reports",
+    );
+    console.log(
+      `  sound worklet: handles=${p.soundPlaybacks.map((playback) => playback.handle).join(",")} ` +
+        `positions=${p.soundPlaybacks.map((playback) => playback.positionUs).join(",")}us`,
+    );
+  } finally {
+    if (server) server.close();
+    fs.rmSync(bundleDir, { recursive: true, force: true });
+  }
+});
 
 suite("browser: DOM auto-boot PCM asset mode (SDK index.html + ?pcm=&pcmLoop=1)", async () => {
   if (SKIP_BROWSER) {
@@ -1649,10 +1841,11 @@ suite("browser: DOM auto-boot PCM asset mode (SDK index.html + ?pcm=&pcmLoop=1)"
 // ---------------------------------------------------------------------------
 
 // Prerequisite check with the exact recovery commands.
-if (!fs.existsSync(RELEASE_WASM) || !fs.existsSync(DEBUG_WASM)) {
+if (!fs.existsSync(RELEASE_WASM) || !fs.existsSync(DEBUG_WASM) || !fs.existsSync(SOUND_HOST_WASM)) {
   console.error("run-tests: fixture wasm artifacts missing. From the repo root, run:");
   console.error("  moon build --target wasm --release   # " + path.relative(repoRoot, RELEASE_WASM));
   console.error("  moon build --target wasm             # " + path.relative(repoRoot, DEBUG_WASM));
+  console.error("  moon build src/sound_host_fixture --target wasm");
   process.exit(2);
 }
 if (!fs.existsSync(PCM_ASSET)) {

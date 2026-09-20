@@ -129,5 +129,14 @@ out-of-range values and trailing bytes.
 
 A project with no sounds has a valid 16-byte bank with `entry_count = 0`.
 Both Web and device builds write the exact compiler output as `sounds.bank`.
-Host runtime consumption is introduced separately; APSB contains resources,
-not a public mixer, codec or future streaming contract.
+Both Hosts validate that bank before use and address its entries by generated
+Sound ID. APSB contains resources, not a public mixer, codec or future
+streaming contract.
+
+The Web Host currently provides eight playback slots. Its AudioWorklet (or
+ScriptProcessor fallback) sums active PCM sources and clamps the final sample
+to PCM16 range before the master GainNode. The FoloToy Host provides four
+slots as the portability baseline: one FreeRTOS task reads payloads directly
+from flash, mixes 240-sample chunks, clamps to PCM16, and is the sole owner of
+codec writes. Slot exhaustion makes `play` return `None`; neither Host steals
+another playback.

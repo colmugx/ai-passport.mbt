@@ -1,5 +1,6 @@
 import {
   "colmugx/ai-passport/application",
+  "colmugx/ai-passport/audio/host" @sound_host,
   "colmugx/ai-passport/battery",
   "colmugx/ai-passport/driver",
   "colmugx/ai-passport/graphics",
