@@ -17,7 +17,7 @@ pub fn device_boot(() -> &@application.Application) -> Unit
 
 pub fn device_draw() -> Unit
 
-pub fn device_input(Int) -> Unit
+pub fn device_input_event(Int, Int) -> Unit
 
 pub fn device_present() -> Unit
 

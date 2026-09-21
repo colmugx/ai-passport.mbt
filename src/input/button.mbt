@@ -19,8 +19,8 @@ pub extend Button with Eq::{not_equal, equal}
 ///|
 /// Button events with the value set locked to the driver contract: `Press`,
 /// `Click`, `DoubleClick` and `LongPress`. This package is data-only for
-/// events — converting an event stream into an `InputState` belongs to the
-/// backend adapter, not to this API.
+/// events. `GestureState` recognizes these from Web press/release edges;
+/// physical Hosts may deliver equivalent recognized Host events directly.
 pub(all) enum ButtonEvent {
   Press
   Click

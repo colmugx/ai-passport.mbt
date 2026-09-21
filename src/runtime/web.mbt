@@ -8,6 +8,8 @@ pub struct WebRuntime {
   priv app : &@application.Application
   priv bridge : @hostabi.HostBridge
   priv battery : @battery.Battery
+  priv gestures : @input.GestureState
+  priv pending_input : Array[(@input.Button, Bool)]
   priv set_volume : (Int) -> Unit
   priv set_muted : (Bool) -> Unit
   // Host-applied volume/mute mirrors; only deltas cross the imports.
@@ -30,6 +32,8 @@ pub fn WebRuntime::new(
     app,
     bridge,
     battery: @battery.Battery::new(source~),
+    gestures: @input.GestureState::new(),
+    pending_input: [],
     set_volume,
     set_muted,
     applied_volume: None,
@@ -86,6 +90,24 @@ fn WebRuntime::sync_audio_output(self : WebRuntime) -> Unit {
 ///|
 /// One ABI v0 frame tick (the `passport_frame` export).
 pub fn WebRuntime::frame(self : WebRuntime, now_us : Int64) -> Unit {
+  // Input is timestamped at the frame boundary so every transition uses the
+  // same monotonic clock as update(). Ordered edges, including a press and
+  // release in one frame, are retained rather than coalesced.
+  for (button, pressed) in self.pending_input {
+    let accepted = self.gestures.input(button, pressed, now_us, fn(
+      button,
+      event,
+    ) {
+      self.app.button_event(button, event)
+    })
+    if accepted {
+      self.app.button(button, pressed)
+    }
+  }
+  self.pending_input.clear()
+  self.gestures.advance(now_us, fn(button, event) {
+    self.app.button_event(button, event)
+  })
   self.bridge.advance(now_us)
   self.app.update(self.frame_context(now_us))
   self.sync_audio_output()
@@ -96,11 +118,12 @@ pub fn WebRuntime::frame(self : WebRuntime, now_us : Int64) -> Unit {
 }
 
 ///|
-/// Wire button delivery (the `passport_input` export): `code` is 0=Up
-/// 1=Down 2=Ok and `pressed` is 1/0. Unknown codes are ignored.
+/// Wire button delivery (the `passport_input` export): `code` is 0=Up,
+/// 1=Down, 2=Ok; `pressed` is 1/0. Valid edges are queued in delivery order
+/// and processed before the next frame update. Unknown codes are ignored.
 pub fn WebRuntime::input(self : WebRuntime, code : Int, pressed : Int) -> Unit {
   match @hostabi.to_button(code) {
-    Some(button) => self.app.button(button, pressed != 0)
+    Some(button) => self.pending_input.push((button, pressed != 0))
     None => ()
   }
 }

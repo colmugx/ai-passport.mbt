@@ -465,21 +465,37 @@ const KEY_TO_BUTTON = {
 
 function attachInput(state) {
   if (typeof window === "undefined" || typeof window.addEventListener !== "function") return;
+  // Multiple physical keys can name one semantic button (ArrowUp and W).
+  // Count active source keys so releasing one alias cannot release the other.
+  const downCodes = new Set();
+  const heldCounts = [0, 0, 0];
   state.onKeyDown = (event) => {
     const button = KEY_TO_BUTTON[event.code];
     if (button === undefined) return;
     if (typeof event.preventDefault === "function") event.preventDefault(); // stop scrolling
-    if (event.repeat) return; // ignore auto-repeat
-    state.inputQueue.push({ button, pressed: 1 });
+    if (event.repeat || downCodes.has(event.code)) return;
+    downCodes.add(event.code);
+    heldCounts[button] += 1;
+    if (heldCounts[button] === 1) state.inputQueue.push({ button, pressed: 1 });
   };
   state.onKeyUp = (event) => {
     const button = KEY_TO_BUTTON[event.code];
     if (button === undefined) return;
     if (typeof event.preventDefault === "function") event.preventDefault();
-    state.inputQueue.push({ button, pressed: 0 });
+    if (!downCodes.delete(event.code)) return;
+    heldCounts[button] -= 1;
+    if (heldCounts[button] === 0) state.inputQueue.push({ button, pressed: 0 });
+  };
+  state.onBlur = () => {
+    for (let button = BUTTON.Up; button <= BUTTON.Ok; button++) {
+      if (heldCounts[button] > 0) state.inputQueue.push({ button, pressed: 0 });
+      heldCounts[button] = 0;
+    }
+    downCodes.clear();
   };
   window.addEventListener("keydown", state.onKeyDown);
   window.addEventListener("keyup", state.onKeyUp);
+  window.addEventListener("blur", state.onBlur);
 }
 
 function queueInput(state, button, pressed) {
@@ -574,6 +590,7 @@ function dispose(state) {
   if (typeof window !== "undefined" && typeof window.removeEventListener === "function") {
     if (state.onKeyDown) window.removeEventListener("keydown", state.onKeyDown);
     if (state.onKeyUp) window.removeEventListener("keyup", state.onKeyUp);
+    if (state.onBlur) window.removeEventListener("blur", state.onBlur);
   }
   const ctx = state.audio.ctx;
   if (ctx && typeof ctx.close === "function") {
@@ -806,6 +823,7 @@ export async function createHost(options = {}) {
     intervalId: undefined,
     onKeyDown: null,
     onKeyUp: null,
+    onBlur: null,
   };
 
   // Host-side implementations of the internal "passport" import module.

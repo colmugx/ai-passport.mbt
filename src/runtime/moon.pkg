@@ -5,13 +5,13 @@ import {
   "colmugx/ai-passport/driver",
   "colmugx/ai-passport/graphics",
   "colmugx/ai-passport/hostabi",
+  "colmugx/ai-passport/input",
 }
 
 import {
   "colmugx/ai-passport/application",
   "colmugx/ai-passport/graphics",
   "colmugx/ai-passport/hostabi",
-  "colmugx/ai-passport/input",
 } for "test"
 
 options(

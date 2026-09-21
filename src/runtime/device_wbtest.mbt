@@ -26,6 +26,7 @@ fn reset_device_slot() -> Unit {
 struct DeviceApp {
   mut last_ctx : @application.FrameContext?
   mut ok_edges : Int
+  events : Array[@input.ButtonEvent]
   mut output : @application.AudioOutput?
   canvas : @graphics.Canvas
 }
@@ -50,6 +51,17 @@ impl @application.Application for DeviceApp with fn button(
 }
 
 ///|
+impl @application.Application for DeviceApp with fn button_event(
+  self,
+  button,
+  event,
+) -> Unit {
+  if button is Ok {
+    self.events.push(event)
+  }
+}
+
+///|
 impl @application.Application for DeviceApp with fn render(
   self,
   _battery_percent : Int?,
@@ -69,6 +81,7 @@ test "the device runtime drives one application through the C ABI shape" {
   let app = DeviceApp::{
     last_ctx: None,
     ok_edges: 0,
+    events: [],
     output: Some({ volume: 70, muted: false, }),
     canvas: @graphics.Canvas::logical(),
   }
@@ -92,10 +105,13 @@ test "the device runtime drives one application through the C ABI shape" {
   assert_eq(test_last_output_muted(), 1)
   // Draw renders with the device battery reading (stub: unavailable).
   device_draw()
-  // A button press pulse becomes one edge pair; unknown codes are dropped.
-  device_input(2)
-  device_input(7)
+  // A press keeps its legacy edge pair; all BSP gesture kinds reach the App.
+  device_input_event(2, 0)
+  device_input_event(2, 1)
+  device_input_event(2, 2)
+  device_input_event(2, 3)
   assert_eq(app.ok_edges, 2)
+  debug_inspect(app.events, content="[Press, Click, DoubleClick, LongPress]")
   // The ABI accessors remain ordinary views of the App's current state;
   // C only uses them during startup.
   assert_eq(device_audio_volume(), 70)
@@ -111,6 +127,7 @@ test "a no-audio device application answers silence, never a default volume" {
   let app = DeviceApp::{
     last_ctx: None,
     ok_edges: 0,
+    events: [],
     output: None,
     canvas: @graphics.Canvas::logical(),
   }
@@ -132,6 +149,7 @@ test "a device app can acquire audio output after boot" {
   let app = DeviceApp::{
     last_ctx: None,
     ok_edges: 0,
+    events: [],
     output: None,
     canvas: @graphics.Canvas::logical(),
   }
@@ -176,6 +194,7 @@ test "panic device boot twice" {
       DeviceApp::{
         last_ctx: None,
         ok_edges: 0,
+        events: [],
         output: None,
         canvas: @graphics.Canvas::logical(),
       }
@@ -186,6 +205,7 @@ test "panic device boot twice" {
       DeviceApp::{
         last_ctx: None,
         ok_edges: 0,
+        events: [],
         output: None,
         canvas: @graphics.Canvas::logical(),
       }

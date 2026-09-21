@@ -37,7 +37,7 @@ ALLOWED_MOONBIT_SYMBOLS = {
     "ai_passport_mbt_app_update",
     "ai_passport_mbt_app_draw",
     "ai_passport_mbt_app_present",
-    "ai_passport_mbt_input_press",
+    "ai_passport_mbt_input_event",
     "ai_passport_mbt_audio_volume",
     "ai_passport_mbt_audio_muted",
 }

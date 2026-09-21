@@ -32,7 +32,7 @@ The logical screen is fixed at **120×160** pixels for v0.1. Applications draw w
 
 ## Input model
 
-Buttons are semantic values — `Up`, `Down`, `Ok` — never GPIO or ADC channels. `InputState` turns raw press/release feeds into `pressed`, `just_pressed`, and `just_released` edges per frame via `advance()`.
+Buttons are semantic values — `Up`, `Down`, `Ok` — never GPIO or ADC channels. `Application::button_event` delivers `Press`, `Click`, `DoubleClick`, and `LongPress`; the optional default implementation lets existing applications keep using `Application::button` press/release edges. `InputState` turns edges into `pressed`, `just_pressed`, and `just_released` state per frame via `advance()`. Web gestures use independent per-button state with a 300 ms double-click window and 1500 ms long-press threshold. The FoloToy Host forwards its BSP-recognized events; its shared ADC ladder cannot reliably identify physical button chords.
 
 ## Audio scope
 

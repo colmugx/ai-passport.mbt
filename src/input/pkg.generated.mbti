@@ -6,6 +6,9 @@ import {
 }
 
 // Values
+pub const DOUBLE_CLICK_WINDOW_US : Int64 = 300_000
+
+pub const LONG_PRESS_US : Int64 = 1_500_000
 
 // Errors
 
@@ -28,6 +31,13 @@ pub(all) enum ButtonEvent {
 pub fn ButtonEvent::equal(Self, Self) -> Bool
 pub fn ButtonEvent::not_equal(Self, Self) -> Bool
 pub fn ButtonEvent::to_repr(Self) -> @debug.Repr
+
+pub struct GestureState {
+  // private fields
+}
+pub fn GestureState::advance(Self, Int64, (Button, ButtonEvent) -> Unit) -> Unit
+pub fn GestureState::input(Self, Button, Bool, Int64, (Button, ButtonEvent) -> Unit) -> Bool
+pub fn GestureState::new() -> Self
 
 pub struct InputState {
   // private fields

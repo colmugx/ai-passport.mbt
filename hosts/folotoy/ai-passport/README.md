@@ -6,14 +6,14 @@ ESP-IDF 5.5.3 firmware for the FoloToy AI Passport ESP32-C3, owned by the SDK as
 
 - ESP32-C3, 8 MB flash, no PSRAM, USB-Serial-JTAG console. Wi-Fi and BLE stay uninitialized.
 - Display: ST7789P3 240x320 SPI panel. The v0.1 logical display contract is 120x160 RGB565; `display_bridge` doubles each logical pixel (SCALE 2) into double-buffered DMA strips of 240x40 physical rows (19,200 bytes each), two buffers outstanding, eight strips per frame, with per-strip completion semaphores and byte-swapped RGB565 at this one device boundary. There is no full physical framebuffer. The 40 MHz SPI transfer lower bound for a 153,600-byte physical frame is about 30.7 ms (~32.5 FPS) before overhead.
-- Buttons: UP / DOWN / OK on one shared GPIO0/ADC1_CH0 line. `button_bridge` delivers raw device-neutral press codes only (0 = Up, 1 = Down, 2 = Ok) through a bounded eight-slot queue drained at most once per frame; dropped events are counted in telemetry.
+- Buttons: UP / DOWN / OK on one shared GPIO0/ADC1_CH0 line. `button_bridge` delivers press, single click, double click, and long press with device-neutral button codes (0 = Up, 1 = Down, 2 = Ok) through a bounded eight-slot queue drained at most once per frame; dropped events are counted in telemetry. This shared ADC ladder cannot reliably distinguish two physical keys pressed together, so chords are unsupported on this Host.
 - Battery: CW2017 gauge on the shared I2C0 bus (address 0x63), polled at 1000 ms into an atomic cache answering 0..100 or -1.
 - Audio: ES8311 codec (address 0x18) on the same I2C bus. `sound_player` embeds the shared APSB bank in flash without copying PCM payloads to heap. Four independent playback slots feed one task that sums 240-sample chunks, clamps to PCM16, and uniquely owns codec writes. Pause/resume/stop and positions are per playback; master volume/mute is published atomically. An empty bank is valid and keeps every `play` request explicitly unavailable. The format is fixed: signed PCM16 little-endian, mono, 16000 Hz.
 - Frame schedule: one FreeRTOS frame task with a 33333 us period, one application update per presented frame, no catch-up renders; heap and frame statistics logged every five seconds.
 
 ## Device ABI
 
-`main/app_main.c` calls only generic MoonBit exports and nothing application-specific: `ai_passport_mbt_probe` (must answer 0xA17E), `ai_passport_mbt_app_init`, `ai_passport_mbt_app_update`, `ai_passport_mbt_app_draw`, `ai_passport_mbt_app_present`, `ai_passport_mbt_input_press`, `ai_passport_mbt_audio_volume`, `ai_passport_mbt_audio_muted`. The transport is started from the App's own startup output facts; the clock (`ai_passport_now_us` in `main/clock_bridge.c`) is an esp_timer passthrough feeding the application's fixed-step accumulator.
+`main/app_main.c` calls only generic MoonBit exports and nothing application-specific: `ai_passport_mbt_probe` (must answer 0xA17E), `ai_passport_mbt_app_init`, `ai_passport_mbt_app_update`, `ai_passport_mbt_app_draw`, `ai_passport_mbt_app_present`, `ai_passport_mbt_input_event`, `ai_passport_mbt_audio_volume`, `ai_passport_mbt_audio_muted`. The transport is started from the App's own startup output facts; the clock (`ai_passport_now_us` in `main/clock_bridge.c`) is an esp_timer passthrough feeding the application's fixed-step accumulator.
 
 ## Build pipeline
 

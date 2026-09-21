@@ -22,11 +22,11 @@ extern int32_t ai_passport_mbt_app_init(void);
 extern int32_t ai_passport_mbt_app_update(void);
 extern int32_t ai_passport_mbt_app_draw(void);
 extern int32_t ai_passport_mbt_app_present(void);
-// Device-only App facts (the project's device entry): raw press delivery and
+// Device-only App facts (the project's device entry): button-event delivery and
 // the absolute startup audio output state. app_main owns no button semantics.
 // Verified against the captured C (generated/moonbit): every MoonBit export —
 // including the Unit-returning ones — has C type int32_t(...).
-extern int32_t ai_passport_mbt_input_press(int32_t code);
+extern int32_t ai_passport_mbt_input_event(int32_t button, int32_t kind);
 extern int32_t ai_passport_mbt_audio_volume(void);
 extern int32_t ai_passport_mbt_audio_muted(void);
 
@@ -79,8 +79,8 @@ void app_main(void) {
     // possibly-slow first CW2017 SOC computation and then polls at 1 Hz.
     ai_passport_battery_bridge_init();
 
-    // Physical buttons last: the bridge only enqueues raw UP/DOWN/OK press
-    // codes onto its own bounded queue, so buttons may also come up when
+    // Physical buttons last: the bridge enqueues UP/DOWN/OK event codes onto
+    // its own bounded queue, so buttons may also come up when
     // sound failed (the App's semantics still run; the output setter then
     // reaches no codec). A button failure only disables the controls; the
     // application and sound keep running.
@@ -100,14 +100,13 @@ void app_main(void) {
 
     for (;;) {
         const int64_t frame_start_us = esp_timer_get_time();
-        // Frame order: at most ONE queued physical press per frame enters
-        // the App (a press pulse latches exactly one just_pressed edge, and
-        // draining several identical presses before one advance() would
-        // coalesce them into one action), then the App update applies the
-        // edge and mirrors the absolute output state to the transport.
-        ai_passport_button_t press;
-        if (ai_passport_button_bridge_poll(&press)) {
-            (void)ai_passport_mbt_input_press((int32_t)press);
+        // Frame order: one queued physical event per frame enters the App.
+        // This keeps repeated press pulses separate for frame-latched apps;
+        // remaining events retain BSP callback order in the queue.
+        ai_passport_button_event_t button_event;
+        if (ai_passport_button_bridge_poll(&button_event)) {
+            (void)ai_passport_mbt_input_event(
+                (int32_t)button_event.button, (int32_t)button_event.kind);
         }
         (void)ai_passport_mbt_app_update();
         const int64_t draw_start_us = esp_timer_get_time();

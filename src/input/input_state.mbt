@@ -77,10 +77,8 @@ fn InputState::slot(self : InputState, btn : Button) -> BtnState {
 /// Marks `btn` as held and latches its `just_pressed` edge, which stays true
 /// until the next `InputState::advance`.
 ///
-/// Pressing an already-held button again within the same frame is a no-op:
-/// the latches stay unchanged so consumers see exactly one edge. Once
-/// `InputState::advance` has run, pressing the still-held button again in a
-/// later frame raises a fresh `just_pressed` edge.
+/// Pressing an already-held button is always a no-op, including in a later
+/// frame. A new `just_pressed` edge requires an intervening release.
 ///
 /// # Example
 /// ```mbt check
@@ -92,12 +90,12 @@ fn InputState::slot(self : InputState, btn : Button) -> BtnState {
 ///   input.advance()
 ///   input.press(Ok)
 ///   inspect(input.pressed(Ok), content="true")
-///   inspect(input.just_pressed(Ok), content="true")
+///   inspect(input.just_pressed(Ok), content="false")
 /// }
 /// ```
 pub fn InputState::press(self : InputState, btn : Button) -> Unit {
   let b = self.slot(btn)
-  if !(b.held && b.just_pressed) {
+  if !b.held {
     b.held = true
     b.just_pressed = true
   }
