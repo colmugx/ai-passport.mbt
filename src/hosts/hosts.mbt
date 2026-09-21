@@ -25,6 +25,8 @@ pub(all) enum Capability {
   Network
   /// Timers / a monotonic clock.
   Clock
+  /// Application-requested sleep with a reported wake reason.
+  Power
 } derive(Eq, Debug)
 
 ///|
@@ -47,6 +49,7 @@ pub fn Capability::to_label(self : Capability) -> String {
     Battery => "battery"
     Network => "network"
     Clock => "clock"
+    Power => "power"
   }
 }
 

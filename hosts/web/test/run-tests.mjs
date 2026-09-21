@@ -275,6 +275,32 @@ suite("host: microphone permission denial and canceled requests stay observable"
   pending.dispose();
 });
 
+suite("host: explicit sleep pauses frames and reports button or timer wake", async () => {
+  const host = await hostModule.createHost({
+    wasmBytes: buildMinimalPassportWasm(), soundBankBytes: soundBank([]),
+  });
+  const power = host.imports.passport;
+  eq(power.host_wake_reason(), 0, "no wake cause before sleep");
+  eq(power.host_power_request(-1), 1, "application sleep request is accepted");
+  eq(power.host_power_request(-1), 0, "a duplicate request is rejected");
+  host.tick(10n);
+  eq(host.sleeping, true, "sleep starts after the current frame");
+  const frames = host.frameCount;
+  host.tick(20n);
+  eq(host.frameCount, frames, "sleep stops application frames");
+  host.queueInput(hostModule.BUTTON.Ok, true);
+  eq(power.host_wake_reason(), 1, "button wake cause is visible");
+  host.tick(30n);
+  eq(host.frameCount, frames + 1, "frames resume after button wake");
+  eq(power.host_power_request(5), 1, "timed sleep request is accepted");
+  eq(power.host_wake_reason(), 0, "new request clears old cause");
+  host.tick(40n);
+  await new Promise((resolve) => setTimeout(resolve, 15));
+  eq(power.host_wake_reason(), 2, "timer wake cause is visible");
+  eq(host.sleeping, false, "timer resumes the Host");
+  host.dispose();
+});
+
 suite("host: MoonBit Sound API reaches the Web runtime", async () => {
   let processor = null;
   const host = await hostModule.createHost({

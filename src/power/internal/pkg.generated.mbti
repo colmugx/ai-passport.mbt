@@ -1,0 +1,21 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "colmugx/ai-passport/power/internal"
+
+// Values
+pub fn install(PowerRuntime) -> Unit
+
+pub fn request(Int) -> Int
+
+pub fn wake_reason() -> Int
+
+// Errors
+
+// Types and methods
+pub struct PowerRuntime {
+  // private fields
+}
+pub fn PowerRuntime::new(request~ : (Int) -> Int, wake_reason~ : () -> Int) -> Self
+
+// Type aliases
+
+// Traits

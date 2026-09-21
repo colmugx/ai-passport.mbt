@@ -35,6 +35,7 @@ test "web host does not overclaim capabilities" {
   inspect(exposed.contains(@hosts.AudioOutput), content="true")
   inspect(exposed.contains(@hosts.Battery), content="true")
   inspect(exposed.contains(@hosts.Clock), content="true")
+  inspect(exposed.contains(@hosts.Power), content="true")
   inspect(exposed.contains(@hosts.AudioInput), content="true")
   // No network is exposed.
   inspect(exposed.contains(@hosts.Network), content="false")
@@ -83,6 +84,7 @@ test "folotoy host registers the microphone and the implemented device backend" 
   )
   inspect(f.capabilities.sdk_exposed.contains(@hosts.Battery), content="true")
   inspect(f.capabilities.sdk_exposed.contains(@hosts.Clock), content="true")
+  inspect(f.capabilities.sdk_exposed.contains(@hosts.Power), content="true")
   inspect(
     f.capabilities.sdk_exposed.contains(@hosts.AudioInput),
     content="true",
@@ -100,6 +102,7 @@ test "capability labels are the stable lowercase CLI vocabulary" {
   inspect(@hosts.Battery.to_label(), content="battery")
   inspect(@hosts.Network.to_label(), content="network")
   inspect(@hosts.Clock.to_label(), content="clock")
+  inspect(@hosts.Power.to_label(), content="power")
   inspect(
     @hosts.render_capabilities([@hosts.Display, @hosts.AudioInput, @hosts.Clock]),
     content="display, audio_input, clock",

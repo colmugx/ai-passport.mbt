@@ -74,3 +74,9 @@ pub extern "c" fn capture_read(out : FixedArray[Int], capacity : Int) -> Int = "
 
 ///|
 pub extern "c" fn capture_dropped() -> Int = "ai_passport_mic_dropped_samples"
+
+///|
+pub extern "c" fn device_power_request(wake_after_ms : Int) -> Int = "ai_passport_power_request"
+
+///|
+pub extern "c" fn device_wake_reason() -> Int = "ai_passport_power_wake_reason"
