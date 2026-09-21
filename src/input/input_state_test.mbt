@@ -64,7 +64,7 @@ test "double press in the same frame stays held with a single just_pressed edge"
 }
 
 ///|
-test "pressing a still-held button in a later frame raises a new edge" {
+test "pressing a still-held button in a later frame does not raise a new edge" {
   let input = @input.InputState::new()
   input.press(@input.Up)
   input.advance()
@@ -72,7 +72,7 @@ test "pressing a still-held button in a later frame raises a new edge" {
   inspect(input.just_pressed(@input.Up), content="false")
   input.press(@input.Up)
   inspect(input.pressed(@input.Up), content="true")
-  inspect(input.just_pressed(@input.Up), content="true")
+  inspect(input.just_pressed(@input.Up), content="false")
   input.advance()
   inspect(input.just_pressed(@input.Up), content="false")
 }

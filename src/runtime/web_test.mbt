@@ -6,6 +6,7 @@
 struct FakeApp {
   updates : Array[@application.FrameContext]
   buttons : Array[@input.Button]
+  events : Array[(@input.Button, @input.ButtonEvent)]
   mut battery_seen : Int?
   mut output : @application.AudioOutput?
   canvas : @graphics.Canvas
@@ -16,6 +17,7 @@ fn FakeApp::make() -> FakeApp {
   {
     updates: [],
     buttons: [],
+    events: [],
     battery_seen: None,
     output: None,
     canvas: @graphics.Canvas::logical(),
@@ -37,6 +39,15 @@ impl @application.Application for FakeApp with fn button(
   _pressed : Bool,
 ) -> Unit {
   self.buttons.push(button)
+}
+
+///|
+impl @application.Application for FakeApp with fn button_event(
+  self,
+  button : @input.Button,
+  event : @input.ButtonEvent,
+) -> Unit {
+  self.events.push((button, event))
 }
 
 ///|
@@ -114,7 +125,9 @@ test "input decodes wire codes and ignores unknown ones" {
   runtime.input(1, 1)
   runtime.input(2, 1)
   runtime.input(9, 1)
+  runtime.frame(1L)
   debug_inspect(app.buttons, content="[Up, Down, Ok]")
+  debug_inspect(app.events, content="[(Up, Press), (Down, Press), (Ok, Press)]")
 }
 
 ///|
@@ -152,6 +165,7 @@ test "a no-audio application never invents output state" {
   runtime.frame(1L)
   runtime.frame(2L)
   runtime.input(2, 1)
+  runtime.frame(3L)
   assert_eq(calls.volumes.length(), 0)
   assert_eq(calls.muted.length(), 0)
   assert_eq(app.buttons.length(), 1)

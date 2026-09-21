@@ -150,15 +150,26 @@ pub fn device_present() -> Unit {
 }
 
 ///|
-/// `ai_passport_mbt_input_press`: one raw physical press from the C button
-/// bridge. The BSP reports a press pulse rather than a clean press/release
-/// pair, so the pulse becomes exactly one `pressed` edge, released
-/// immediately. Unknown codes are ignored.
-pub fn device_input(code : Int) -> Unit {
-  guard @hostabi.device_button(code) is Some(button) else { return }
+/// `ai_passport_mbt_input_event`: one recognized physical event from the C
+/// button bridge. Press also preserves the legacy one-frame press pulse;
+/// click, double click, and long press are delivered to the event callback.
+pub fn device_input_event(code : Int, kind : Int) -> Unit {
+  guard @hostabi.device_button(code) is Some(button) else {
+    abort("device input received an unknown button code: \{code}")
+  }
+  let event = match kind {
+    0 => @input.Press
+    1 => @input.Click
+    2 => @input.DoubleClick
+    3 => @input.LongPress
+    _ => abort("device input received an unknown event code: \{kind}")
+  }
   let runtime = require_runtime()
-  runtime.app.button(button, true)
-  runtime.app.button(button, false)
+  runtime.app.button_event(button, event)
+  if event is @input.Press {
+    runtime.app.button(button, true)
+    runtime.app.button(button, false)
+  }
 }
 
 ///|

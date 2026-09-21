@@ -14,6 +14,11 @@ pub(open) trait Application {
   /// Host may deliver a press pulse without a matching release; the
   /// application decides what the edges mean.
   fn button(Self, button : @input.Button, pressed : Bool) -> Unit
+  /// One recognized button action. `Press` is delivered immediately;
+  /// `Click`, `DoubleClick`, and `LongPress` are mutually exclusive outcomes
+  /// for a short/long interaction. Hosts keep each semantic button separate.
+  /// Existing applications may omit this callback.
+  fn button_event(Self, button : @input.Button, event : @input.ButtonEvent) -> Unit = _
   /// Render the logical frame now. `battery_percent` is the Host's
   /// best-effort reading (`None` = unknown). Returns the logical frame to
   /// present.
@@ -23,4 +28,9 @@ pub(open) trait Application {
   /// state). Hosts never translate `None` into an invented volume or mute,
   /// and no audio operation is ever performed for it.
   fn audio_output(Self) -> AudioOutput?
+}
+
+///|
+impl Application with fn button_event(_self, _button, _event) {
+  ()
 }

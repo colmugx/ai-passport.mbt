@@ -7,7 +7,7 @@ the way the shared esp_timer task would. Proves:
 
   * the queue is created with the agreed bound of 8 events
   * the callback path is non-blocking (every enqueue uses zero wait)
-  * only BSP_BTN_PRESS events enter the queue (CLICK/DOUBLE/LONG ignored)
+  * PRESS/CLICK/DOUBLE/LONG all enter the queue with their exact event kind
   * UP/DOWN/OK map to the device-neutral codes 0/1/2, drained FIFO
   * a full queue drops the event and increments the bridge's own counter
 
@@ -188,27 +188,32 @@ int main(void) {
     assert(shim_last_queue_length == 8);
     assert(shim_registered_cb != NULL);
 
-    ai_passport_button_t code;
-    assert(ai_passport_button_bridge_poll(&code) == false);
+    ai_passport_button_event_t item;
+    assert(ai_passport_button_bridge_poll(&item) == false);
 
     // PRESS maps UP/DOWN/OK to the neutral codes 0/1/2, drained FIFO.
     press(BSP_BTN_UP, BSP_BTN_PRESS);
     press(BSP_BTN_DOWN, BSP_BTN_PRESS);
     press(BSP_BTN_OK, BSP_BTN_PRESS);
-    assert(ai_passport_button_bridge_poll(&code) == true);
-    assert(code == AI_PASSPORT_BTN_UP);
-    assert(ai_passport_button_bridge_poll(&code) == true);
-    assert(code == AI_PASSPORT_BTN_DOWN);
-    assert(ai_passport_button_bridge_poll(&code) == true);
-    assert(code == AI_PASSPORT_BTN_OK);
-    assert(ai_passport_button_bridge_poll(&code) == false);
+    assert(ai_passport_button_bridge_poll(&item) == true);
+    assert(item.button == AI_PASSPORT_BTN_UP && item.kind == AI_PASSPORT_EVENT_PRESS);
+    assert(ai_passport_button_bridge_poll(&item) == true);
+    assert(item.button == AI_PASSPORT_BTN_DOWN && item.kind == AI_PASSPORT_EVENT_PRESS);
+    assert(ai_passport_button_bridge_poll(&item) == true);
+    assert(item.button == AI_PASSPORT_BTN_OK && item.kind == AI_PASSPORT_EVENT_PRESS);
+    assert(ai_passport_button_bridge_poll(&item) == false);
 
-    // Only BSP_BTN_PRESS enters the queue; the other events of the same
-    // physical press stay ignored and drop nothing.
+    // All recognized BSP events retain their kind and callback order.
     press(BSP_BTN_UP, BSP_BTN_CLICK);
     press(BSP_BTN_UP, BSP_BTN_DOUBLE);
     press(BSP_BTN_UP, BSP_BTN_LONG);
-    assert(ai_passport_button_bridge_poll(&code) == false);
+    assert(ai_passport_button_bridge_poll(&item) == true);
+    assert(item.button == AI_PASSPORT_BTN_UP && item.kind == AI_PASSPORT_EVENT_CLICK);
+    assert(ai_passport_button_bridge_poll(&item) == true);
+    assert(item.button == AI_PASSPORT_BTN_UP && item.kind == AI_PASSPORT_EVENT_DOUBLE_CLICK);
+    assert(ai_passport_button_bridge_poll(&item) == true);
+    assert(item.button == AI_PASSPORT_BTN_UP && item.kind == AI_PASSPORT_EVENT_LONG_PRESS);
+    assert(ai_passport_button_bridge_poll(&item) == false);
     assert(ai_passport_button_dropped_events() == 0);
 
     // Every callback enqueue was a zero-wait send: the callback path never
@@ -225,8 +230,9 @@ int main(void) {
     press(BSP_BTN_OK, BSP_BTN_PRESS);
     assert(ai_passport_button_dropped_events() == 1);
     int drained = 0;
-    while (ai_passport_button_bridge_poll(&code)) {
-        assert(code == AI_PASSPORT_BTN_UP);
+    while (ai_passport_button_bridge_poll(&item)) {
+        assert(item.button == AI_PASSPORT_BTN_UP);
+        assert(item.kind == AI_PASSPORT_EVENT_PRESS);
         drained += 1;
     }
     assert(drained == 8);

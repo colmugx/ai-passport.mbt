@@ -34,6 +34,7 @@ pub fn FrameContext::to_repr(Self) -> @debug.Repr
 pub(open) trait Application {
   fn update(Self, FrameContext) -> Unit
   fn button(Self, @input.Button, Bool) -> Unit
+  fn button_event(Self, @input.Button, @input.ButtonEvent) -> Unit = _
   fn render(Self, Int?) -> @graphics.FrameView
   fn audio_output(Self) -> AudioOutput?
 }

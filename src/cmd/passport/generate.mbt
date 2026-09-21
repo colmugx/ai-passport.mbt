@@ -227,9 +227,9 @@ async fn generate_device_entry(
     #|}
     #|
     #|///|
-    #|#export_name("ai_passport_mbt_input_press")
-    #|pub fn input_press(code : Int) -> Unit {
-    #|  @runtime.device_input(code)
+    #|#export_name("ai_passport_mbt_input_event")
+    #|pub fn input_event(button : Int, kind : Int) -> Unit {
+    #|  @runtime.device_input_event(button, kind)
     #|}
     #|
     #|///|
