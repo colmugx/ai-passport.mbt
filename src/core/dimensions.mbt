@@ -1,27 +1,25 @@
 ///|
-/// Logical display width in pixels for v0.1.
+/// Default logical display width for the current Web and FoloToy Hosts.
 ///
-/// This pins the core contract in `docs/PLAN.md`: apps render against a
-/// fixed 120×160 logical display on every backend.
+/// Applications should query `@graphics.display_info()` for Host dimensions.
 ///
 /// # Example
 /// ```mbt check
 /// test {
-///   inspect(@core.LOGICAL_WIDTH, content="120")
+///   inspect(@core.LOGICAL_WIDTH, content="240")
 /// }
 /// ```
-pub const LOGICAL_WIDTH : Int = 120
+pub const LOGICAL_WIDTH : Int = 240
 
 ///|
-/// Logical display height in pixels for v0.1.
+/// Default logical display height for the current Web and FoloToy Hosts.
 ///
-/// This pins the core contract in `docs/PLAN.md`: apps render against a
-/// fixed 120×160 logical display on every backend.
+/// Applications should query `@graphics.display_info()` for Host dimensions.
 ///
 /// # Example
 /// ```mbt check
 /// test {
-///   inspect(@core.LOGICAL_HEIGHT, content="160")
+///   inspect(@core.LOGICAL_HEIGHT, content="320")
 /// }
 /// ```
-pub const LOGICAL_HEIGHT : Int = 160
+pub const LOGICAL_HEIGHT : Int = 320

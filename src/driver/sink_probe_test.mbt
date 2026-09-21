@@ -11,11 +11,11 @@ test "SinkProbe records count and last frame dimensions at present time" {
   let probe = @driver.SinkProbe::new()
   let sink : &@driver.DisplaySink = probe
 
-  // First present: the standard 120x160 logical frame (docs/DRIVER.md).
+  // First present: the current 240x320 full-resolution frame.
   sink.present(frame=@graphics.Canvas::logical().frame_view())
   inspect(probe.calls(), content="1")
-  inspect(probe.last_width(), content="120")
-  inspect(probe.last_height(), content="160")
+  inspect(probe.last_width(), content="240")
+  inspect(probe.last_height(), content="320")
 
   // Second present: a custom 64x80 frame overwrites the dimensions.
   sink.present(frame=@graphics.Canvas::new(width=64, height=80).frame_view())

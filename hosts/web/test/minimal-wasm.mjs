@@ -5,13 +5,13 @@
  *
  * Module contract (frozen like the rest of the test tooling):
  *   - imports: none
- *   - memory: 1 page (65536 B), exported as "memory" — the framebuffer at
- *     [4096, 42496) fits inside the ABI-reserved region
+ *   - memory: 4 pages (262144 B), exported as "memory" — the framebuffer at
+ *     [4096, 157696) fits inside the ABI-reserved region
  *   - _start(): no-op
  *   - passport_frame(now_us): store16 the low 16 bits of now_us at byte 4096
  *     (framebuffer pixel 0) — a deterministic, observable frame side effect
  *   - passport_input(button, pressed): no-op
- *   - passport_fb_ptr() = 4096, passport_fb_len() = 38400
+ *   - passport_fb_ptr() = 4096, passport_fb_len() = 153600
  *   - passport_frame_dirty() = 1 (always dirty: every tick presents, so tests
  *     can prove canvas output continues while audio runs)
  *   - passport_frame_consume(): no-op
@@ -49,7 +49,7 @@ const I32_WRAP_I64 = 0xa7;
 const I32_STORE16 = 0x3b;
 
 const FB_PTR = 4096;
-const FB_LEN = 38400;
+const FB_LEN = 153600;
 
 /** Function body: empty locals vec + expression, prefixed by its byte size. */
 function codeEntry(expr) {
@@ -75,8 +75,8 @@ export function buildMinimalPassportWasm() {
   // Function section: func index -> type index
   const funcs = vec([[0], [1], [2], [3], [3], [3], [0]]);
 
-  // Memory section: one memory, min 1 page, no max
-  const memories = vec([[0x00, 0x01]]);
+  // Memory section: one memory, min 4 pages, no max
+  const memories = vec([[0x00, 0x04]]);
 
   // Export section: memory + the seven ABI exports (kind 0x02 mem, 0x00 func)
   const name = (s) => [...uleb(s.length), ...Array.from(s, (c) => c.charCodeAt(0))];
@@ -97,7 +97,7 @@ export function buildMinimalPassportWasm() {
   //  f1 passport_frame: store16 low16(now_us) at FB_PTR  — addr, then value
   //  f2 passport_input: empty
   //  f3 fb_ptr: i32.const 4096
-  //  f4 fb_len: i32.const 38400
+  //  f4 fb_len: i32.const 153600
   //  f5 dirty: i32.const 1
   //  f6 consume: empty
   const i32Const = (v) => [I32_CONST, ...uleb(v)];

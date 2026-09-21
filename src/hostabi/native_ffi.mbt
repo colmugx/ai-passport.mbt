@@ -24,6 +24,12 @@ extern "c" fn display_row(y : Int, row : FixedArray[Int]) -> Unit = "ai_passport
 extern "c" fn display_end() -> Unit = "ai_passport_display_end"
 
 ///|
+pub extern "c" fn device_backlight_level() -> Int = "ai_passport_display_backlight_level"
+
+///|
+pub extern "c" fn device_set_backlight(level : Int) -> Unit = "ai_passport_display_set_backlight"
+
+///|
 /// Raw state-of-charge reading from the device battery bridge: 0..100, or
 /// -1 when unavailable (gauge missing, unreadable, or not yet initialized).
 /// The integer crosses the boundary unchanged.

@@ -1,7 +1,7 @@
 # Web Host contract
 
 The Web Host runs the same MoonBit application contract as a physical Host.
-It owns browser transport only: a 120×160 RGB565 framebuffer, semantic input,
+It owns browser transport only: a 240×320 RGB565 framebuffer, semantic input,
 battery facts, master audio output, and playback of the project's APSB sound
 bank. It contains no application behavior and no audio-authoring pipeline.
 
@@ -48,15 +48,23 @@ The Host provides the `passport` import module:
 | `host_battery_percent() -> i32` | Return 0–100 or -1 when unavailable. |
 | `host_set_volume(value: i32)` | Set application-wide master volume. |
 | `host_set_muted(value: i32)` | Set application-wide master mute. |
+| `host_backlight_level() -> i32` | Read the Web presentation brightness, 0..100. |
+| `host_set_backlight(value: i32)` | Set Web canvas presentation brightness. |
 | `host_sound_play(sound_id: i32, looping: i32) -> i32` | Start one playback; return a positive handle or -1. |
 | `host_sound_pause(handle: i32)` | Pause that playback. |
 | `host_sound_resume(handle: i32)` | Resume that playback. |
 | `host_sound_stop(handle: i32)` | Stop and invalidate that playback. |
 | `host_sound_position_us(handle: i32) -> i64` | Return its position or -1 for an invalid handle. |
+| `host_capture_start() -> i32` | Request microphone capture; returns a capture status code. |
+| `host_capture_status() -> i32` | Report unavailable, idle, requesting, recording, denied, or failed. |
+| `host_capture_stop()` | Release the microphone and discard unread samples. |
+| `host_capture_read(max_samples: i32) -> i32` | Write signed PCM16 to the reserved scratch region. |
+| `host_capture_dropped() -> i32` | Report samples lost to bounded queue overflow. |
 
-The framebuffer begins at byte offset 4096, contains 120×160 little-endian
-RGB565 pixels in row-major order, and occupies 38,400 bytes. The application
-heap begins at 65,536. Audio payloads do not pass through Wasm memory: the Host
+The framebuffer begins at byte offset 4096, contains 240×320 little-endian
+RGB565 pixels in row-major order, and occupies 153,600 bytes. Microphone reads
+use a separate scratch region at offset 196,608 (2,048 bytes). The application
+heap begins at 262,144. Sound-bank payloads do not pass through Wasm memory: the Host
 loads and validates `sounds.bank` itself and addresses resources by Sound ID.
 
 ## Sound runtime

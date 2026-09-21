@@ -1,13 +1,22 @@
 # Graphics
 
-The v0.1 logical canvas is **120×160**. Device scaling is a backend responsibility.
+The current Web and FoloToy Hosts expose a full **240×320** drawing surface.
+Applications query `display_info()` and use `Canvas::for_display()` when the
+active Host determines the dimensions. A future monochrome Host quantizes the
+RGB565 presentation stream at its Host boundary. Lighting is optional:
+`backlight_level()` returns `None` on panels without a light, and
+`set_backlight(0..100)` returns `false` there.
 
 ## Public drawing API
 
 ```moonbit
 // Canvas
 Canvas::new(width~, height~)        // aborts on non-positive dimensions
-Canvas::logical()                   // 120×160 from @core constants
+Canvas::logical()                   // current default 240×320
+Canvas::for_display()               // active Host dimensions
+display_info()                      // width, height, monochrome, has_backlight
+backlight_level()                   // Int?; None on an unlit panel
+set_backlight(level)                // Bool; false on an unlit panel
 canvas.width() / canvas.height()
 
 // Primitives — clip-safe drawing

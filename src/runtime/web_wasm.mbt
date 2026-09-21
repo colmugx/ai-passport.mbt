@@ -65,12 +65,24 @@ fn install_web_capture_runtime() -> Unit {
 }
 
 ///|
+fn install_web_display_runtime() -> Unit {
+  @display_host.install_display(
+    width=@core.LOGICAL_WIDTH,
+    height=@core.LOGICAL_HEIGHT,
+    monochrome=false,
+    backlight_level=@hostabi.host_backlight_level,
+    set_backlight=@hostabi.host_set_backlight,
+  )
+}
+
+///|
 /// Wasm-only wiring: the injected host operations become the real ABI v0
 /// imports (`"passport"` externs from `hostabi`), so a native or js build
 /// never links.
 pub fn WebRuntime::new_wasm(app : &@application.Application) -> WebRuntime {
   install_web_sound_runtime()
   install_web_capture_runtime()
+  install_web_display_runtime()
   new_wasm_installed(app)
 }
 
@@ -97,5 +109,6 @@ pub fn WebRuntime::boot_wasm(
 ) -> WebRuntime {
   install_web_sound_runtime()
   install_web_capture_runtime()
+  install_web_display_runtime()
   new_wasm_installed(create_app())
 }

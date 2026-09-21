@@ -20,7 +20,7 @@ fn web_descriptor() -> HostDescriptor {
       hardware_known: [Display, Input, AudioOutput, AudioInput, Clock],
     },
     facts: [
-      "RGB565 framebuffer presentation of the 120x160 logical canvas", "semantic Up / Down / Ok input translated from the keyboard",
+      "full-resolution 240x320 RGB565 presentation with virtual backlight", "semantic Up / Down / Ok input translated from the keyboard",
       "shared APSB sound-bank playback with independent handles", "per-playback position plus master volume and mute",
       "permission-gated microphone capture as PCM16 mono 16000 Hz", "battery is a fixture/unavailable state, not a real gauge",
       "frame pacing from the browser animation clock; monotonic now_us", "no network or persistent storage capability is exposed",
@@ -50,7 +50,7 @@ fn folotoy_descriptor() -> HostDescriptor {
       ],
     },
     facts: [
-      "ESP32-C3, 8 MB flash, no PSRAM", "physical ST7789P3 240x320 RGB565 panel; SDK logical framebuffer 120x160",
+      "ESP32-C3, 8 MB flash, no PSRAM", "physical ST7789P3 240x320 RGB565 panel and adjustable backlight",
       "semantic Up / Down / Ok physical buttons", "audio playback output", "shared APSB sound-bank playback",
       "microphone capture as PCM16 mono 16000 Hz", "CW2017 battery gauge", "Wi-Fi and Bluetooth LE",
       "timers / monotonic clock",

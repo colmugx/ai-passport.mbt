@@ -141,8 +141,8 @@ test "negative sizes are treated as empty, not normalized" {
 
 ///|
 test "logical display constants match the core contract" {
-  inspect(@core.LOGICAL_WIDTH, content="120")
-  inspect(@core.LOGICAL_HEIGHT, content="160")
+  inspect(@core.LOGICAL_WIDTH, content="240")
+  inspect(@core.LOGICAL_HEIGHT, content="320")
 }
 
 ///|

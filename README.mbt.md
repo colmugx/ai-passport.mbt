@@ -26,7 +26,7 @@ Platform details such as browser APIs, ESP-IDF, BSPs, GPIO, buses, codecs, and f
 
 ## Display model
 
-The logical screen is fixed at **120×160** pixels for v0.1. Applications draw with logical coordinates; the backend scales/presents however the hardware requires. Colors are authored as RGB and quantized to **RGB565** by `Color::to_rgb565()` — the same quantized colors a preview and the device LCD show.
+Applications query the active Host with `@graphics.display_info()` and allocate `Canvas::for_display()` for its full drawing surface. The current Web and FoloToy Hosts provide **240×320** pixels. Colors are authored as RGB and quantized to **RGB565** by `Color::to_rgb565()`; a future monochrome Host converts at its presentation boundary. `@graphics.backlight_level()` returns `None` for an unlit panel, and `set_backlight(0..100)` reports whether a light exists.
 
 `Canvas` stores one `UInt16` RGB565 value per pixel. `Canvas::frame_view()` creates a read-only view sharing that storage; it does not copy a full frame. `FrameView::width()`, `height()`, and `copy_rgb565_row(y~, out~ : FixedArray[Int]) -> Int` let a backend read rows. The copy returns the number of pixels written: zero for an invalid row and a prefix count when `out` is too short. A view is valid only until its canvas is next mutated, so a display sink must consume it synchronously or copy the rows it needs. Graphics public APIs do not expose strip rendering or display-controller specifics.
 

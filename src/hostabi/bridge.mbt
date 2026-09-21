@@ -98,7 +98,7 @@ pub fn HostBridge::advance(self : HostBridge, now_us : Int64) -> Unit {
 ///
 /// Pixel `(x, y)` lands at byte address
 /// `FRAMEBUFFER_PTR + (y * LOGICAL_WIDTH + x) * 2`, so the region always
-/// holds the 120x160 logical frame with the ABI's fixed stride, regardless of
+/// holds the 240x320 logical frame with the ABI's fixed stride, regardless of
 /// the source canvas size. A frame wider or taller than the logical display
 /// is clipped to it; the region can never be overrun.
 pub impl @driver.DisplaySink for HostBridge with fn present(

@@ -4,7 +4,7 @@ The module `colmugx/ai-passport` is a MoonBit application SDK and its co-version
 
 ```text
 Application logic
-  ├─ core: 120×160 logical dimensions, Color and geometry
+  ├─ core: current 240×320 defaults, Color and geometry
   ├─ graphics: Canvas → read-only FrameView → driver.DisplaySink
   ├─ input: Up / Down / Ok and InputState
   ├─ audio: Sound → Playback controls → internal Host sound runtime

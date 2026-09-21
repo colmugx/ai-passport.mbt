@@ -6,7 +6,7 @@
 /// backend glue stays thin and replaceable).
 ///
 /// `present` receives a read-only `@graphics.FrameView` of the fully drawn
-/// canvas (120×160 logical per docs/DRIVER.md). The view shares the canvas
+/// canvas (240×320 on the current Hosts). The view shares the canvas
 /// storage: it is valid only until the source canvas is mutated again, so
 /// implementations must consume it synchronously — copy rows out with
 /// `copy_rgb565_row` (or push them straight to the panel) and never retain

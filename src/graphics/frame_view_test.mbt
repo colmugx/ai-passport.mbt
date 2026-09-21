@@ -10,10 +10,10 @@ test "frame view exposes logical dimensions" {
 }
 
 ///|
-test "logical frame view is 120x160" {
+test "logical frame view is 240x320" {
   let frame = @graphics.Canvas::logical().frame_view()
-  inspect(frame.width(), content="120")
-  inspect(frame.height(), content="160")
+  inspect(frame.width(), content="240")
+  inspect(frame.height(), content="320")
 }
 
 ///|
@@ -154,8 +154,8 @@ test "two runs of the same scene produce identical frames" {
   let row_b : FixedArray[Int] = FixedArray::make(b.width(), 0)
   let mut identical = true
   for y in 0..<a.height() {
-    inspect(a.copy_rgb565_row(y~, out=row_a), content="120")
-    inspect(b.copy_rgb565_row(y~, out=row_b), content="120")
+    inspect(a.copy_rgb565_row(y~, out=row_a), content="240")
+    inspect(b.copy_rgb565_row(y~, out=row_b), content="240")
     for i in 0..<row_a.length() {
       if row_a[i] != row_b[i] {
         identical = false

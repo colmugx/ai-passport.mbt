@@ -9,8 +9,8 @@ test "present copies every logical pixel into the framebuffer region" {
   canvas.fill_rect(
     x=0,
     y=0,
-    w=120,
-    h=160,
+    w=@core.LOGICAL_WIDTH,
+    h=@core.LOGICAL_HEIGHT,
     color=@core.Color::rgb(r=255, g=0, b=0),
   )
   let sink : &@driver.DisplaySink = bridge
@@ -24,8 +24,7 @@ test "present copies every logical pixel into the framebuffer region" {
     writes[pixels - 1],
     (@hostabi.FRAMEBUFFER_PTR + @hostabi.FRAMEBUFFER_LEN - 2, 63488),
   )
-  // Row-major addressing with the fixed 120-pixel stride: row 1 starts at
-  // pixel 120, i.e. byte offset FRAMEBUFFER_PTR + 240.
+  // Row-major addressing with the current display stride.
   assert_eq(
     writes[@core.LOGICAL_WIDTH],
     (@hostabi.FRAMEBUFFER_PTR + 2 * @core.LOGICAL_WIDTH, 63488),
@@ -33,7 +32,7 @@ test "present copies every logical pixel into the framebuffer region" {
 }
 
 ///|
-test "present maps canvas pixel (x, y) to byte offset (y * 120 + x) * 2" {
+test "present maps canvas pixel (x, y) to byte offset (y * width + x) * 2" {
   let writes : Array[(Int, Int)] = []
   let bridge = @hostabi.HostBridge::new(
     store_u16=(addr, value) => writes.push((addr, value)),
@@ -45,13 +44,13 @@ test "present maps canvas pixel (x, y) to byte offset (y * 120 + x) * 2" {
   canvas.pixel(x=5, y=7, color=@core.Color::rgb(r=0, g=255, b=0))
   let sink : &@driver.DisplaySink = bridge
   sink.present(frame=canvas.frame_view())
-  let idx = 7 * 120 + 5
-  assert_eq(writes.length(), 19200)
+  let idx = 7 * @core.LOGICAL_WIDTH + 5
+  assert_eq(writes.length(), @core.LOGICAL_WIDTH * @core.LOGICAL_HEIGHT)
   assert_eq(writes[idx], (@hostabi.FRAMEBUFFER_PTR + idx * 2, 2016))
   // Untouched pixels arrive as black.
   assert_eq(writes[0], (@hostabi.FRAMEBUFFER_PTR, 0))
   assert_eq(
-    writes[19199],
+    writes[writes.length() - 1],
     (@hostabi.FRAMEBUFFER_PTR + @hostabi.FRAMEBUFFER_LEN - 2, 0),
   )
 }
@@ -68,8 +67,8 @@ test "a narrower canvas copies prefix rows at the logical stride" {
   let sink : &@driver.DisplaySink = bridge
   sink.present(frame=canvas.frame_view())
   assert_eq(writes.length(), 16)
-  // Row 1, column 0 still sits at the 120-pixel stride: byte offset 240.
-  assert_eq(writes[8], (@hostabi.FRAMEBUFFER_PTR + 120 * 2, 31))
+  // Row 1, column 0 uses the panel stride.
+  assert_eq(writes[8], (@hostabi.FRAMEBUFFER_PTR + @core.LOGICAL_WIDTH * 2, 31))
 }
 
 ///|
@@ -79,17 +78,20 @@ test "frames larger than the logical display are clipped into the region" {
     store_u16=(addr, value) => writes.push((addr, value)),
     battery_percent=() => -1,
   )
-  let canvas = @graphics.Canvas::new(width=130, height=170)
+  let canvas = @graphics.Canvas::new(
+    width=@core.LOGICAL_WIDTH + 10,
+    height=@core.LOGICAL_HEIGHT + 10,
+  )
   canvas.fill_rect(
     x=0,
     y=0,
-    w=130,
-    h=170,
+    w=@core.LOGICAL_WIDTH + 10,
+    h=@core.LOGICAL_HEIGHT + 10,
     color=@core.Color::rgb(r=255, g=255, b=255),
   )
   let sink : &@driver.DisplaySink = bridge
   sink.present(frame=canvas.frame_view())
-  // Only the 120x160 prefix is copied; the framebuffer region cannot overrun.
+  // Only the panel-sized prefix is copied; the framebuffer cannot overrun.
   let pixels = @core.LOGICAL_WIDTH * @core.LOGICAL_HEIGHT
   assert_eq(writes.length(), pixels)
   let mut max_addr = 0
@@ -115,8 +117,8 @@ test "repeated presents on one bridge leave the region holding the last frame ex
   full.fill_rect(
     x=0,
     y=0,
-    w=120,
-    h=160,
+    w=@core.LOGICAL_WIDTH,
+    h=@core.LOGICAL_HEIGHT,
     color=@core.Color::rgb(r=255, g=0, b=0),
   )
   sink.present(frame=full.frame_view())
@@ -124,8 +126,8 @@ test "repeated presents on one bridge leave the region holding the last frame ex
   full.fill_rect(
     x=0,
     y=0,
-    w=120,
-    h=160,
+    w=@core.LOGICAL_WIDTH,
+    h=@core.LOGICAL_HEIGHT,
     color=@core.Color::rgb(r=0, g=255, b=0),
   )
   sink.present(frame=full.frame_view())
@@ -139,8 +141,8 @@ test "repeated presents on one bridge leave the region holding the last frame ex
   full.fill_rect(
     x=0,
     y=0,
-    w=120,
-    h=160,
+    w=@core.LOGICAL_WIDTH,
+    h=@core.LOGICAL_HEIGHT,
     color=@core.Color::rgb(r=255, g=255, b=255),
   )
   sink.present(frame=full.frame_view())
@@ -149,8 +151,8 @@ test "repeated presents on one bridge leave the region holding the last frame ex
   full.fill_rect(
     x=0,
     y=0,
-    w=120,
-    h=160,
+    w=@core.LOGICAL_WIDTH,
+    h=@core.LOGICAL_HEIGHT,
     color=@core.Color::rgb(r=0, g=255, b=0),
   )
   for y in 0..<@core.LOGICAL_HEIGHT {

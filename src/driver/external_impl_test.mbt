@@ -36,7 +36,7 @@ impl DisplaySink for CountingSink with fn present(self, frame~) {
 
 ///|
 /// A `DisplaySink` that copies the entire presented frame row by row,
-/// proving an external backend can read every pixel of a 120x160 frame
+/// proving an external backend can read every pixel of a 240x320 frame
 /// through the trait seam — with no access to canvas internals. Trait
 /// methods cannot raise, so copy shortfalls are recorded as state instead
 /// of asserted inline.
@@ -90,9 +90,9 @@ test "external types implement DisplaySink and are consumed via &DisplaySink" {
 }
 
 ///|
-test "external sink reads every row of the full 120x160 logical frame" {
+test "external sink reads every row of the full 240x320 logical frame" {
   // A fresh canvas is black (RGB565 0) everywhere, so a complete capture
-  // must be 160 rows of 120 zeros. Row values themselves are covered by the
+  // must be 320 rows of 240 zeros. Row values themselves are covered by the
   // graphics package tests against Color::to_rgb565().
   let canvas = @graphics.Canvas::logical()
   let capture = RowCaptureSink::{
@@ -104,13 +104,13 @@ test "external sink reads every row of the full 120x160 logical frame" {
   let sink : &@driver.DisplaySink = capture
   sink.present(frame=canvas.frame_view())
 
-  inspect(capture.width, content="120")
-  inspect(capture.height, content="160")
-  inspect(capture.rows.length(), content="160")
+  inspect(capture.width, content="240")
+  inspect(capture.height, content="320")
+  inspect(capture.rows.length(), content="320")
   inspect(capture.rows_complete, content="true")
   let mut all_zero = true
   for row in capture.rows {
-    if row.length() != 120 {
+    if row.length() != 240 {
       all_zero = false
     }
     for i in 0..<row.length() {
@@ -138,8 +138,8 @@ test "external sink reads two presentations of identical frames identically" {
   let first = capture.rows
   sink.present(frame=@graphics.Canvas::logical().frame_view())
   let second = capture.rows
-  inspect(first.length(), content="160")
-  inspect(second.length(), content="160")
+  inspect(first.length(), content="320")
+  inspect(second.length(), content="320")
   let mut identical = true
   for y in 0..<first.length() {
     for i in 0..<first[y].length() {

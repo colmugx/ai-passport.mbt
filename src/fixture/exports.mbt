@@ -24,7 +24,7 @@ pub fn passport_fb_ptr() -> Int {
 }
 
 ///|
-/// Byte length of the framebuffer region: 120 * 160 RGB565 uint16 = 38400
+/// Byte length of the framebuffer region: 240 * 320 RGB565 uint16 = 153600
 /// (exported as `passport_fb_len`).
 pub fn passport_fb_len() -> Int {
   @hostabi.FRAMEBUFFER_LEN

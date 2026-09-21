@@ -733,7 +733,7 @@ export function registerCliFixtureSuites({ suite, ok, eq, eqText, SuiteError, re
         ok(p.hasFrameExport, "the host object exposes the live wasm app");
         ok(p.frameCountAtSnapshot > 0, `app.wasm must tick (${p.frameCountAtSnapshot} frames before snapshot)`);
         ok(p.framesDuring > 0, `frames must continue during the snapshot (${p.framesDuring})`);
-        eq(p.canvasWidth, 120, "canvas backing-store width");
+        eq(p.canvasWidth, 240, "canvas backing-store width");
         console.log(`  fixture-a: playwright [${p.frameCountAtSnapshot}+${p.framesDuring} frames]`);
       } else {
         const status = runShellBundleStatus(url);

@@ -37,17 +37,25 @@ pub fn Canvas::new(width~ : Int, height~ : Int) -> Canvas {
 }
 
 ///|
-/// Creates a canvas matching the v0.1 logical display of 120x160 pixels.
+/// Creates a canvas matching the current default 240x320 display.
+/// For Host-specific dimensions, use `Canvas::for_display` after Host boot.
 ///
 /// # Example
 /// ```mbt check
 /// test {
 ///   let canvas = @graphics.Canvas::logical()
-///   debug_inspect((canvas.width(), canvas.height()), content="(120, 160)")
+///   debug_inspect((canvas.width(), canvas.height()), content="(240, 320)")
 /// }
 /// ```
 pub fn Canvas::logical() -> Canvas {
   Canvas::new(width=@core.LOGICAL_WIDTH, height=@core.LOGICAL_HEIGHT)
+}
+
+///|
+/// Allocates a full-resolution canvas for the active Host panel.
+pub fn Canvas::for_display() -> Canvas {
+  let info = display_info()
+  Canvas::new(width=info.width, height=info.height)
 }
 
 ///|

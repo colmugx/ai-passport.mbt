@@ -30,7 +30,7 @@ test "line never panics on wild arguments" {
 }
 
 ///|
-test "line draws on the logical 120x160 canvas" {
+test "line draws on the default logical canvas" {
   let canvas = @graphics.Canvas::logical()
   let white = @core.Color::rgb(r=255, g=255, b=255)
   canvas.line(x0=0, y0=0, x1=119, y1=159, color=white)

@@ -109,12 +109,15 @@ suite("host: lifecycle, framebuffer, input, and master output", async () => {
   eq(gain.gain.value, 0.7, "GainNode follows master volume");
   const first = host.tick(0n);
   ok(first && first.presented, "one tick presents the framebuffer");
-  eq(canvas.width, 120, "canvas width");
-  eq(canvas.height, 160, "canvas height");
+  eq(canvas.width, 240, "canvas width");
+  eq(canvas.height, 320, "canvas height");
+  host.imports.passport.host_set_backlight(35);
+  eq(host.imports.passport.host_backlight_level(), 35, "display light level is queryable");
+  eq(canvas.style.filter, "brightness(35%)", "Web presentation applies light level");
   eq(host.getFramebufferView()[0], 0xf800, "the presented framebuffer is readable");
   host.queueInput(hostModule.BUTTON.Down, true);
   host.tick(16_667n);
-  eq(host.getFramebufferView()[28 * 120], 0xffe0, "queued Down reaches application input");
+  eq(host.getFramebufferView()[28 * 240], 0xffe0, "queued Down reaches application input");
   host.setVolume(150);
   eq(host.volume, 100, "master volume clamps high");
   host.setMuted(true);
@@ -229,7 +232,7 @@ suite("host: microphone records PCM16 while sound output remains live", async ()
   ok(output.every((sample) => sample === 0), "capture node never echoes microphone to speakers");
   const count = api.host_capture_read(1024);
   ok(count >= 159 && count <= 161, "48 kHz input resamples to 16 kHz");
-  const captured = new DataView(host.memory.buffer).getInt16(49152, true);
+  const captured = new DataView(host.memory.buffer).getInt16(196608, true);
   eq(captured, 16384, "host writes signed PCM16 samples");
   const played = new Float32Array(soundProcessor.bufferSize);
   soundProcessor.onaudioprocess({ outputBuffer: { getChannelData: () => played } });
