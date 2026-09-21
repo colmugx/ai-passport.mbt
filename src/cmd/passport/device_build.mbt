@@ -6,10 +6,6 @@
 /// restored byte-exact before the command reports anything).
 
 ///|
-/// The toolchain versions pinned by the physical Host implementation.
-const MOON_VERSION_PIN : String = "moon 0.1.20260915 (2e1a46d 2026-09-15)"
-
-///|
 const IDF_VERSION_PIN : String = "ESP-IDF v5.5.3"
 
 ///|
@@ -643,17 +639,6 @@ async fn device_build_command(sub : @argparse.Matches) -> Unit {
       guard first.contains(IDF_VERSION_PIN) else {
         @cli.fail_cli(
           "expected \{IDF_VERSION_PIN}; source the matching export.sh before building (got: \{first})",
-        )
-      }
-    }
-  }
-  match try_output(@shell.Cmd::Cmd("moon", ["version"])) {
-    None => @cli.fail_cli("the moon toolchain is unavailable")
-    Some(out) => {
-      let first = first_line(out.stdout()).trim()
-      guard first == MOON_VERSION_PIN else {
-        @cli.fail_cli(
-          "expected \{MOON_VERSION_PIN}; the device build pins the MoonBit toolchain (got: \{first})",
         )
       }
     }

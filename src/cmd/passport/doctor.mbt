@@ -161,23 +161,6 @@ async fn doctor_sound_resources(
 /// the end; nothing aborts early.
 async fn doctor_device(sub : @argparse.Matches) -> Unit {
   let failures : Array[String] = []
-  match try_output(@shell.Cmd::Cmd("moon", ["version"])) {
-    None => {
-      println("FAIL: the moon toolchain is unavailable")
-      failures.push("moon toolchain")
-    }
-    Some(out) => {
-      let first = first_line(out.stdout()).trim()
-      if first == MOON_VERSION_PIN {
-        println("ok: moon toolchain (\{first})")
-      } else {
-        println(
-          "FAIL: the device build pins \{MOON_VERSION_PIN} (got \{first})",
-        )
-        failures.push("moon version pin")
-      }
-    }
-  }
   match try_output(@shell.Cmd::Cmd("idf.py", ["--version"])) {
     None => {
       println(
