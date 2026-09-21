@@ -11,6 +11,14 @@ pub(all) suberror CliError {
 } derive(Eq, Debug)
 
 ///|
+/// Explicitly promotes the derived `Eq` methods to regular methods.
+pub extend CliError with Eq::{not_equal, equal}
+
+///|
+/// Explicitly promotes the derived `Debug` method to a regular method.
+pub extend CliError with @moonbitlang/core/debug.Debug::{to_repr}
+
+///|
 /// Fails the current operation with a user-facing message. Polymorphic in
 /// the continuation type so it works in every match branch.
 pub fn[T] fail_cli(message : String) -> T raise {

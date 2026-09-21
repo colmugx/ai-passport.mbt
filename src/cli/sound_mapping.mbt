@@ -22,8 +22,6 @@ pub fn render_sound_mapping(sounds : Array[SoundMetadata]) -> String {
   })
   out.write_string("  }\n}\n\n")
 
-  out.write_string(
-    "///|\npub extend Sound with @audio.Sound::{resource_id}\n",
-  )
+  out.write_string("///|\npub extend Sound with @audio.Sound::{resource_id}\n")
   out.to_string()
 }

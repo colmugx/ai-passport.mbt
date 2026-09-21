@@ -77,12 +77,18 @@ pub fn under_root(String, String) -> String
 pub(all) suberror CliError {
   Fail(String)
 } derive(Eq, @debug.Debug)
+pub fn CliError::equal(Self, Self) -> Bool
+pub fn CliError::not_equal(Self, Self) -> Bool
+pub fn CliError::to_repr(Self) -> @debug.Repr
 
 // Types and methods
 pub(all) struct AssetEntry {
   source : String
   bundle_path : String
 } derive(Eq, @debug.Debug)
+pub fn AssetEntry::equal(Self, Self) -> Bool
+pub fn AssetEntry::not_equal(Self, Self) -> Bool
+pub fn AssetEntry::to_repr(Self) -> @debug.Repr
 
 pub(all) struct CompiledSound {
   id : Int
@@ -92,11 +98,17 @@ pub(all) struct CompiledSound {
   offset : Int
   sample_count : Int
 } derive(Eq, @debug.Debug)
+pub fn CompiledSound::equal(Self, Self) -> Bool
+pub fn CompiledSound::not_equal(Self, Self) -> Bool
+pub fn CompiledSound::to_repr(Self) -> @debug.Repr
 
 pub(all) struct HostDependency {
   host_id : String
   path : String
 } derive(Eq, @debug.Debug)
+pub fn HostDependency::equal(Self, Self) -> Bool
+pub fn HostDependency::not_equal(Self, Self) -> Bool
+pub fn HostDependency::to_repr(Self) -> @debug.Repr
 
 pub(all) struct Project {
   root : String
@@ -104,6 +116,9 @@ pub(all) struct Project {
   source_dir : String
   contract : ProjectContract
 } derive(Eq, @debug.Debug)
+pub fn Project::equal(Self, Self) -> Bool
+pub fn Project::not_equal(Self, Self) -> Bool
+pub fn Project::to_repr(Self) -> @debug.Repr
 
 pub(all) struct ProjectContract {
   entry : String
@@ -112,21 +127,33 @@ pub(all) struct ProjectContract {
   sounds : Array[SoundEntry]
   host_dependencies : Array[HostDependency]
 } derive(Eq, @debug.Debug)
+pub fn ProjectContract::equal(Self, Self) -> Bool
+pub fn ProjectContract::not_equal(Self, Self) -> Bool
+pub fn ProjectContract::to_repr(Self) -> @debug.Repr
 
 pub(all) struct SoundCompilation {
   sounds : Array[CompiledSound]
   bank : Bytes
 } derive(Eq, @debug.Debug)
+pub fn SoundCompilation::equal(Self, Self) -> Bool
+pub fn SoundCompilation::not_equal(Self, Self) -> Bool
+pub fn SoundCompilation::to_repr(Self) -> @debug.Repr
 
 pub(all) struct SoundEntry {
   name : String
   source : String
 } derive(Eq, @debug.Debug)
+pub fn SoundEntry::equal(Self, Self) -> Bool
+pub fn SoundEntry::not_equal(Self, Self) -> Bool
+pub fn SoundEntry::to_repr(Self) -> @debug.Repr
 
 pub(all) struct SoundInput {
   entry : SoundEntry
   pcm : Bytes
 } derive(Eq, @debug.Debug)
+pub fn SoundInput::equal(Self, Self) -> Bool
+pub fn SoundInput::not_equal(Self, Self) -> Bool
+pub fn SoundInput::to_repr(Self) -> @debug.Repr
 
 pub(all) struct SoundMetadata {
   id : Int
@@ -134,6 +161,9 @@ pub(all) struct SoundMetadata {
   symbol : String
   source : String
 } derive(Eq, @debug.Debug)
+pub fn SoundMetadata::equal(Self, Self) -> Bool
+pub fn SoundMetadata::not_equal(Self, Self) -> Bool
+pub fn SoundMetadata::to_repr(Self) -> @debug.Repr
 
 // Type aliases
 

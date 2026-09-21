@@ -28,8 +28,8 @@
 /// # Example
 /// ```mbt check
 /// test {
-///   let probe = SinkProbe::new()
-///   let sink : &DisplaySink = probe
+///   let probe = @driver.SinkProbe::new()
+///   let sink : &@driver.DisplaySink = probe
 ///   sink.present(frame=@graphics.Canvas::logical().frame_view())
 ///   inspect(probe.calls(), content="1")
 /// }

@@ -8,7 +8,7 @@
 /// # Example
 /// ```mbt check
 /// test {
-///   let battery = Battery::fixture(percent=82)
+///   let battery = @battery.Battery::fixture(percent=82)
 ///   debug_inspect(battery.percent(), content="None")
 ///   battery.refresh()
 ///   debug_inspect(battery.percent(), content="Some(82)")
@@ -68,7 +68,7 @@ pub fn Battery::new(source~ : &BatterySource) -> Battery {
 /// # Example
 /// ```mbt check
 /// test {
-///   let battery = Battery::fixture(percent=82)
+///   let battery = @battery.Battery::fixture(percent=82)
 ///   battery.refresh()
 ///   debug_inspect(battery.percent(), content="Some(82)")
 ///   debug_inspect(battery.millivolts(), content="None")
@@ -89,7 +89,7 @@ pub fn Battery::fixture(percent~ : Int) -> Battery {
 /// # Example
 /// ```mbt check
 /// test {
-///   let battery = Battery::fixture(percent=40)
+///   let battery = @battery.Battery::fixture(percent=40)
 ///   debug_inspect(battery.percent(), content="None")
 ///   battery.refresh()
 ///   debug_inspect(battery.percent(), content="Some(40)")
@@ -107,7 +107,7 @@ pub fn Battery::refresh(self : Battery) -> Unit {
 /// # Example
 /// ```mbt check
 /// test {
-///   let battery = Battery::fixture(percent=40)
+///   let battery = @battery.Battery::fixture(percent=40)
 ///   debug_inspect(battery.percent(), content="None") // cache starts empty
 ///   battery.refresh()
 ///   debug_inspect(battery.percent(), content="Some(40)")
@@ -125,7 +125,7 @@ pub fn Battery::percent(self : Battery) -> Int? {
 /// # Example
 /// ```mbt check
 /// test {
-///   let battery = Battery::fixture(percent=82)
+///   let battery = @battery.Battery::fixture(percent=82)
 ///   battery.refresh()
 ///   debug_inspect(battery.millivolts(), content="None")
 /// }

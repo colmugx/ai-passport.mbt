@@ -28,7 +28,7 @@
 /// # Example
 /// ```mbt check
 /// test {
-///   let clock : &Clock = ZeroClock::new()
+///   let clock : &@driver.Clock = @driver.ZeroClock::new()
 ///   clock.sleep_ms(ms=16)
 ///   inspect(clock.monotonic_ms(), content="0")
 /// }

@@ -124,6 +124,10 @@ pub impl @driver.DisplaySink for HostBridge with fn present(
 }
 
 ///|
+/// Explicitly promotes the `DisplaySink` trait methods to regular methods.
+pub extend HostBridge with @colmugx/ai-passport/driver.DisplaySink::{present}
+
+///|
 /// `BatterySource` adapter over the raw `host_battery_percent` import: the
 /// wire sentinel `-1` (any negative value, defensively) maps to `None`
 /// (reading unavailable — callers degrade, never crash); `0..=100` passes
@@ -137,6 +141,13 @@ pub impl @battery.BatterySource for HostBridge with fn percent(
   } else {
     Some(raw)
   }
+}
+
+///|
+/// Explicitly promotes the `BatterySource` trait methods to regular methods.
+pub extend HostBridge with @colmugx/ai-passport/battery.BatterySource::{
+  percent,
+  millivolts,
 }
 
 ///|
@@ -155,6 +166,13 @@ pub impl @battery.BatterySource for HostBridge with fn millivolts(
 /// deltas, never absolute values.
 pub impl @driver.Clock for HostBridge with fn monotonic_ms(self : HostBridge) -> Int {
   (self.now_us / 1000L).to_int()
+}
+
+///|
+/// Explicitly promotes the `Clock` trait methods to regular methods.
+pub extend HostBridge with @colmugx/ai-passport/driver.Clock::{
+  monotonic_ms,
+  sleep_ms,
 }
 
 ///|

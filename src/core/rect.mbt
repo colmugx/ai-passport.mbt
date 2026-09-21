@@ -13,6 +13,14 @@ pub(all) struct Rect {
 } derive(Debug, Eq)
 
 ///|
+/// Explicitly promotes the derived `Debug` method to a regular method.
+pub extend Rect with @moonbitlang/core/debug.Debug::{to_repr}
+
+///|
+/// Explicitly promotes the derived `Eq` methods to regular methods.
+pub extend Rect with Eq::{not_equal, equal}
+
+///|
 /// Returns `true` when the rectangle is empty (`w <= 0` or `h <= 0`).
 fn Rect::is_empty(self : Rect) -> Bool {
   self.w <= 0 || self.h <= 0
@@ -27,7 +35,7 @@ fn Rect::is_empty(self : Rect) -> Bool {
 /// # Example
 /// ```mbt check
 /// test {
-///   let r : Rect = { x: 0, y: 0, w: 10, h: 10, }
+///   let r : @core.Rect = { x: 0, y: 0, w: 10, h: 10, }
 ///   inspect(r.contains(x=0, y=0), content="true")
 ///   inspect(r.contains(x=9, y=9), content="true")
 ///   inspect(r.contains(x=10, y=5), content="false")
@@ -50,8 +58,8 @@ pub fn Rect::contains(self : Rect, x~ : Int, y~ : Int) -> Bool {
 /// # Example
 /// ```mbt check
 /// test {
-///   let a : Rect = { x: 0, y: 0, w: 10, h: 10, }
-///   let b : Rect = { x: 10, y: 0, w: 5, h: 5, }
+///   let a : @core.Rect = { x: 0, y: 0, w: 10, h: 10, }
+///   let b : @core.Rect = { x: 10, y: 0, w: 5, h: 5, }
 ///   inspect(a.intersects(other=b), content="false")
 /// }
 /// ```
@@ -74,8 +82,8 @@ pub fn Rect::intersects(self : Rect, other~ : Rect) -> Bool {
 /// # Example
 /// ```mbt check
 /// test {
-///   let a : Rect = { x: 0, y: 0, w: 10, h: 10, }
-///   let b : Rect = { x: 5, y: 5, w: 10, h: 10, }
+///   let a : @core.Rect = { x: 0, y: 0, w: 10, h: 10, }
+///   let b : @core.Rect = { x: 5, y: 5, w: 10, h: 10, }
 ///   debug_inspect(
 ///     a.intersection(other=b),
 ///     content="Some({ x: 5, y: 5, w: 5, h: 5 })",

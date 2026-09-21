@@ -9,7 +9,7 @@
 /// # Example
 /// ```mbt check
 /// test {
-///   let clock = ZeroClock::new()
+///   let clock = @driver.ZeroClock::new()
 ///   clock.sleep_ms(ms=1000)
 ///   inspect(clock.monotonic_ms(), content="0")
 /// }
@@ -25,7 +25,7 @@ pub struct ZeroClock {
 /// # Example
 /// ```mbt check
 /// test {
-///   let _ : ZeroClock = ZeroClock::new()
+///   let _ : @driver.ZeroClock = @driver.ZeroClock::new()
 /// }
 /// ```
 pub fn ZeroClock::new() -> ZeroClock {
@@ -46,3 +46,8 @@ pub impl Clock for ZeroClock with fn sleep_ms(self, ms~ : Int) -> Unit {
   let _ = self
   let _ = ms
 }
+
+///|
+/// Expose trait methods as regular methods so `clock.monotonic_ms()` works
+/// without a trait-object or qualified trait call.
+pub extend ZeroClock with Clock::{monotonic_ms, sleep_ms}

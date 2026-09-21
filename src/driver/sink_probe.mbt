@@ -10,8 +10,8 @@
 /// # Example
 /// ```mbt check
 /// test {
-///   let probe = SinkProbe::new()
-///   let sink : &DisplaySink = probe
+///   let probe = @driver.SinkProbe::new()
+///   let sink : &@driver.DisplaySink = probe
 ///   sink.present(frame=@graphics.Canvas::new(width=64, height=80).frame_view())
 ///   inspect(probe.calls(), content="1")
 ///   inspect(probe.last_width(), content="64")
@@ -63,3 +63,7 @@ pub impl DisplaySink for SinkProbe with fn present(
   self.last_width = frame.width()
   self.last_height = frame.height()
 }
+
+///|
+/// Explicitly promotes the `DisplaySink` trait methods to regular methods.
+pub extend SinkProbe with DisplaySink::{present}

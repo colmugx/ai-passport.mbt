@@ -15,6 +15,9 @@ pub(all) enum Button {
   Down
   Ok
 } derive(Eq, @debug.Debug)
+pub fn Button::equal(Self, Self) -> Bool
+pub fn Button::not_equal(Self, Self) -> Bool
+pub fn Button::to_repr(Self) -> @debug.Repr
 
 pub(all) enum ButtonEvent {
   Press
@@ -22,6 +25,9 @@ pub(all) enum ButtonEvent {
   DoubleClick
   LongPress
 } derive(Eq, @debug.Debug)
+pub fn ButtonEvent::equal(Self, Self) -> Bool
+pub fn ButtonEvent::not_equal(Self, Self) -> Bool
+pub fn ButtonEvent::to_repr(Self) -> @debug.Repr
 
 pub struct InputState {
   // private fields
@@ -33,6 +39,7 @@ pub fn InputState::new() -> Self
 pub fn InputState::press(Self, Button) -> Unit
 pub fn InputState::pressed(Self, Button) -> Bool
 pub fn InputState::release(Self, Button) -> Unit
+pub fn InputState::to_repr(Self) -> @debug.Repr
 
 // Type aliases
 

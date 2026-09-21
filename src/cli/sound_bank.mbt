@@ -36,6 +36,14 @@ pub(all) struct SoundInput {
 } derive(Eq, Debug)
 
 ///|
+/// Explicitly promotes the derived `Eq` methods to regular methods.
+pub extend SoundInput with Eq::{not_equal, equal}
+
+///|
+/// Explicitly promotes the derived `Debug` method to a regular method.
+pub extend SoundInput with @moonbitlang/core/debug.Debug::{to_repr}
+
+///|
 /// One validated declaration in the source-of-truth sound metadata mapping.
 /// IDs and symbols are shared by generated MoonBit bindings and sound banks.
 pub(all) struct SoundMetadata {
@@ -44,6 +52,14 @@ pub(all) struct SoundMetadata {
   symbol : String
   source : String
 } derive(Eq, Debug)
+
+///|
+/// Explicitly promotes the derived `Eq` methods to regular methods.
+pub extend SoundMetadata with Eq::{not_equal, equal}
+
+///|
+/// Explicitly promotes the derived `Debug` method to a regular method.
+pub extend SoundMetadata with @moonbitlang/core/debug.Debug::{to_repr}
 
 ///|
 /// One validated sound and its exact location in the emitted bank.
@@ -57,11 +73,27 @@ pub(all) struct CompiledSound {
 } derive(Eq, Debug)
 
 ///|
+/// Explicitly promotes the derived `Eq` methods to regular methods.
+pub extend CompiledSound with Eq::{not_equal, equal}
+
+///|
+/// Explicitly promotes the derived `Debug` method to a regular method.
+pub extend CompiledSound with @moonbitlang/core/debug.Debug::{to_repr}
+
+///|
 /// The single compiler result consumed by generated mappings and all Hosts.
 pub(all) struct SoundCompilation {
   sounds : Array[CompiledSound]
   bank : Bytes
 } derive(Eq, Debug)
+
+///|
+/// Explicitly promotes the derived `Eq` methods to regular methods.
+pub extend SoundCompilation with Eq::{not_equal, equal}
+
+///|
+/// Explicitly promotes the derived `Debug` method to a regular method.
+pub extend SoundCompilation with @moonbitlang/core/debug.Debug::{to_repr}
 
 ///|
 priv struct SoundMetadataCompiler {

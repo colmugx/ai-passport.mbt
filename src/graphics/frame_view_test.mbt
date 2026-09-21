@@ -3,7 +3,7 @@
 
 ///|
 test "frame view exposes logical dimensions" {
-  let canvas = Canvas::new(width=3, height=5)
+  let canvas = @graphics.Canvas::new(width=3, height=5)
   let frame = canvas.frame_view()
   inspect(frame.width(), content="3")
   inspect(frame.height(), content="5")
@@ -11,14 +11,14 @@ test "frame view exposes logical dimensions" {
 
 ///|
 test "logical frame view is 120x160" {
-  let frame = Canvas::logical().frame_view()
+  let frame = @graphics.Canvas::logical().frame_view()
   inspect(frame.width(), content="120")
   inspect(frame.height(), content="160")
 }
 
 ///|
 test "copied rows match Color::to_rgb565 for a drawn scene" {
-  let canvas = Canvas::new(width=4, height=3)
+  let canvas = @graphics.Canvas::new(width=4, height=3)
   let red = @core.Color::rgb(r=255, g=0, b=0)
   let white = @core.Color::rgb(r=255, g=255, b=255)
   canvas.clear(color=red)
@@ -46,7 +46,7 @@ test "copied rows match Color::to_rgb565 for a drawn scene" {
 
 ///|
 test "copy_rgb565_row rejects out-of-range rows with zero copies" {
-  let canvas = Canvas::new(width=2, height=2)
+  let canvas = @graphics.Canvas::new(width=2, height=2)
   let frame = canvas.frame_view()
   let row : FixedArray[Int] = FixedArray::make(2, 99)
   inspect(frame.copy_rgb565_row(y=-1, out=row), content="0")
@@ -58,7 +58,7 @@ test "copy_rgb565_row rejects out-of-range rows with zero copies" {
 
 ///|
 test "undersized output copies the fitting prefix" {
-  let canvas = Canvas::new(width=4, height=1)
+  let canvas = @graphics.Canvas::new(width=4, height=1)
   let green = @core.Color::rgb(r=0, g=255, b=0)
   canvas.clear(color=green)
   let frame = canvas.frame_view()
@@ -70,7 +70,7 @@ test "undersized output copies the fitting prefix" {
 
 ///|
 test "oversized output leaves surplus cells untouched" {
-  let canvas = Canvas::new(width=2, height=1)
+  let canvas = @graphics.Canvas::new(width=2, height=1)
   let blue = @core.Color::rgb(r=0, g=0, b=255)
   canvas.clear(color=blue)
   let frame = canvas.frame_view()
@@ -86,7 +86,7 @@ test "oversized output leaves surplus cells untouched" {
 
 ///|
 test "zero-length output copies nothing" {
-  let canvas = Canvas::new(width=2, height=1)
+  let canvas = @graphics.Canvas::new(width=2, height=1)
   let frame = canvas.frame_view()
   let row : FixedArray[Int] = FixedArray::make(0, 0)
   inspect(frame.copy_rgb565_row(y=0, out=row), content="0")
@@ -97,7 +97,7 @@ test "view shares canvas storage and reflects later mutation" {
   // Documented lifetime contract made observable: a FrameView is valid until
   // the source canvas is mutated again; a sink that reads late sees the new
   // pixels, so backends must consume synchronously or copy.
-  let canvas = Canvas::new(width=2, height=1)
+  let canvas = @graphics.Canvas::new(width=2, height=1)
   let frame = canvas.frame_view()
   let before : FixedArray[Int] = FixedArray::make(2, 0)
   inspect(frame.copy_rgb565_row(y=0, out=before), content="2")
@@ -115,8 +115,8 @@ test "two runs of the same scene produce identical frames" {
   // Display-path determinism: the same drawing operations on two fresh
   // canvases must yield byte-identical RGB565 frames, so a preview and a
   // device run of one app agree pixel for pixel.
-  fn draw_scene() -> Canvas {
-    let canvas = Canvas::logical()
+  fn draw_scene() -> @graphics.Canvas {
+    let canvas = @graphics.Canvas::logical()
     canvas.clear(color=@core.Color::rgb(r=20, g=24, b=40))
     canvas.fill_rect(
       x=0,

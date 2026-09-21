@@ -1,6 +1,7 @@
 import {
   "colmugx/ai-passport/graphics",
   "colmugx/ai-passport/input",
+  "moonbitlang/core/debug",
 }
 
 import {

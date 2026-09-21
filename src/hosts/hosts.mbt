@@ -28,6 +28,14 @@ pub(all) enum Capability {
 } derive(Eq, Debug)
 
 ///|
+/// Explicitly promotes the derived `Eq` methods to regular methods.
+pub extend Capability with Eq::{not_equal, equal}
+
+///|
+/// Explicitly promotes the derived `Debug` method to a regular method.
+pub extend Capability with @moonbitlang/core/debug.Debug::{to_repr}
+
+///|
 /// Stable lowercase label for a capability (used by the CLI output and
 /// snapshot tests; part of the user-facing vocabulary).
 pub fn Capability::to_label(self : Capability) -> String {
@@ -56,6 +64,10 @@ pub(all) struct HostCapabilities {
 } derive(Debug)
 
 ///|
+/// Explicitly promotes the derived `Debug` method to a regular method.
+pub extend HostCapabilities with @moonbitlang/core/debug.Debug::{to_repr}
+
+///|
 /// Stable, deterministic rendering: labels joined with ", " in the descriptor
 /// declaration order.
 pub fn render_capabilities(caps : Array[Capability]) -> String {
@@ -74,6 +86,14 @@ pub(all) enum BackendStatus {
 } derive(Eq, Debug)
 
 ///|
+/// Explicitly promotes the derived `Eq` methods to regular methods.
+pub extend BackendStatus with Eq::{not_equal, equal}
+
+///|
+/// Explicitly promotes the derived `Debug` method to a regular method.
+pub extend BackendStatus with @moonbitlang/core/debug.Debug::{to_repr}
+
+///|
 /// Descriptor for one registered Host: its identity, its capabilities on the
 /// two planes, factual notes, and its tooling status. Descriptors are
 /// deterministic data — the same release always renders them identically.
@@ -89,3 +109,7 @@ pub(all) struct HostDescriptor {
   /// Tooling status of this Host's build/dev backend.
   backend : BackendStatus
 } derive(Debug)
+
+///|
+/// Explicitly promotes the derived `Debug` method to a regular method.
+pub extend HostDescriptor with @moonbitlang/core/debug.Debug::{to_repr}

@@ -61,11 +61,11 @@ impl BatterySource for NullSource with fn millivolts(self) -> Int? {
 
 ///|
 test "fresh Battery::new has an empty cache; refresh fills it from the source" {
-  let source : &BatterySource = FixedSource::{
+  let source : &@battery.BatterySource = FixedSource::{
     percent_value: Some(66),
     millivolts_value: Some(3750),
   }
-  let battery = Battery::new(source~)
+  let battery = @battery.Battery::new(source~)
   debug_inspect(battery.percent(), content="None")
   debug_inspect(battery.millivolts(), content="None")
   battery.refresh()
@@ -75,7 +75,7 @@ test "fresh Battery::new has an empty cache; refresh fills it from the source" {
 
 ///|
 test "Battery::fixture caches the DRIVER.md default 82 on refresh" {
-  let battery = Battery::fixture(percent=82)
+  let battery = @battery.Battery::fixture(percent=82)
   debug_inspect(battery.percent(), content="None")
   battery.refresh()
   debug_inspect(battery.percent(), content="Some(82)")
@@ -84,20 +84,20 @@ test "Battery::fixture caches the DRIVER.md default 82 on refresh" {
 
 ///|
 test "Battery::fixture clamps percent into 0..=100" {
-  let high = Battery::fixture(percent=150)
+  let high = @battery.Battery::fixture(percent=150)
   high.refresh()
   debug_inspect(high.percent(), content="Some(100)")
 
-  let low = Battery::fixture(percent=-3)
+  let low = @battery.Battery::fixture(percent=-3)
   low.refresh()
   debug_inspect(low.percent(), content="Some(0)")
 
   // Exact boundaries pass through unchanged.
-  let full = Battery::fixture(percent=100)
+  let full = @battery.Battery::fixture(percent=100)
   full.refresh()
   debug_inspect(full.percent(), content="Some(100)")
 
-  let empty = Battery::fixture(percent=0)
+  let empty = @battery.Battery::fixture(percent=0)
   empty.refresh()
   debug_inspect(empty.percent(), content="Some(0)")
 }
@@ -105,8 +105,8 @@ test "Battery::fixture clamps percent into 0..=100" {
 ///|
 test "cache never polls implicitly: constructor does no I/O, one refresh reads each slot once" {
   let src = CountingSource::{ percent_reads: 0, millivolt_reads: 0, }
-  let source : &BatterySource = src
-  let battery = Battery::new(source~)
+  let source : &@battery.BatterySource = src
+  let battery = @battery.Battery::new(source~)
 
   // The constructor performs no I/O at all.
   inspect(src.percent_reads, content="0")
@@ -132,11 +132,11 @@ test "cache never polls implicitly: constructor does no I/O, one refresh reads e
 
 ///|
 test "source returning None for both slots propagates without panicking" {
-  let source : &BatterySource = FixedSource::{
+  let source : &@battery.BatterySource = FixedSource::{
     percent_value: None,
     millivolts_value: None,
   }
-  let battery = Battery::new(source~)
+  let battery = @battery.Battery::new(source~)
   battery.refresh()
   debug_inspect(battery.percent(), content="None")
   debug_inspect(battery.millivolts(), content="None")
@@ -144,11 +144,11 @@ test "source returning None for both slots propagates without panicking" {
 
 ///|
 test "percent-only source leaves millivolts as None" {
-  let source : &BatterySource = FixedSource::{
+  let source : &@battery.BatterySource = FixedSource::{
     percent_value: Some(9),
     millivolts_value: None,
   }
-  let battery = Battery::new(source~)
+  let battery = @battery.Battery::new(source~)
   battery.refresh()
   debug_inspect(battery.percent(), content="Some(9)")
   debug_inspect(battery.millivolts(), content="None")
@@ -156,8 +156,8 @@ test "percent-only source leaves millivolts as None" {
 
 ///|
 test "external struct implements BatterySource and is consumed via &BatterySource" {
-  let source : &BatterySource = NullSource::{ _unit: (), }
-  let battery = Battery::new(source~)
+  let source : &@battery.BatterySource = NullSource::{ _unit: (), }
+  let battery = @battery.Battery::new(source~)
   battery.refresh()
   debug_inspect(battery.percent(), content="None")
   debug_inspect(battery.millivolts(), content="None")

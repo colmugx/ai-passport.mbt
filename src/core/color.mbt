@@ -11,6 +11,14 @@ pub(all) struct Color {
 } derive(Debug, Eq)
 
 ///|
+/// Explicitly promotes the derived `Debug` method to a regular method.
+pub extend Color with @moonbitlang/core/debug.Debug::{to_repr}
+
+///|
+/// Explicitly promotes the derived `Eq` methods to regular methods.
+pub extend Color with Eq::{not_equal, equal}
+
+///|
 /// Clamps one color component into `0..=255`.
 fn clamp_component(v : Int) -> Int {
   if v < 0 {
@@ -32,7 +40,7 @@ fn clamp_component(v : Int) -> Int {
 /// ```mbt check
 /// test {
 ///   debug_inspect(
-///     Color::rgb(r=250, g=-1, b=300),
+///     @core.Color::rgb(r=250, g=-1, b=300),
 ///     content="{ r: 250, g: 0, b: 255 }",
 ///   )
 /// }
@@ -51,7 +59,7 @@ pub fn Color::rgb(r~ : Int, g~ : Int, b~ : Int) -> Color {
 /// # Example
 /// ```mbt check
 /// test {
-///   inspect(Color::rgb(r=255, g=0, b=0).to_rgb565(), content="63488")
+///   inspect(@core.Color::rgb(r=255, g=0, b=0).to_rgb565(), content="63488")
 /// }
 /// ```
 pub fn Color::to_rgb565(self : Color) -> Int {

@@ -38,3 +38,9 @@ pub impl @driver.DisplaySink for DeviceDisplaySink with fn present(
   }
   display_end()
 }
+
+///|
+/// Explicitly promotes the `DisplaySink` trait methods to regular methods.
+pub extend DeviceDisplaySink with @colmugx/ai-passport/driver.DisplaySink::{
+  present,
+}

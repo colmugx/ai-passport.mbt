@@ -6,7 +6,7 @@
 /// # Example
 /// ```mbt check
 /// test {
-///   let canvas = Canvas::new(width=8, height=8)
+///   let canvas = @graphics.Canvas::new(width=8, height=8)
 ///   canvas.rect(x=1, y=1, w=4, h=3, color=@core.Color::rgb(r=0, g=0, b=255))
 ///   // Extends past the edges: only the visible part of the outline is drawn.
 ///   canvas.rect(x=6, y=6, w=10, h=10, color=@core.Color::rgb(r=255, g=255, b=0))

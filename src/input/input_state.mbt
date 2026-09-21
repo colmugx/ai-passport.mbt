@@ -26,7 +26,7 @@ fn BtnState::fresh() -> BtnState {
 /// # Example
 /// ```mbt check
 /// test {
-///   let input = InputState::new()
+///   let input = @input.InputState::new()
 ///   input.press(Up)
 ///   inspect(input.pressed(Up), content="true")
 ///   inspect(input.just_pressed(Up), content="true")
@@ -42,6 +42,10 @@ pub struct InputState {
 } derive(Debug)
 
 ///|
+/// Explicitly promotes the derived `Debug` method to a regular method.
+pub extend InputState with @moonbitlang/core/debug.Debug::{to_repr}
+
+///|
 /// Creates a state where every button is released and no edge is latched.
 /// This is the only place `InputState` allocates; the per-frame transition
 /// methods below are allocation-free.
@@ -49,7 +53,7 @@ pub struct InputState {
 /// # Example
 /// ```mbt check
 /// test {
-///   let input = InputState::new()
+///   let input = @input.InputState::new()
 ///   inspect(input.pressed(Down), content="false")
 ///   inspect(input.just_pressed(Down), content="false")
 ///   inspect(input.just_released(Down), content="false")
@@ -81,7 +85,7 @@ fn InputState::slot(self : InputState, btn : Button) -> BtnState {
 /// # Example
 /// ```mbt check
 /// test {
-///   let input = InputState::new()
+///   let input = @input.InputState::new()
 ///   input.press(Ok)
 ///   input.press(Ok)
 ///   inspect(input.just_pressed(Ok), content="true")
@@ -109,7 +113,7 @@ pub fn InputState::press(self : InputState, btn : Button) -> Unit {
 /// # Example
 /// ```mbt check
 /// test {
-///   let input = InputState::new()
+///   let input = @input.InputState::new()
 ///   input.release(Down)
 ///   inspect(input.just_released(Down), content="false")
 ///   input.press(Down)
@@ -133,7 +137,7 @@ pub fn InputState::release(self : InputState, btn : Button) -> Unit {
 /// # Example
 /// ```mbt check
 /// test {
-///   let input = InputState::new()
+///   let input = @input.InputState::new()
 ///   input.press(Up)
 ///   input.release(Up)
 ///   input.advance()
@@ -157,7 +161,7 @@ pub fn InputState::advance(self : InputState) -> Unit {
 /// # Example
 /// ```mbt check
 /// test {
-///   let input = InputState::new()
+///   let input = @input.InputState::new()
 ///   input.press(Ok)
 ///   input.advance()
 ///   inspect(input.pressed(Ok), content="true")
@@ -176,7 +180,7 @@ pub fn InputState::pressed(self : InputState, btn : Button) -> Bool {
 /// # Example
 /// ```mbt check
 /// test {
-///   let input = InputState::new()
+///   let input = @input.InputState::new()
 ///   input.press(Up)
 ///   inspect(input.just_pressed(Up), content="true")
 ///   input.advance()
@@ -195,7 +199,7 @@ pub fn InputState::just_pressed(self : InputState, btn : Button) -> Bool {
 /// # Example
 /// ```mbt check
 /// test {
-///   let input = InputState::new()
+///   let input = @input.InputState::new()
 ///   input.release(Ok)
 ///   inspect(input.just_released(Ok), content="false")
 ///   input.press(Ok)

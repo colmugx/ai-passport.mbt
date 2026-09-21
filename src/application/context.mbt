@@ -13,3 +13,11 @@ pub(all) struct FrameContext {
   /// receives the fact and must not test Host ids.
   presentation_lead_us : Int64
 } derive(Eq, Debug)
+
+///|
+/// Explicitly promotes the derived `Eq` methods to regular methods.
+pub extend FrameContext with Eq::{not_equal, equal}
+
+///|
+/// Explicitly promotes the derived `Debug` method to a regular method.
+pub extend FrameContext with @moonbitlang/core/debug.Debug::{to_repr}

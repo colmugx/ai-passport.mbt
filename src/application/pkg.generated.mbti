@@ -16,11 +16,17 @@ pub(all) struct AudioOutput {
   volume : Int
   muted : Bool
 } derive(Eq, @debug.Debug)
+pub fn AudioOutput::equal(Self, Self) -> Bool
+pub fn AudioOutput::not_equal(Self, Self) -> Bool
+pub fn AudioOutput::to_repr(Self) -> @debug.Repr
 
 pub(all) struct FrameContext {
   now_us : Int64
   presentation_lead_us : Int64
 } derive(Eq, @debug.Debug)
+pub fn FrameContext::equal(Self, Self) -> Bool
+pub fn FrameContext::not_equal(Self, Self) -> Bool
+pub fn FrameContext::to_repr(Self) -> @debug.Repr
 
 // Type aliases
 

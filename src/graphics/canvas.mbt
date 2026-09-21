@@ -23,7 +23,7 @@ pub struct Canvas {
 /// # Example
 /// ```mbt check
 /// test {
-///   let canvas = Canvas::new(width=8, height=8)
+///   let canvas = @graphics.Canvas::new(width=8, height=8)
 ///   debug_inspect((canvas.width(), canvas.height()), content="(8, 8)")
 /// }
 /// ```
@@ -42,7 +42,7 @@ pub fn Canvas::new(width~ : Int, height~ : Int) -> Canvas {
 /// # Example
 /// ```mbt check
 /// test {
-///   let canvas = Canvas::logical()
+///   let canvas = @graphics.Canvas::logical()
 ///   debug_inspect((canvas.width(), canvas.height()), content="(120, 160)")
 /// }
 /// ```
@@ -56,7 +56,7 @@ pub fn Canvas::logical() -> Canvas {
 /// # Example
 /// ```mbt check
 /// test {
-///   let canvas = Canvas::new(width=3, height=5)
+///   let canvas = @graphics.Canvas::new(width=3, height=5)
 ///   inspect(canvas.width(), content="3")
 /// }
 /// ```
@@ -70,7 +70,7 @@ pub fn Canvas::width(self : Canvas) -> Int {
 /// # Example
 /// ```mbt check
 /// test {
-///   let canvas = Canvas::new(width=3, height=5)
+///   let canvas = @graphics.Canvas::new(width=3, height=5)
 ///   inspect(canvas.height(), content="5")
 /// }
 /// ```

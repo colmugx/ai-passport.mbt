@@ -15,6 +15,14 @@ pub(all) struct AssetEntry {
 } derive(Eq, Debug)
 
 ///|
+/// Explicitly promotes the derived `Eq` methods to regular methods.
+pub extend AssetEntry with Eq::{not_equal, equal}
+
+///|
+/// Explicitly promotes the derived `Debug` method to a regular method.
+pub extend AssetEntry with @moonbitlang/core/debug.Debug::{to_repr}
+
+///|
 /// One preprocessed PCM sound resource. Playback behavior is deliberately
 /// absent: loop, volume and routing belong to each playback, not the resource.
 pub(all) struct SoundEntry {
@@ -23,6 +31,14 @@ pub(all) struct SoundEntry {
   /// Path to headerless PCM16 LE mono 16000 Hz data, relative to the project.
   source : String
 } derive(Eq, Debug)
+
+///|
+/// Explicitly promotes the derived `Eq` methods to regular methods.
+pub extend SoundEntry with Eq::{not_equal, equal}
+
+///|
+/// Explicitly promotes the derived `Debug` method to a regular method.
+pub extend SoundEntry with @moonbitlang/core/debug.Debug::{to_repr}
 
 ///|
 /// One external dependency a Host build consumes outside the SDK release
@@ -35,6 +51,14 @@ pub(all) struct HostDependency {
   /// Checkout location, relative to the project root.
   path : String
 } derive(Eq, Debug)
+
+///|
+/// Explicitly promotes the derived `Eq` methods to regular methods.
+pub extend HostDependency with Eq::{not_equal, equal}
+
+///|
+/// Explicitly promotes the derived `Debug` method to a regular method.
+pub extend HostDependency with @moonbitlang/core/debug.Debug::{to_repr}
 
 ///|
 pub(all) struct ProjectContract {
@@ -52,6 +76,14 @@ pub(all) struct ProjectContract {
   /// Project-provided external Host dependencies; may be empty.
   host_dependencies : Array[HostDependency]
 } derive(Eq, Debug)
+
+///|
+/// Explicitly promotes the derived `Eq` methods to regular methods.
+pub extend ProjectContract with Eq::{not_equal, equal}
+
+///|
+/// Explicitly promotes the derived `Debug` method to a regular method.
+pub extend ProjectContract with @moonbitlang/core/debug.Debug::{to_repr}
 
 ///|
 /// Location of the project-provided checkout for `host_id`, when declared.
@@ -79,6 +111,14 @@ pub(all) struct Project {
   source_dir : String
   contract : ProjectContract
 } derive(Eq, Debug)
+
+///|
+/// Explicitly promotes the derived `Eq` methods to regular methods.
+pub extend Project with Eq::{not_equal, equal}
+
+///|
+/// Explicitly promotes the derived `Debug` method to a regular method.
+pub extend Project with @moonbitlang/core/debug.Debug::{to_repr}
 
 ///|
 /// Contract paths are portable, project-relative slash paths. Reject

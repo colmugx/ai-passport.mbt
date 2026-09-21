@@ -18,13 +18,19 @@ pub(all) struct Color {
   g : Int
   b : Int
 } derive(Eq, @debug.Debug)
+pub fn Color::equal(Self, Self) -> Bool
+pub fn Color::not_equal(Self, Self) -> Bool
 pub fn Color::rgb(r~ : Int, g~ : Int, b~ : Int) -> Self
+pub fn Color::to_repr(Self) -> @debug.Repr
 pub fn Color::to_rgb565(Self) -> Int
 
 pub(all) struct Point {
   x : Int
   y : Int
 } derive(Eq, @debug.Debug)
+pub fn Point::equal(Self, Self) -> Bool
+pub fn Point::not_equal(Self, Self) -> Bool
+pub fn Point::to_repr(Self) -> @debug.Repr
 
 pub(all) struct Rect {
   x : Int
@@ -33,13 +39,19 @@ pub(all) struct Rect {
   h : Int
 } derive(Eq, @debug.Debug)
 pub fn Rect::contains(Self, x~ : Int, y~ : Int) -> Bool
+pub fn Rect::equal(Self, Self) -> Bool
 pub fn Rect::intersection(Self, other~ : Self) -> Self?
 pub fn Rect::intersects(Self, other~ : Self) -> Bool
+pub fn Rect::not_equal(Self, Self) -> Bool
+pub fn Rect::to_repr(Self) -> @debug.Repr
 
 pub(all) struct Size {
   w : Int
   h : Int
 } derive(Eq, @debug.Debug)
+pub fn Size::equal(Self, Self) -> Bool
+pub fn Size::not_equal(Self, Self) -> Bool
+pub fn Size::to_repr(Self) -> @debug.Repr
 
 // Type aliases
 

@@ -6,7 +6,7 @@
 /// # Example
 /// ```mbt check
 /// test {
-///   let canvas = Canvas::new(width=8, height=8)
+///   let canvas = @graphics.Canvas::new(width=8, height=8)
 ///   canvas.line(x0=0, y0=0, x1=7, y1=4, color=@core.Color::rgb(r=255, g=0, b=0))
 ///   // Endpoints may lie offscreen: only the visible part is drawn.
 ///   canvas.line(x0=-3, y0=6, x1=12, y1=2, color=@core.Color::rgb(r=0, g=255, b=0))

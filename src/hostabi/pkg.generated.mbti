@@ -53,6 +53,7 @@ pub struct DeviceDisplaySink {
   row : FixedArray[Int]
 }
 pub fn DeviceDisplaySink::new() -> Self
+pub fn DeviceDisplaySink::present(Self, frame~ : @graphics.FrameView) -> Unit
 pub impl @driver.DisplaySink for DeviceDisplaySink
 
 pub struct HostBridge {
@@ -61,7 +62,12 @@ pub struct HostBridge {
 pub fn HostBridge::advance(Self, Int64) -> Unit
 pub fn HostBridge::consume(Self) -> Unit
 pub fn HostBridge::frame_dirty(Self) -> Bool
+pub fn HostBridge::millivolts(Self) -> Int?
+pub fn HostBridge::monotonic_ms(Self) -> Int
 pub fn HostBridge::new(store_u16~ : (Int, Int) -> Unit, battery_percent~ : () -> Int) -> Self
+pub fn HostBridge::percent(Self) -> Int?
+pub fn HostBridge::present(Self, frame~ : @graphics.FrameView) -> Unit
+pub fn HostBridge::sleep_ms(Self, ms~ : Int) -> Unit
 pub impl @battery.BatterySource for HostBridge
 pub impl @driver.Clock for HostBridge
 pub impl @driver.DisplaySink for HostBridge

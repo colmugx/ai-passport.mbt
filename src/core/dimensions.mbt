@@ -7,7 +7,7 @@
 /// # Example
 /// ```mbt check
 /// test {
-///   inspect(LOGICAL_WIDTH, content="120")
+///   inspect(@core.LOGICAL_WIDTH, content="120")
 /// }
 /// ```
 pub const LOGICAL_WIDTH : Int = 120
@@ -21,7 +21,7 @@ pub const LOGICAL_WIDTH : Int = 120
 /// # Example
 /// ```mbt check
 /// test {
-///   inspect(LOGICAL_HEIGHT, content="160")
+///   inspect(@core.LOGICAL_HEIGHT, content="160")
 /// }
 /// ```
 pub const LOGICAL_HEIGHT : Int = 160

@@ -2,6 +2,7 @@ import {
   "bobzhang/toml",
   "moonbitlang/core/buffer",
   "colmugx/ai-passport/hosts",
+  "moonbitlang/core/debug",
 }
 
 import {

@@ -4,7 +4,7 @@
 /// # Example
 /// ```mbt check
 /// test {
-///   inspect(CHAR_ADVANCE, content="5")
+///   inspect(@graphics.CHAR_ADVANCE, content="5")
 /// }
 /// ```
 pub const CHAR_ADVANCE : Int = 5
@@ -15,7 +15,7 @@ pub const CHAR_ADVANCE : Int = 5
 /// # Example
 /// ```mbt check
 /// test {
-///   inspect(LINE_HEIGHT, content="6")
+///   inspect(@graphics.LINE_HEIGHT, content="6")
 /// }
 /// ```
 pub const LINE_HEIGHT : Int = 6
@@ -115,9 +115,9 @@ fn line_width(count : Int) -> Int {
 /// # Example
 /// ```mbt check
 /// test {
-///   inspect(text_width(text="HELLO"), content="24")
-///   inspect(text_width(text="AB\nCD"), content="9")
-///   inspect(text_width(text=""), content="0")
+///   inspect(@graphics.text_width(text="HELLO"), content="24")
+///   inspect(@graphics.text_width(text="AB\nCD"), content="9")
+///   inspect(@graphics.text_width(text=""), content="0")
 /// }
 /// ```
 pub fn text_width(text~ : String) -> Int {
@@ -148,8 +148,8 @@ pub fn text_width(text~ : String) -> Int {
 /// # Example
 /// ```mbt check
 /// test {
-///   inspect(text_height(text="A"), content="6")
-///   inspect(text_height(text="A\nB"), content="12")
+///   inspect(@graphics.text_height(text="A"), content="6")
+///   inspect(@graphics.text_height(text="A\nB"), content="12")
 /// }
 /// ```
 pub fn text_height(text~ : String) -> Int {
@@ -172,9 +172,9 @@ pub fn text_height(text~ : String) -> Int {
 /// # Example
 /// ```mbt check
 /// test {
-///   let canvas = Canvas::new(width=30, height=20)
+///   let canvas = @graphics.Canvas::new(width=30, height=20)
 ///   canvas.text(text="HI", x=2, y=3, color=@core.Color::rgb(r=255, g=255, b=255))
-///   inspect(text_width(text="HI"), content="9")
+///   inspect(@graphics.text_width(text="HI"), content="9")
 /// }
 /// ```
 pub fn Canvas::text(

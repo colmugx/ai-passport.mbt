@@ -28,7 +28,7 @@ pub struct FrameView {
 /// # Example
 /// ```mbt check
 /// test {
-///   let canvas = Canvas::new(width=8, height=8)
+///   let canvas = @graphics.Canvas::new(width=8, height=8)
 ///   inspect(canvas.frame_view().width(), content="8")
 /// }
 /// ```
@@ -42,7 +42,7 @@ pub fn FrameView::width(self : FrameView) -> Int {
 /// # Example
 /// ```mbt check
 /// test {
-///   let canvas = Canvas::new(width=8, height=8)
+///   let canvas = @graphics.Canvas::new(width=8, height=8)
 ///   inspect(canvas.frame_view().height(), content="8")
 /// }
 /// ```
@@ -63,7 +63,7 @@ pub fn FrameView::height(self : FrameView) -> Int {
 /// # Example
 /// ```mbt check
 /// test {
-///   let canvas = Canvas::new(width=3, height=2)
+///   let canvas = @graphics.Canvas::new(width=3, height=2)
 ///   canvas.fill_rect(x=0, y=0, w=3, h=2, color=@core.Color::rgb(r=255, g=0, b=0))
 ///   let row : FixedArray[Int] = FixedArray::make(3, 0)
 ///   let copied = canvas.frame_view().copy_rgb565_row(y=0, out=row)
@@ -96,7 +96,7 @@ pub fn FrameView::copy_rgb565_row(
 /// # Example
 /// ```mbt check
 /// test {
-///   let canvas = Canvas::logical()
+///   let canvas = @graphics.Canvas::logical()
 ///   let frame = canvas.frame_view()
 ///   debug_inspect((frame.width(), frame.height()), content="(120, 160)")
 /// }

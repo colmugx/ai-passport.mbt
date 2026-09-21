@@ -1,6 +1,6 @@
 ///|
 test "SinkProbe starts empty" {
-  let probe = SinkProbe::new()
+  let probe = @driver.SinkProbe::new()
   inspect(probe.calls(), content="0")
   inspect(probe.last_width(), content="0")
   inspect(probe.last_height(), content="0")
@@ -8,8 +8,8 @@ test "SinkProbe starts empty" {
 
 ///|
 test "SinkProbe records count and last frame dimensions at present time" {
-  let probe = SinkProbe::new()
-  let sink : &DisplaySink = probe
+  let probe = @driver.SinkProbe::new()
+  let sink : &@driver.DisplaySink = probe
 
   // First present: the standard 120x160 logical frame (docs/DRIVER.md).
   sink.present(frame=@graphics.Canvas::logical().frame_view())

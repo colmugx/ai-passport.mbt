@@ -66,7 +66,7 @@ impl DisplaySink for RowCaptureSink with fn present(self, frame~) {
 
 ///|
 test "external types implement Clock and are consumed via &Clock" {
-  let clock : &Clock = FixedClock::{ value: 42, }
+  let clock : &@driver.Clock = FixedClock::{ value: 42, }
   clock.sleep_ms(ms=7)
   inspect(clock.monotonic_ms(), content="42")
 
@@ -75,7 +75,7 @@ test "external types implement Clock and are consumed via &Clock" {
 }
 
 ///|
-fn read_after_delay(clock : &Clock, ms~ : Int) -> Int {
+fn read_after_delay(clock : &@driver.Clock, ms~ : Int) -> Int {
   clock.sleep_ms(ms~)
   clock.monotonic_ms()
 }
@@ -83,7 +83,7 @@ fn read_after_delay(clock : &Clock, ms~ : Int) -> Int {
 ///|
 test "external types implement DisplaySink and are consumed via &DisplaySink" {
   let counter = CountingSink::{ frames: 0, }
-  let sink : &DisplaySink = counter
+  let sink : &@driver.DisplaySink = counter
   sink.present(frame=@graphics.Canvas::logical().frame_view())
   sink.present(frame=@graphics.Canvas::new(width=64, height=80).frame_view())
   inspect(counter.frames, content="2")
@@ -101,7 +101,7 @@ test "external sink reads every row of the full 120x160 logical frame" {
     rows: [],
     rows_complete: true,
   }
-  let sink : &DisplaySink = capture
+  let sink : &@driver.DisplaySink = capture
   sink.present(frame=canvas.frame_view())
 
   inspect(capture.width, content="120")
@@ -133,7 +133,7 @@ test "external sink reads two presentations of identical frames identically" {
     rows: [],
     rows_complete: true,
   }
-  let sink : &DisplaySink = capture
+  let sink : &@driver.DisplaySink = capture
   sink.present(frame=@graphics.Canvas::logical().frame_view())
   let first = capture.rows
   sink.present(frame=@graphics.Canvas::logical().frame_view())

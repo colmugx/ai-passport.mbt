@@ -28,12 +28,16 @@ pub(all) struct SpriteSheet {
 /// # Example
 /// ```mbt check
 /// test {
-///   let sheet = SpriteSheet::from_colors(frame_width=2, frame_height=2, pixels=[
-///     Some(@core.Color::rgb(r=255, g=0, b=0)),
-///     None,
-///     None,
-///     Some(@core.Color::rgb(r=0, g=0, b=255)),
-///   ])
+///   let sheet = @graphics.SpriteSheet::from_colors(
+///     frame_width=2,
+///     frame_height=2,
+///     pixels=[
+///       Some(@core.Color::rgb(r=255, g=0, b=0)),
+///       None,
+///       None,
+///       Some(@core.Color::rgb(r=0, g=0, b=255)),
+///     ],
+///   )
 ///   debug_inspect(
 ///     (sheet.frame_width(), sheet.frame_height(), sheet.frame_count()),
 ///     content="(2, 2, 1)",
@@ -73,11 +77,11 @@ pub fn SpriteSheet::from_colors(
 /// # Example
 /// ```mbt check
 /// test {
-///   let sheet = SpriteSheet::from_colors(frame_width=3, frame_height=1, pixels=[
-///     None,
-///     None,
-///     None,
-///   ])
+///   let sheet = @graphics.SpriteSheet::from_colors(
+///     frame_width=3,
+///     frame_height=1,
+///     pixels=[None, None, None],
+///   )
 ///   inspect(sheet.frame_width(), content="3")
 /// }
 /// ```
@@ -91,10 +95,11 @@ pub fn SpriteSheet::frame_width(self : SpriteSheet) -> Int {
 /// # Example
 /// ```mbt check
 /// test {
-///   let sheet = SpriteSheet::from_colors(frame_width=1, frame_height=2, pixels=[
-///     None,
-///     None,
-///   ])
+///   let sheet = @graphics.SpriteSheet::from_colors(
+///     frame_width=1,
+///     frame_height=2,
+///     pixels=[None, None],
+///   )
 ///   inspect(sheet.frame_height(), content="2")
 /// }
 /// ```
@@ -108,12 +113,11 @@ pub fn SpriteSheet::frame_height(self : SpriteSheet) -> Int {
 /// # Example
 /// ```mbt check
 /// test {
-///   let sheet = SpriteSheet::from_colors(frame_width=1, frame_height=1, pixels=[
-///     None,
-///     None,
-///     None,
-///     None,
-///   ])
+///   let sheet = @graphics.SpriteSheet::from_colors(
+///     frame_width=1,
+///     frame_height=1,
+///     pixels=[None, None, None, None],
+///   )
 ///   inspect(sheet.frame_count(), content="4")
 /// }
 /// ```
@@ -133,11 +137,12 @@ pub fn SpriteSheet::frame_count(self : SpriteSheet) -> Int {
 /// # Example
 /// ```mbt check
 /// test {
-///   let sheet = SpriteSheet::from_colors(frame_width=1, frame_height=1, pixels=[
-///     Some(@core.Color::rgb(r=255, g=0, b=0)),
-///     None,
-///   ])
-///   let canvas = Canvas::new(width=2, height=1)
+///   let sheet = @graphics.SpriteSheet::from_colors(
+///     frame_width=1,
+///     frame_height=1,
+///     pixels=[Some(@core.Color::rgb(r=255, g=0, b=0)), None],
+///   )
+///   let canvas = @graphics.Canvas::new(width=2, height=1)
 ///   canvas.sprite(sheet~, frame=0, x=0, y=0)
 ///   canvas.sprite(sheet~, frame=1, x=1, y=0) // transparent: keeps backdrop
 ///   canvas.sprite(sheet~, frame=9, x=1, y=0) // out of range: silent no-op

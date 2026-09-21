@@ -4,7 +4,7 @@
 /// # Example
 /// ```mbt check
 /// test {
-///   let canvas = Canvas::new(width=2, height=2)
+///   let canvas = @graphics.Canvas::new(width=2, height=2)
 ///   canvas.clear(color=@core.Color::rgb(r=255, g=255, b=255))
 /// }
 /// ```
@@ -25,7 +25,7 @@ pub fn Canvas::clear(self : Canvas, color~ : @core.Color) -> Unit {
 /// # Example
 /// ```mbt check
 /// test {
-///   let canvas = Canvas::new(width=4, height=4)
+///   let canvas = @graphics.Canvas::new(width=4, height=4)
 ///   canvas.pixel(x=2, y=1, color=@core.Color::rgb(r=255, g=0, b=0))
 ///   // Out of bounds: silently ignored, never panics.
 ///   canvas.pixel(x=4, y=4, color=@core.Color::rgb(r=0, g=255, b=0))
@@ -53,7 +53,7 @@ pub fn Canvas::pixel(
 /// # Example
 /// ```mbt check
 /// test {
-///   let canvas = Canvas::new(width=8, height=8)
+///   let canvas = @graphics.Canvas::new(width=8, height=8)
 ///   canvas.fill_rect(x=1, y=2, w=3, h=2, color=@core.Color::rgb(r=0, g=0, b=255))
 ///   // Extends past the edges: only the visible part is drawn.
 ///   canvas.fill_rect(

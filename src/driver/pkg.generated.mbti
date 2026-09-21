@@ -17,12 +17,15 @@ pub fn SinkProbe::calls(Self) -> Int
 pub fn SinkProbe::last_height(Self) -> Int
 pub fn SinkProbe::last_width(Self) -> Int
 pub fn SinkProbe::new() -> Self
+pub fn SinkProbe::present(Self, frame~ : @graphics.FrameView) -> Unit
 pub impl DisplaySink for SinkProbe
 
 pub struct ZeroClock {
   // private fields
 }
+pub fn ZeroClock::monotonic_ms(Self) -> Int
 pub fn ZeroClock::new() -> Self
+pub fn ZeroClock::sleep_ms(Self, ms~ : Int) -> Unit
 pub impl Clock for ZeroClock
 
 // Type aliases

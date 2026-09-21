@@ -28,7 +28,7 @@
 /// # Example
 /// ```mbt check
 /// test {
-///   let battery = Battery::fixture(percent=82)
+///   let battery = @battery.Battery::fixture(percent=82)
 ///   battery.refresh()
 ///   debug_inspect(battery.percent(), content="Some(82)")
 /// }

@@ -19,6 +19,9 @@ pub(all) enum BackendStatus {
   Implemented
   NotMigrated(String)
 } derive(Eq, @debug.Debug)
+pub fn BackendStatus::equal(Self, Self) -> Bool
+pub fn BackendStatus::not_equal(Self, Self) -> Bool
+pub fn BackendStatus::to_repr(Self) -> @debug.Repr
 
 pub(all) enum Capability {
   Display
@@ -29,12 +32,16 @@ pub(all) enum Capability {
   Network
   Clock
 } derive(Eq, @debug.Debug)
+pub fn Capability::equal(Self, Self) -> Bool
+pub fn Capability::not_equal(Self, Self) -> Bool
 pub fn Capability::to_label(Self) -> String
+pub fn Capability::to_repr(Self) -> @debug.Repr
 
 pub(all) struct HostCapabilities {
   sdk_exposed : Array[Capability]
   hardware_known : Array[Capability]
 } derive(@debug.Debug)
+pub fn HostCapabilities::to_repr(Self) -> @debug.Repr
 
 pub(all) struct HostDescriptor {
   id : String
@@ -43,6 +50,7 @@ pub(all) struct HostDescriptor {
   facts : Array[String]
   backend : BackendStatus
 } derive(@debug.Debug)
+pub fn HostDescriptor::to_repr(Self) -> @debug.Repr
 
 // Type aliases
 
