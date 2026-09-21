@@ -324,8 +324,8 @@ async fn doctor_device_project(
 
 ///|
 /// Device checks shared by the declared-entry and generated-entry contracts:
-/// sound resources, SDK device Host assets, the FoloToy dependency and the
-/// pinned MoonBit runtime manifest.
+/// sound resources, SDK device Host assets, and the external FoloToy
+/// dependency.
 async fn doctor_device_common(
   project : @cli.Project,
   failures : Array[String],
@@ -356,23 +356,6 @@ async fn doctor_device_common(
     Some(dir) => {
       println("ok: SDK device Host assets at \{dir}")
       report_bsp_dependency(project, dir, failures)
-      let manifest = "\{dir}/moonbit-runtime.sha256"
-      if @fs.exists(manifest) {
-        match verify_runtime_sha256(manifest) {
-          Some(problem) => {
-            println(
-              "FAIL: the MOON_HOME runtime does not match \{manifest}: \{problem}",
-            )
-            failures.push("MoonBit runtime manifest")
-          }
-          None => println("ok: the MOON_HOME runtime matches \{manifest}")
-        }
-      } else {
-        println(
-          "FAIL: the SDK device Host has no runtime manifest (\{manifest})",
-        )
-        failures.push("MoonBit runtime manifest")
-      }
     }
     None => ()
   }

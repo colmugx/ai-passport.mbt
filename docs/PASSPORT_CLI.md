@@ -118,8 +118,8 @@ is replaced so removed assets cannot survive.
 
 ## FoloToy device build
 
-`passport build --host folotoy-ai-passport` requires the pinned MoonBit and
-ESP-IDF toolchains described in the Host README. Before touching the workspace
+`passport build --host folotoy-ai-passport` requires a MoonBit installation and
+the pinned ESP-IDF toolchain described in the Host README. Before touching the workspace
 it validates every sound and compiles the APSB bank. It then refreshes
 `<project>/.passport/folotoy-ai-passport/`, preserving only incremental ESP-IDF
 state (`build/`, `managed_components/`, `sdkconfig`, and `sdkconfig.old`), and
@@ -127,7 +127,7 @@ writes `sounds.bank` at the workspace root.
 
 The CLI generates or resolves the device application adapter, captures its
 MoonBit native C without leaving the source package modified, verifies the
-pinned runtime and external FoloToy dependency, writes `upstream.cmake`, and
+external FoloToy dependency, writes `upstream.cmake`, and
 runs `idf.py reconfigure` followed by `idf.py build`. The device Host embeds
 the same bank bytes in flash and its `sound_player` owns codec output and the
 fixed playback slots. The build never flashes a device.

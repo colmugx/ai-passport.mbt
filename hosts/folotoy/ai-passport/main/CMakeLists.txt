@@ -1,6 +1,7 @@
 # The FoloToy Host is one ESP-IDF component. Everything registered here is
-# ai-passport-owned glue, generated application C, the pinned MoonBit runtime,
-# or an explicitly selected source from the verified external BSP checkout.
+# ai-passport-owned glue, generated application C, the MoonBit runtime from
+# the local MoonBit installation, or an explicitly selected source from the
+# verified external BSP checkout.
 set(HOST_ROOT "${CMAKE_CURRENT_LIST_DIR}/..")
 
 if(NOT EXISTS "${HOST_ROOT}/upstream.cmake")
@@ -12,7 +13,7 @@ if(NOT DEFINED FOTOLOY_BSP_ROOT OR NOT EXISTS "${FOTOLOY_BSP_ROOT}/src/bsp_displ
 endif()
 
 if(NOT DEFINED ENV{MOON_HOME})
-    message(FATAL_ERROR "MOON_HOME must point to the pinned MoonBit installation")
+    message(FATAL_ERROR "MOON_HOME must point to a MoonBit installation")
 endif()
 set(MOON_RUNTIME "$ENV{MOON_HOME}/lib/runtime")
 

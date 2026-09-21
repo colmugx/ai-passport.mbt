@@ -24,7 +24,7 @@ Capture mechanism: the CLI temporarily points the device entry package's `option
 Toolchain requirements:
 
 - ESP-IDF pinned to [v5.5.3](https://github.com/espressif/esp-idf/tree/v5.5.3); source its `export.sh` before building.
-- `moon 0.1.20260915 (2e1a46d 2026-09-15)`. `moonbit-runtime.sha256` pins the distribution's runtime sources and headers under `MOON_HOME` (default `~/.moon`); `main/CMakeLists.txt` compiles them directly. Do not substitute runtime sources without updating the compiler and hash manifest together.
+- A MoonBit installation (no version pinned); `main/CMakeLists.txt` compiles the distribution's runtime sources and headers under `$MOON_HOME` (default `~/.moon`) directly, and the application's native C is captured with the same installation's `moon`.
 
 ## Partition budget
 

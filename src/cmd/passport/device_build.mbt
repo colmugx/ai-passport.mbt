@@ -29,7 +29,7 @@ const APP_PARTITION_SIZE : Int64 = 0x380000L
 /// Verifies every file of a sha256sum-format manifest relative to the
 /// process cwd. Shelled out so the CLI gains no new dependency; python3 is
 /// already a doctor dependency.
-const RUNTIME_SHA256_SCRIPT : String =
+const SHA256_SCRIPT : String =
   #|import hashlib, sys
   #|bad = 0
   #|for line in open(sys.argv[1]):
@@ -98,17 +98,10 @@ fn moon_home_dir() -> String raise {
         Some(home) => "\{home}/.moon"
         None =>
           @cli.fail_cli(
-            "neither MOON_HOME nor HOME is set; the pinned MoonBit runtime location is unknown",
+            "neither MOON_HOME nor HOME is set; cannot locate the MoonBit installation compiled into the firmware",
           )
       }
   }
-}
-
-///|
-/// Returns None when every manifest entry hashes correctly under MOON_HOME,
-/// else the human-readable problem detail.
-async fn verify_runtime_sha256(manifest : String) -> String? {
-  verify_sha256_manifest(manifest, moon_home_dir())
 }
 
 ///|
@@ -116,11 +109,7 @@ async fn verify_runtime_sha256(manifest : String) -> String? {
 /// relative to `root`, else the human-readable problem detail.
 async fn verify_sha256_manifest(manifest : String, root : String) -> String? {
   let out = try_output(
-    @shell.Cmd::Cmd(
-      "python3",
-      ["-c", RUNTIME_SHA256_SCRIPT, manifest],
-      cwd=root,
-    ),
+    @shell.Cmd::Cmd("python3", ["-c", SHA256_SCRIPT, manifest], cwd=root),
   )
   match out {
     None => Some("python3 is unavailable")
@@ -499,7 +488,7 @@ fn config_has_line(text : String, expected : String) -> Bool {
 ///|
 /// The physical Host build flow, in order: contract device entry, SDK host
 /// resolution, workspace materialization, sound-bank compilation, native C
-/// capture, pinned toolchain verification, then the idf.py
+/// capture, ESP-IDF toolchain verification, then the idf.py
 /// reconfigure and build pair inside the workspace.
 async fn device_build_command(sub : @argparse.Matches) -> Unit {
   let project = load_project(option_value(sub, "project", "."))
@@ -642,19 +631,6 @@ async fn device_build_command(sub : @argparse.Matches) -> Unit {
         )
       }
     }
-  }
-  let runtime_manifest = "\{workspace}/moonbit-runtime.sha256"
-  guard @fs.exists(runtime_manifest) else {
-    @cli.fail_cli(
-      "the device workspace has no runtime manifest: \{runtime_manifest}",
-    )
-  }
-  match verify_runtime_sha256(runtime_manifest) {
-    Some(problem) =>
-      @cli.fail_cli(
-        "the pinned MoonBit runtime under MOON_HOME does not match the host manifest: \{problem}",
-      )
-    None => ()
   }
   // The Host's main CMake component reads $MOON_HOME directly, so the resolved
   // location must cross into the idf env even when the invoking shell never
