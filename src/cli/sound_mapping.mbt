@@ -10,6 +10,9 @@ pub fn render_sound_mapping(sounds : Array[SoundMetadata]) -> String {
   out.write_string("///|\npub(all) enum Sound {\n")
   sounds.each(fn(sound) { out.write_string("  \{sound.symbol}\n") })
   out.write_string("} derive(Eq, Debug)\n\n")
+  out.write_string("///|\npub extend Sound with Eq::{not_equal, equal}\n\n")
+  out.write_string("///|\npub extend Sound with @debug.Debug::{to_repr}\n\n")
+
   out.write_string(
     "///|\npub impl @audio.Sound for Sound with fn resource_id(self : Sound) -> UInt {\n",
   )
@@ -17,6 +20,10 @@ pub fn render_sound_mapping(sounds : Array[SoundMetadata]) -> String {
   sounds.each(fn(sound) {
     out.write_string("    \{sound.symbol} => \{sound.id}U\n")
   })
-  out.write_string("  }\n}\n")
+  out.write_string("  }\n}\n\n")
+
+  out.write_string(
+    "///|\npub extend Sound with @audio.Sound::{resource_id}\n",
+  )
   out.to_string()
 }

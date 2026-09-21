@@ -16,12 +16,21 @@ test "sound mapping renders typed declaration-order constructors" {
       #|} derive(Eq, Debug)
       #|
       #|///|
+      #|pub extend Sound with Eq::{not_equal, equal}
+      #|
+      #|///|
+      #|pub extend Sound with @debug.Debug::{to_repr}
+      #|
+      #|///|
       #|pub impl @audio.Sound for Sound with fn resource_id(self : Sound) -> UInt {
       #|  match self {
       #|    AmbientWalk => 0U
       #|    Jump => 1U
       #|  }
       #|}
+      #|
+      #|///|
+      #|pub extend Sound with @audio.Sound::{resource_id}
       #|
     ),
   )
@@ -39,10 +48,19 @@ test "sound mapping supports a project with no sounds" {
       #|} derive(Eq, Debug)
       #|
       #|///|
+      #|pub extend Sound with Eq::{not_equal, equal}
+      #|
+      #|///|
+      #|pub extend Sound with @debug.Debug::{to_repr}
+      #|
+      #|///|
       #|pub impl @audio.Sound for Sound with fn resource_id(self : Sound) -> UInt {
       #|  match self {
       #|  }
       #|}
+      #|
+      #|///|
+      #|pub extend Sound with @audio.Sound::{resource_id}
       #|
     ),
   )
