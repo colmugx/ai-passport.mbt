@@ -11,6 +11,7 @@
 #include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "esp_timer.h"
+#include "microphone_bridge.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "sound_player.h"
@@ -130,11 +131,13 @@ void app_main(void) {
             ESP_LOGI(TAG,
                      "frames=%" PRIu64 " missed_deadlines=%" PRIu64
                      " dropped_button_events=%" PRIu32
+                     " dropped_mic_samples=%" PRId32
                      " avg_update_us=%" PRId64 " avg_draw_us=%" PRId64
                      " avg_present_us=%" PRId64 " avg_frame_us=%" PRId64
                      " achieved_fps_x100=%" PRId64,
                      frames, missed_deadlines,
                      ai_passport_button_dropped_events(),
+                     ai_passport_mic_dropped_samples(),
                      total_update_us / (int64_t)frames,
                      total_draw_us / (int64_t)frames,
                      total_present_us / (int64_t)frames,

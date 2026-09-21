@@ -190,6 +190,88 @@ suite("host: same Sound creates independent Playback handles", async () => {
   host.dispose();
 });
 
+suite("host: microphone records PCM16 while sound output remains live", async () => {
+  let micProcessor = null;
+  let soundProcessor = null;
+  let trackStops = 0;
+  const ctx = {
+    sampleRate: 48000,
+    currentTime: 0,
+    destination: {},
+    resume: async () => {},
+    createGain: () => ({ gain: { value: 0 }, connect() {} }),
+    createMediaStreamSource: () => ({ connect() {}, disconnect() {} }),
+    createScriptProcessor: (size, inputs) => {
+      const node = { bufferSize: size, onaudioprocess: null, connect() {}, disconnect() {} };
+      if (inputs) micProcessor = node;
+      else soundProcessor = node;
+      return node;
+    },
+  };
+  const host = await hostModule.createHost({
+    wasmBytes: buildMinimalPassportWasm(),
+    soundBankBytes: soundBank([new Int16Array(5000).fill(1234)]),
+    audioContextFactory: () => ctx,
+    mediaDevices: { getUserMedia: async () => ({ getTracks: () => [{ stop: () => trackStops++ }] }) },
+  });
+  const api = host.imports.passport;
+  eq(api.host_capture_status(), 1, "capture is initially idle");
+  eq(api.host_capture_start(), 2, "permission is asynchronous");
+  await new Promise((resolve) => setImmediate(resolve));
+  eq(api.host_capture_status(), 3, "permission starts recording");
+  ok(api.host_sound_play(0, 1) > 0, "sound output remains available during capture");
+  const input = new Float32Array(480).fill(0.5);
+  const output = new Float32Array(480).fill(1);
+  micProcessor.onaudioprocess({
+    inputBuffer: { getChannelData: () => input },
+    outputBuffer: { getChannelData: () => output },
+  });
+  ok(output.every((sample) => sample === 0), "capture node never echoes microphone to speakers");
+  const count = api.host_capture_read(1024);
+  ok(count >= 159 && count <= 161, "48 kHz input resamples to 16 kHz");
+  const captured = new DataView(host.memory.buffer).getInt16(49152, true);
+  eq(captured, 16384, "host writes signed PCM16 samples");
+  const played = new Float32Array(soundProcessor.bufferSize);
+  soundProcessor.onaudioprocess({ outputBuffer: { getChannelData: () => played } });
+  eq(played[0], 1234 / 32768, "speaker playback continues during microphone capture");
+  api.host_capture_stop();
+  eq(api.host_capture_status(), 1, "stop returns to idle");
+  eq(trackStops, 1, "stop releases the microphone track once");
+  host.dispose();
+});
+
+suite("host: microphone permission denial and canceled requests stay observable", async () => {
+  const makeContext = () => ({
+    sampleRate: 16000, destination: {},
+    createGain: () => ({ gain: { value: 0 }, connect() {} }),
+    createScriptProcessor: () => ({ connect() {}, disconnect() {} }),
+  });
+  const denied = await hostModule.createHost({
+    wasmBytes: buildMinimalPassportWasm(), soundBankBytes: soundBank([]),
+    audioContextFactory: makeContext,
+    mediaDevices: { getUserMedia: async () => { throw Object.assign(new Error("denied"), { name: "NotAllowedError" }); } },
+  });
+  eq(denied.imports.passport.host_capture_start(), 2, "permission request begins");
+  await new Promise((resolve) => setImmediate(resolve));
+  eq(denied.imports.passport.host_capture_status(), 4, "denial is distinct from failure");
+  denied.dispose();
+
+  let grant;
+  let stops = 0;
+  const pending = await hostModule.createHost({
+    wasmBytes: buildMinimalPassportWasm(), soundBankBytes: soundBank([]),
+    audioContextFactory: makeContext,
+    mediaDevices: { getUserMedia: () => new Promise((resolve) => { grant = resolve; }) },
+  });
+  eq(pending.imports.passport.host_capture_start(), 2, "pending request begins");
+  pending.imports.passport.host_capture_stop();
+  grant({ getTracks: () => [{ stop: () => stops++ }] });
+  await new Promise((resolve) => setImmediate(resolve));
+  eq(pending.imports.passport.host_capture_status(), 1, "canceled grant cannot resume recording");
+  eq(stops, 1, "canceled grant releases its track");
+  pending.dispose();
+});
+
 suite("host: MoonBit Sound API reaches the Web runtime", async () => {
   let processor = null;
   const host = await hostModule.createHost({

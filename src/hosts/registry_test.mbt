@@ -29,14 +29,14 @@ test "find_host matches exact ids only and returns None for unknown hosts" {
 test "web host does not overclaim capabilities" {
   let web = @hosts.find_host("web").unwrap()
   let exposed = web.capabilities.sdk_exposed
-  // Exposed today: presentation, input, PCM output, battery fixture, timing.
+  // Exposed today: presentation, input, PCM output/input, battery fixture, timing.
   inspect(exposed.contains(@hosts.Display), content="true")
   inspect(exposed.contains(@hosts.Input), content="true")
   inspect(exposed.contains(@hosts.AudioOutput), content="true")
   inspect(exposed.contains(@hosts.Battery), content="true")
   inspect(exposed.contains(@hosts.Clock), content="true")
-  // Nothing beyond what the Web Host implements: no microphone, no network.
-  inspect(exposed.contains(@hosts.AudioInput), content="false")
+  inspect(exposed.contains(@hosts.AudioInput), content="true")
+  // No network is exposed.
   inspect(exposed.contains(@hosts.Network), content="false")
   // And the browser runtime has no battery gauge: the hardware plane must
   // not claim one either.
@@ -85,7 +85,7 @@ test "folotoy host registers the microphone and the implemented device backend" 
   inspect(f.capabilities.sdk_exposed.contains(@hosts.Clock), content="true")
   inspect(
     f.capabilities.sdk_exposed.contains(@hosts.AudioInput),
-    content="false",
+    content="true",
   )
   inspect(f.capabilities.sdk_exposed.contains(@hosts.Network), content="false")
   inspect(f.backend is @hosts.Implemented, content="true")

@@ -1,7 +1,23 @@
 // Generated using `moon info`, DON'T EDIT IT
 package "colmugx/ai-passport/audio"
 
+import {
+  "moonbitlang/core/debug",
+}
+
 // Values
+pub const CAPTURE_SAMPLE_RATE_HZ : Int = 16_000
+
+pub fn capture_dropped_samples() -> Int
+
+pub fn capture_read(FixedArray[Int]) -> Int
+
+pub fn capture_start() -> CaptureStatus
+
+pub fn capture_status() -> CaptureStatus
+
+pub fn capture_stop() -> Unit
+
 pub fn pause(Playback) -> Unit
 
 pub fn[T : Sound] play(T, looping? : Bool) -> Playback?
@@ -15,6 +31,15 @@ pub fn stop(Playback) -> Unit
 // Errors
 
 // Types and methods
+pub(all) enum CaptureStatus {
+  Unavailable
+  Idle
+  Requesting
+  Recording
+  Denied
+  Failed
+} derive(Eq, @debug.Debug)
+
 pub struct Playback {
   // private fields
 }

@@ -4,6 +4,8 @@ package "colmugx/ai-passport/audio/host"
 // Values
 pub fn install(play_sound~ : (UInt, Bool) -> Int?, pause_playback~ : (Int) -> Unit, resume_playback~ : (Int) -> Unit, stop_playback~ : (Int) -> Unit, playback_position_us~ : (Int) -> Int64?) -> Unit
 
+pub fn install_capture(start~ : () -> Int, status~ : () -> Int, stop~ : () -> Unit, read~ : (FixedArray[Int]) -> Int, dropped~ : () -> Int) -> Unit
+
 // Errors
 
 // Types and methods

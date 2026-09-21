@@ -9,6 +9,7 @@
  *     blit the 120x160 RGB565 LE framebuffer when dirty, then consume
  *   - independent APSB sound playbacks mixed by an AudioWorklet (with a
  *     ScriptProcessorNode fallback), plus master volume/mute gain
+ *   - permission-gated microphone capture as bounded PCM16 mono input
  *   - keyboard -> semantic buttons (Up/Down/Ok), host-facts HUD
  *
  * There is NO application logic here: nothing knows about any specific app,
@@ -35,6 +36,12 @@ export const FB_PTR = 0x1000; // 4096
 export const FB_LEN = FB_WIDTH * FB_HEIGHT * 2; // 38400
 /** Normalized PCM stream format: PCM16 LE mono at this rate. */
 export const SAMPLE_RATE = 16000;
+const CAPTURE_PTR = 49152;
+const CAPTURE_SAMPLES = 1024;
+const CAPTURE_RING_SAMPLES = 8192;
+const CAPTURE_STATUS = Object.freeze({
+  Unavailable: 0, Idle: 1, Requesting: 2, Recording: 3, Denied: 4, Failed: 5,
+});
 /** App heap start; [0, 65536) is ABI-reserved. */
 export const HEAP_START = 65536;
 
@@ -583,6 +590,7 @@ function dispose(state) {
   if (state.disposed) return;
   state.disposed = true;
   stopLoop(state);
+  captureStop(state);
   if (state.hudTimer !== undefined) {
     clearInterval(state.hudTimer);
     state.hudTimer = undefined;
@@ -701,6 +709,147 @@ function scriptProcessorPull(state, event) {
 }
 
 // ---------------------------------------------------------------------------
+// Microphone: permission, full-duplex PCM16 transport, bounded queue
+// ---------------------------------------------------------------------------
+
+function capturePush(state, value) {
+  const capture = state.capture;
+  if (capture.count === capture.ring.length) {
+    capture.dropped += 1;
+    return;
+  }
+  capture.ring[(capture.head + capture.count) % capture.ring.length] =
+    value < 0 ? Math.max(-32768, Math.round(value * 32768))
+      : Math.min(32767, Math.round(value * 32767));
+  capture.count += 1;
+}
+
+function captureSamples(state, input) {
+  const capture = state.capture;
+  if (capture.status !== CAPTURE_STATUS.Recording) return;
+  const sourceStep = capture.inputRate / SAMPLE_RATE;
+  for (let i = 0; i < input.length; i++) {
+    const current = input[i];
+    const index = capture.sourceCount++;
+    if (!capture.havePrevious) {
+      capture.previous = current;
+      capture.havePrevious = true;
+      continue;
+    }
+    while (capture.nextOutputIndex <= index) {
+      const fraction = capture.nextOutputIndex - (index - 1);
+      capturePush(state, capture.previous + (current - capture.previous) * fraction);
+      capture.nextOutputIndex += sourceStep;
+    }
+    capture.previous = current;
+  }
+}
+
+function releaseCapture(state) {
+  const capture = state.capture;
+  capture.generation += 1;
+  if (capture.source) capture.source.disconnect();
+  if (capture.node) capture.node.disconnect();
+  if (capture.stream) {
+    for (const track of capture.stream.getTracks()) track.stop();
+  }
+  capture.source = null;
+  capture.node = null;
+  capture.stream = null;
+  capture.head = 0;
+  capture.count = 0;
+}
+
+function captureStop(state) {
+  releaseCapture(state);
+  state.capture.status = state.capture.available ? CAPTURE_STATUS.Idle : CAPTURE_STATUS.Unavailable;
+}
+
+function captureStart(state) {
+  const capture = state.capture;
+  if (!capture.available || !state.audio.ctx) return CAPTURE_STATUS.Unavailable;
+  if (capture.status === CAPTURE_STATUS.Recording ||
+      capture.status === CAPTURE_STATUS.Requesting) return capture.status;
+  releaseCapture(state);
+  capture.status = CAPTURE_STATUS.Requesting;
+  capture.dropped = 0;
+  capture.sourceCount = 0;
+  capture.nextOutputIndex = 0;
+  capture.havePrevious = false;
+  capture.previous = 0;
+  capture.error = null;
+  const generation = capture.generation;
+  const ctx = state.audio.ctx;
+  (async () => {
+    let stream = null;
+    try {
+      stream = await capture.mediaDevices.getUserMedia({
+        audio: { channelCount: 1, sampleRate: { ideal: SAMPLE_RATE },
+          echoCancellation: false, noiseSuppression: false, autoGainControl: false },
+      });
+      if (generation !== capture.generation || state.disposed) {
+        for (const track of stream.getTracks()) track.stop();
+        return;
+      }
+      capture.stream = stream;
+      const source = ctx.createMediaStreamSource(stream);
+      capture.source = source;
+      let node;
+      if (state.audio.kind === "worklet" && typeof globalThis.AudioWorkletNode === "function") {
+        node = new AudioWorkletNode(ctx, "passport-microphone", {
+          numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [1],
+        });
+        node.port.onmessage = (event) => captureSamples(state, event.data);
+      } else if (typeof ctx.createScriptProcessor === "function") {
+        node = ctx.createScriptProcessor(CAPTURE_SAMPLES, 1, 1);
+        node.onaudioprocess = (event) => {
+          event.outputBuffer.getChannelData(0).fill(0);
+          captureSamples(state, event.inputBuffer.getChannelData(0));
+        };
+      } else {
+        throw new Error("microphone capture needs AudioWorklet or ScriptProcessor");
+      }
+      capture.inputRate = ctx.sampleRate;
+      if (!Number.isFinite(capture.inputRate) || capture.inputRate <= 0) {
+        throw new Error(`invalid microphone AudioContext sample rate: ${capture.inputRate}`);
+      }
+      capture.node = node;
+      source.connect(node);
+      node.connect(ctx.destination); // capture processor outputs silence
+      await ctx.resume();
+      if (generation !== capture.generation || state.disposed) return;
+      capture.status = CAPTURE_STATUS.Recording;
+    } catch (err) {
+      if (generation !== capture.generation || state.disposed) return;
+      capture.error = String(err);
+      console.error("[passport-host] microphone capture failed:", err);
+      releaseCapture(state);
+      capture.status = err?.name === "NotAllowedError" || err?.name === "SecurityError"
+        ? CAPTURE_STATUS.Denied : CAPTURE_STATUS.Failed;
+    }
+  })();
+  return CAPTURE_STATUS.Requesting;
+}
+
+function captureRead(state, maxSamples) {
+  if (!Number.isInteger(maxSamples) || maxSamples < 0 || maxSamples > CAPTURE_SAMPLES) {
+    throw new RangeError(`capture read limit must be 0..${CAPTURE_SAMPLES}`);
+  }
+  const capture = state.capture;
+  if (capture.status !== CAPTURE_STATUS.Recording) {
+    throw new Error(`capture read requires recording, status=${capture.status}`);
+  }
+  const count = Math.min(capture.count, maxSamples);
+  const view = new DataView(state.memory.buffer);
+  for (let i = 0; i < count; i++) {
+    view.setInt16(CAPTURE_PTR + i * 2, capture.ring[capture.head], true);
+    capture.head = (capture.head + 1) % capture.ring.length;
+  }
+  capture.count -= count;
+  return count;
+}
+
+// ---------------------------------------------------------------------------
 // Host-facts HUD (~4x/s)
 // ---------------------------------------------------------------------------
 
@@ -762,6 +911,8 @@ function setStatusText(state, text) {
  * @param {(hint: {sampleRate: number}) => AudioContextLike} [options.audioContextFactory]
  *   - injection seam for tests; default constructs globalThis.AudioContext at
  *   16000 Hz. Omit in Node to run audio-less.
+ * @param {MediaDevices} [options.mediaDevices] - microphone permission seam;
+ *   defaults to navigator.mediaDevices when available.
  * @param {string|URL} [options.workletUrl] - sound-worklet.js URL; defaults to a
  *   sibling of this module.
  * @param {object} [options.imports] - `{ passport: { host_x: fn } }` per-key
@@ -814,6 +965,26 @@ export async function createHost(options = {}) {
       workletError: null,
       reason: "",
     },
+    capture: {
+      mediaDevices: options.mediaDevices ||
+        (typeof navigator !== "undefined" ? navigator.mediaDevices : null),
+      available: false,
+      status: CAPTURE_STATUS.Unavailable,
+      generation: 0,
+      stream: null,
+      source: null,
+      node: null,
+      ring: new Int16Array(CAPTURE_RING_SAMPLES),
+      head: 0,
+      count: 0,
+      dropped: 0,
+      inputRate: 0,
+      sourceCount: 0,
+      nextOutputIndex: 0,
+      previous: 0,
+      havePrevious: false,
+      error: null,
+    },
     hud: null,
     hudTimer: undefined,
     hudLast: Date.now(),
@@ -837,6 +1008,11 @@ export async function createHost(options = {}) {
       host_sound_resume: (handle) => soundResume(state, handle),
       host_sound_stop: (handle) => soundStop(state, handle),
       host_sound_position_us: (handle) => soundPositionUs(state, handle),
+      host_capture_start: () => captureStart(state),
+      host_capture_status: () => state.capture.status,
+      host_capture_stop: () => captureStop(state),
+      host_capture_read: (maxSamples) => captureRead(state, maxSamples),
+      host_capture_dropped: () => Math.min(state.capture.dropped, 2147483647),
     },
   };
   const overrides = options.imports && options.imports.passport;
@@ -864,6 +1040,12 @@ export async function createHost(options = {}) {
   attachInput(state);
   setupHud(state);
   await setupAudio(state, options);
+  state.capture.available =
+    typeof state.capture.mediaDevices?.getUserMedia === "function" &&
+    !!state.audio.ctx &&
+    (state.audio.kind === "worklet" ||
+      typeof state.audio.ctx.createScriptProcessor === "function");
+  state.capture.status = state.capture.available ? CAPTURE_STATUS.Idle : CAPTURE_STATUS.Unavailable;
 
   // Lifecycle step 2: _start() exactly once; app main initializes and RETURNS.
   appExports._start();
@@ -925,6 +1107,9 @@ function buildHostApi(state, imports, appExports) {
     },
     get audio() {
       return state.audio;
+    },
+    get capture() {
+      return state.capture;
     },
     get frameCount() {
       return state.frameCount;

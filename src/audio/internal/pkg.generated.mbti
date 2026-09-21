@@ -2,7 +2,19 @@
 package "colmugx/ai-passport/audio/internal"
 
 // Values
+pub fn capture_dropped() -> Int
+
+pub fn capture_read(FixedArray[Int]) -> Int
+
+pub fn capture_start() -> Int
+
+pub fn capture_status() -> Int
+
+pub fn capture_stop() -> Unit
+
 pub fn install(SoundRuntime) -> Unit
+
+pub fn install_capture(CaptureRuntime) -> Unit
 
 pub fn pause(Int) -> Unit
 
@@ -17,6 +29,11 @@ pub fn stop(Int) -> Unit
 // Errors
 
 // Types and methods
+pub struct CaptureRuntime {
+  // private fields
+}
+pub fn CaptureRuntime::new(start~ : () -> Int, status~ : () -> Int, stop~ : () -> Unit, read~ : (FixedArray[Int]) -> Int, dropped~ : () -> Int) -> Self
+
 pub struct SoundRuntime {
   // private fields
 }

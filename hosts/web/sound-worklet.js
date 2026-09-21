@@ -79,3 +79,21 @@ class PassportSoundProcessor extends AudioWorkletProcessor {
 }
 
 registerProcessor("passport-sound", PassportSoundProcessor);
+
+// Input and output share one AudioContext clock. Capture copies only the
+// browser's bounded 128-frame worklet block across the port; resampling and
+// the bounded PCM16 queue live on the Host main thread, outside real-time DSP.
+class PassportMicrophoneProcessor extends AudioWorkletProcessor {
+  process(inputs, outputs) {
+    const output = outputs[0]?.[0];
+    if (output) output.fill(0);
+    const input = inputs[0]?.[0];
+    if (input && input.length > 0) {
+      const samples = new Float32Array(input);
+      this.port.postMessage(samples, [samples.buffer]);
+    }
+    return true;
+  }
+}
+
+registerProcessor("passport-microphone", PassportMicrophoneProcessor);
