@@ -7,8 +7,8 @@
 | 0 | Reconnaissance and baseline | Primary agent; read-only Luna worker | Complete |
 | 1 | Complete button events and conflict handling | Primary agent | Complete (`333cea2`) |
 | 2 | Microphone input and audio channel contract | Primary agent | Complete |
-| 3 | Display capability, backlight, and panel presentation | Primary agent | Complete, pending commit |
-| 4 | Sleep and wake contract | Primary agent | Pending |
+| 3 | Display capability, backlight, and panel presentation | Primary agent | Complete (`e2d1ace`) |
+| 4 | Sleep and wake contract | Primary agent | Complete, pending commit |
 | 5 | Documentation, full gates, commits, and one PR | Primary agent | Pending |
 
 ## Scope declaration
@@ -61,6 +61,7 @@ The primary agent owns all production code, tests, documentation, commits, and P
 - 2026-09-21: Button events committed as `333cea2`; the shared ADC ladder cannot disambiguate physical button chords, while Web buttons are independent.
 - 2026-09-21: Added explicit PCM16 capture lifecycle on both Hosts, bounded queues with drop telemetry, and full-duplex Web tests. Native, JS, Wasm MoonBit suites and real-browser Web integration passed. Physical microphone behavior remains unverified without a device.
 - 2026-09-21: Audio input committed as `abf2d27`. Display now reports active Host size and optional light; Web and FoloToy use full 240×320. RGB565 drawing remains semantic for future monochrome Host quantization. Three-target MoonBit suites and real-browser Web integration passed. Physical RAM and LCD performance require device validation.
+- 2026-09-21: Display committed as `e2d1ace`. Implemented explicit application sleep, ADC-ladder button and timer wake, wake-cause reporting, audio and backlight suspend/resume. A temporary downstream application built successfully with ESP-IDF 5.5.3 and the pinned FoloToy BSP; Web real-browser integration passed. Physical wake and power measurements remain outstanding.
 
 ## Open Questions
 

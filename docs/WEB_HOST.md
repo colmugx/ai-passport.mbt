@@ -60,6 +60,8 @@ The Host provides the `passport` import module:
 | `host_capture_stop()` | Release the microphone and discard unread samples. |
 | `host_capture_read(max_samples: i32) -> i32` | Write signed PCM16 to the reserved scratch region. |
 | `host_capture_dropped() -> i32` | Report samples lost to bounded queue overflow. |
+| `host_power_request(wake_after_ms: i32) -> i32` | Request frame suspension; -1 means button wake only. |
+| `host_wake_reason() -> i32` | Return 0 before wake, 1 button, 2 timer, or 3 other. |
 
 The framebuffer begins at byte offset 4096, contains 240×320 little-endian
 RGB565 pixels in row-major order, and occupies 153,600 bytes. Microphone reads

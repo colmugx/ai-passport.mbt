@@ -1,0 +1,3 @@
+import {
+  "colmugx/ai-passport/power/internal" @power_runtime,
+}

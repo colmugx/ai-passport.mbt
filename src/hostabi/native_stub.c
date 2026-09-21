@@ -78,3 +78,12 @@ int32_t ai_passport_mic_read(int32_t *out, int32_t capacity) {
     abort();
 }
 int32_t ai_passport_mic_dropped_samples(void) { return 0; }
+
+static int32_t s_test_power_requested;
+int32_t ai_passport_power_request(int32_t wake_after_ms) {
+    (void)wake_after_ms;
+    if (s_test_power_requested) return 0;
+    s_test_power_requested = 1;
+    return 1;
+}
+int32_t ai_passport_power_wake_reason(void) { return 0; }

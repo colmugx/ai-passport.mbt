@@ -1,0 +1,26 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "colmugx/ai-passport/power"
+
+import {
+  "moonbitlang/core/debug",
+}
+
+// Values
+pub fn request_sleep() -> Bool
+
+pub fn request_timed_sleep(Int) -> Bool
+
+pub fn wake_reason() -> WakeReason?
+
+// Errors
+
+// Types and methods
+pub(all) enum WakeReason {
+  Button
+  Timer
+  Other
+} derive(Eq, @debug.Debug)
+
+// Type aliases
+
+// Traits

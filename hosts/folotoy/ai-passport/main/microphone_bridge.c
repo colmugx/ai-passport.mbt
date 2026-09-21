@@ -20,6 +20,7 @@ enum { MIC_IDLE = 1, MIC_RECORDING = 3, MIC_FAILED = 5 };
 
 static const char *TAG = "microphone_bridge";
 static SemaphoreHandle_t s_lock;
+static SemaphoreHandle_t s_io_lock;
 static TaskHandle_t s_task;
 static int16_t s_ring[MIC_RING_SAMPLES];
 static uint32_t s_head;
@@ -37,9 +38,16 @@ static void capture_task(void *arg) {
             continue;
         }
         const unsigned generation = atomic_load(&s_generation);
+        xSemaphoreTake(s_io_lock, portMAX_DELAY);
+        if (atomic_load(&s_status) != MIC_RECORDING ||
+            generation != atomic_load(&s_generation)) {
+            xSemaphoreGive(s_io_lock);
+            continue;
+        }
         // The BSP owns I2S RX and returns only after a complete chunk. The
         // output task independently owns I2S TX; neither task changes format.
         const esp_err_t err = bsp_audio_read(chunk, sizeof(chunk));
+        xSemaphoreGive(s_io_lock);
         if (err != ESP_OK) {
             if (generation == atomic_load(&s_generation) &&
                 atomic_load(&s_status) == MIC_RECORDING) {
@@ -70,6 +78,14 @@ int32_t ai_passport_mic_start(void) {
         s_lock = xSemaphoreCreateMutex();
         if (s_lock == NULL) {
             ESP_LOGE(TAG, "microphone mutex allocation failed");
+            atomic_store(&s_status, MIC_FAILED);
+            return MIC_FAILED;
+        }
+    }
+    if (s_io_lock == NULL) {
+        s_io_lock = xSemaphoreCreateMutex();
+        if (s_io_lock == NULL) {
+            ESP_LOGE(TAG, "microphone IO mutex allocation failed");
             atomic_store(&s_status, MIC_FAILED);
             return MIC_FAILED;
         }
@@ -109,12 +125,14 @@ int32_t ai_passport_mic_status(void) {
 
 void ai_passport_mic_stop(void) {
     if (s_lock == NULL) return;
+    xSemaphoreTake(s_io_lock, portMAX_DELAY);
     xSemaphoreTake(s_lock, portMAX_DELAY);
     atomic_store(&s_status, MIC_IDLE);
     atomic_fetch_add(&s_generation, 1);
     s_head = 0;
     s_count = 0;
     xSemaphoreGive(s_lock);
+    xSemaphoreGive(s_io_lock);
     ESP_LOGI(TAG, "microphone recording stopped");
 }
 

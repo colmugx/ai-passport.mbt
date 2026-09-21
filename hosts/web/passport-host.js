@@ -466,6 +466,44 @@ function setBacklight(state, level) {
   if (state.canvas?.style) state.canvas.style.filter = `brightness(${level}%)`;
 }
 
+function requestSleep(state, wakeAfterMs) {
+  if (!Number.isInteger(wakeAfterMs) ||
+      (wakeAfterMs !== -1 && (wakeAfterMs <= 0 || wakeAfterMs > 86400000))) {
+    throw new RangeError(`sleep duration must be -1 or 1..86400000 ms, got ${wakeAfterMs}`);
+  }
+  if (state.sleepPending || state.sleeping) return 0;
+  state.sleepPending = true;
+  state.sleepDurationMs = wakeAfterMs;
+  state.wakeReason = 0;
+  return 1;
+}
+
+function enterSleep(state) {
+  state.sleepPending = false;
+  state.sleeping = true;
+  captureStop(state);
+  const ctx = state.audio.ctx;
+  if (ctx && typeof ctx.suspend === "function") {
+    Promise.resolve(ctx.suspend())
+      .then(() => { if (!state.sleeping) resumeAudio(state); })
+      .catch((error) => console.error("[passport-host] audio suspend failed:", error));
+  }
+  if (state.sleepDurationMs > 0) {
+    state.sleepTimer = setTimeout(() => wakeHost(state, 2), state.sleepDurationMs);
+  }
+  console.info(`[passport-host] application sleep entered; timer_ms=${state.sleepDurationMs}`);
+}
+
+function wakeHost(state, reason) {
+  if (!state.sleeping || state.disposed) return;
+  if (state.sleepTimer !== null) clearTimeout(state.sleepTimer);
+  state.sleepTimer = null;
+  state.sleeping = false;
+  state.wakeReason = reason;
+  resumeAudio(state);
+  console.info(`[passport-host] application woke; cause=${reason}`);
+}
+
 // ---------------------------------------------------------------------------
 // Input: keyboard -> semantic button queue, flushed before each frame
 // ---------------------------------------------------------------------------
@@ -492,7 +530,10 @@ function attachInput(state) {
     if (event.repeat || downCodes.has(event.code)) return;
     downCodes.add(event.code);
     heldCounts[button] += 1;
-    if (heldCounts[button] === 1) state.inputQueue.push({ button, pressed: 1 });
+    if (heldCounts[button] === 1) {
+      wakeHost(state, 1);
+      state.inputQueue.push({ button, pressed: 1 });
+    }
   };
   state.onKeyUp = (event) => {
     const button = KEY_TO_BUTTON[event.code];
@@ -518,6 +559,7 @@ function queueInput(state, button, pressed) {
   if (!Number.isInteger(button) || button < BUTTON.Up || button > BUTTON.Ok) {
     throw new TypeError(`queueInput: button must be 0 (Up), 1 (Down) or 2 (Ok); got ${button}`);
   }
+  if (pressed) wakeHost(state, 1);
   state.inputQueue.push({ button, pressed: pressed ? 1 : 0 });
 }
 
@@ -527,6 +569,7 @@ function queueInput(state, button, pressed) {
 
 function tickOnce(state, nowUs) {
   if (state.disposed || !state.started) return null;
+  if (state.sleeping) return { frameCount: state.frameCount, presented: false, sleeping: true };
   // Step 3a: deliver queued input before the frame (ABI: delivered before the
   // next passport_frame).
   if (state.inputQueue.length > 0) {
@@ -548,6 +591,7 @@ function tickOnce(state, nowUs) {
     state.exports.passport_frame_consume();
     presented = true;
   }
+  if (state.sleepPending) enterSleep(state);
   return { frameCount: state.frameCount, presented };
 }
 
@@ -587,10 +631,10 @@ function resumeAudio(state) {
     try {
       const p = ctx.resume();
       if (p && typeof p.then === "function") {
-        p.catch(() => {});
+        p.catch((error) => console.error("[passport-host] audio resume failed:", error));
       }
-    } catch {
-      // ignore: audio stays suspended until a later gesture
+    } catch (error) {
+      console.error("[passport-host] audio resume failed:", error);
     }
   }
 }
@@ -598,6 +642,8 @@ function resumeAudio(state) {
 function dispose(state) {
   if (state.disposed) return;
   state.disposed = true;
+  if (state.sleepTimer !== null) clearTimeout(state.sleepTimer);
+  state.sleepTimer = null;
   stopLoop(state);
   captureStop(state);
   if (state.hudTimer !== undefined) {
@@ -951,6 +997,11 @@ export async function createHost(options = {}) {
     volume: clampVolume(options.volume),
     muted: !!options.muted,
     backlight: 100,
+    sleepPending: false,
+    sleeping: false,
+    sleepDurationMs: -1,
+    sleepTimer: null,
+    wakeReason: 0,
     memory: null,
     exports: null,
     started: false,
@@ -1013,6 +1064,8 @@ export async function createHost(options = {}) {
       host_battery_percent: () => state.batteryPercent,
       host_backlight_level: () => state.backlight,
       host_set_backlight: (level) => setBacklight(state, level),
+      host_power_request: (wakeAfterMs) => requestSleep(state, wakeAfterMs),
+      host_wake_reason: () => state.wakeReason,
       host_set_volume: (value) => setVolume(state, value),
       host_set_muted: (value) => setMuted(state, value),
       host_sound_play: (soundId, looping) => soundPlay(state, soundId, looping),
@@ -1143,6 +1196,12 @@ function buildHostApi(state, imports, appExports) {
     },
     get backlight() {
       return state.backlight;
+    },
+    get sleeping() {
+      return state.sleeping;
+    },
+    get wakeReason() {
+      return state.wakeReason;
     },
     setVolume: (value) => setVolume(state, value),
     setMuted: (value) => setMuted(state, value),

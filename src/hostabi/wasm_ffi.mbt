@@ -65,6 +65,12 @@ pub fn host_capture_read(max_samples : Int) -> Int = "passport" "host_capture_re
 pub fn host_capture_dropped() -> Int = "passport" "host_capture_dropped"
 
 ///|
+pub fn host_power_request(wake_after_ms : Int) -> Int = "passport" "host_power_request"
+
+///|
+pub fn host_wake_reason() -> Int = "passport" "host_wake_reason"
+
+///|
 /// Inline-WAT store of one 16-bit little-endian value at byte address `addr`.
 ///
 /// `i32.store16` writes the low 16 bits of `value` in little-endian byte

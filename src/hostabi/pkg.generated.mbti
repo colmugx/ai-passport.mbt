@@ -43,7 +43,11 @@ pub fn device_button(Int) -> @input.Button?
 
 pub fn device_now_us() -> Int64
 
+pub fn device_power_request(Int) -> Int
+
 pub fn device_set_backlight(Int) -> Unit
+
+pub fn device_wake_reason() -> Int
 
 pub fn sound_pause(Int) -> Unit
 

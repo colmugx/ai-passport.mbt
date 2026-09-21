@@ -8,6 +8,7 @@ import {
   "colmugx/ai-passport/graphics/host" @display_host,
   "colmugx/ai-passport/hostabi",
   "colmugx/ai-passport/input",
+  "colmugx/ai-passport/power/host" @power_host,
 }
 
 import {

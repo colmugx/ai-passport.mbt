@@ -16,14 +16,15 @@ This repository and its published Mooncakes archive carry **no third-party produ
 4. Web and physical Hosts execute the same compiled MoonBit application semantics. Host code supplies capabilities and transport; it does not reimplement application behavior.
 5. Applications query Host display dimensions and optional backlight through `@graphics.display_info()`; the current Web and FoloToy Hosts expose a full 240×320 RGB565 drawing surface. Future monochrome Hosts quantize color at the Host presentation boundary. Panel, strip, and controller details remain behind display contracts.
 6. Buttons are semantic `Up`, `Down`, and `Ok` values.
-7. Graphics public APIs do not expose framebuffer, strip-rendering, or device-controller details.
-8. The core SDK does not provide audio composition, synthesis, sequencing, codecs, or resampling. Sound resources are headerless signed PCM16 little-endian, mono, 16000 Hz files prepared outside the SDK and compiled into the shared APSB sound bank format. Generated `Sound` resources and opaque `Playback` instances are distinct; loop behavior belongs to `play`, and capacity exhaustion fails explicitly without stealing another playback.
-9. Prefer reusable pure MoonBit logic. Keep Host glue narrow, measurable, and replaceable within the Host implementation.
-10. SDK library, CLI, and Host assets are one release unit. Do not fetch an unpinned "latest" Host implementation at build time.
-11. Do not add QEMU or a hardware emulator unless the project explicitly chooses that direction in a later round.
-12. Generated application artifacts are never hand-authored. Host adapters belong under the ignored `passport-generated/` tree; the Rule-produced sound binding is the ignored `dev_build` output inside an application-owned package beside its `moon.pkg`.
-13. Sound bindings have one generator: `passport generate-sounds INPUT OUTPUT` consumes the shared sound metadata compiler. Downstream packages invoke it through `rule` / `dev_build`; never duplicate name, symbol, or ID generation in scripts or Host tooling.
-14. The FoloToy firmware is one ESP-IDF `main` component. Keep ai-passport-owned bridges, sound playback, generated MoonBit C, pinned MoonBit runtime sources, and the explicitly selected external BSP sources under that single build boundary; do not recreate a `components/<adapter>` hierarchy for glue code.
+7. Applications explicitly request sleep through `@power`; Hosts report the wake reason after resumption. FoloToy uses light sleep, preserves playback positions, stops microphone capture, and samples its shared ADC ladder for button wake.
+8. Graphics public APIs do not expose framebuffer, strip-rendering, or device-controller details.
+9. The core SDK does not provide audio composition, synthesis, sequencing, codecs, or resampling. Sound resources are headerless signed PCM16 little-endian, mono, 16000 Hz files prepared outside the SDK and compiled into the shared APSB sound bank format. Generated `Sound` resources and opaque `Playback` instances are distinct; loop behavior belongs to `play`, and capacity exhaustion fails explicitly without stealing another playback.
+10. Prefer reusable pure MoonBit logic. Keep Host glue narrow, measurable, and replaceable within the Host implementation.
+11. SDK library, CLI, and Host assets are one release unit. Do not fetch an unpinned "latest" Host implementation at build time.
+12. Do not add QEMU or a hardware emulator unless the project explicitly chooses that direction in a later round.
+13. Generated application artifacts are never hand-authored. Host adapters belong under the ignored `passport-generated/` tree; the Rule-produced sound binding is the ignored `dev_build` output inside an application-owned package beside its `moon.pkg`.
+14. Sound bindings have one generator: `passport generate-sounds INPUT OUTPUT` consumes the shared sound metadata compiler. Downstream packages invoke it through `rule` / `dev_build`; never duplicate name, symbol, or ID generation in scripts or Host tooling.
+15. The FoloToy firmware is one ESP-IDF `main` component. Keep ai-passport-owned bridges, sound playback, generated MoonBit C, pinned MoonBit runtime sources, and the explicitly selected external BSP sources under that single build boundary; do not recreate a `components/<adapter>` hierarchy for glue code.
 
 Forest Walk is a downstream reference application, not SDK/tooling semantics. CLI/Host tooling must remain application-generic.
 

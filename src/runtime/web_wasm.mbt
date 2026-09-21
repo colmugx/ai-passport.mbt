@@ -76,6 +76,14 @@ fn install_web_display_runtime() -> Unit {
 }
 
 ///|
+fn install_web_power_runtime() -> Unit {
+  @power_host.install_power(
+    request=@hostabi.host_power_request,
+    wake_reason=@hostabi.host_wake_reason,
+  )
+}
+
+///|
 /// Wasm-only wiring: the injected host operations become the real ABI v0
 /// imports (`"passport"` externs from `hostabi`), so a native or js build
 /// never links.
@@ -83,6 +91,7 @@ pub fn WebRuntime::new_wasm(app : &@application.Application) -> WebRuntime {
   install_web_sound_runtime()
   install_web_capture_runtime()
   install_web_display_runtime()
+  install_web_power_runtime()
   new_wasm_installed(app)
 }
 
@@ -110,5 +119,6 @@ pub fn WebRuntime::boot_wasm(
   install_web_sound_runtime()
   install_web_capture_runtime()
   install_web_display_runtime()
+  install_web_power_runtime()
   new_wasm_installed(create_app())
 }

@@ -95,6 +95,26 @@ fn install_device_display_runtime() -> Unit {
 }
 
 ///|
+fn install_device_power_runtime() -> Unit {
+  if device_power_runtime_slot.installed {
+    return
+  }
+  @power_host.install_power(
+    request=@hostabi.device_power_request,
+    wake_reason=@hostabi.device_wake_reason,
+  )
+  device_power_runtime_slot.installed = true
+}
+
+///|
+priv struct DevicePowerRuntimeSlot {
+  mut installed : Bool
+}
+
+///|
+let device_power_runtime_slot : DevicePowerRuntimeSlot = { installed: false, }
+
+///|
 priv struct DeviceDisplayRuntimeSlot {
   mut installed : Bool
 }
@@ -137,6 +157,7 @@ pub fn device_boot(create_app : () -> &@application.Application) -> Unit {
   install_device_sound_runtime()
   install_device_capture_runtime()
   install_device_display_runtime()
+  install_device_power_runtime()
   if device_slot.runtime is Some(_) {
     abort("passport device runtime initialized twice")
   }

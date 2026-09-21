@@ -55,6 +55,8 @@ typedef struct {
 
 static const char *TAG = "sound_player";
 static SemaphoreHandle_t s_lock;
+static SemaphoreHandle_t s_io_lock;
+static bool s_suspended;
 static playback_slot_t s_slots[SOUND_PLAYBACK_SLOTS];
 static uint32_t s_sound_count;
 static uint32_t s_next_handle = 1;
@@ -221,17 +223,26 @@ static void sound_task(void *arg) {
     mixed_playback_t mixed[SOUND_PLAYBACK_SLOTS];
     TickType_t last_error_log = 0;
     for (;;) {
+        xSemaphoreTake(s_io_lock, portMAX_DELAY);
+        if (s_suspended) {
+            xSemaphoreGive(s_io_lock);
+            vTaskDelay(pdMS_TO_TICKS(SOUND_IDLE_DELAY_MS));
+            continue;
+        }
         apply_desired_output();
         const int count = collect_and_mix(output, mixed);
         if (count == 0) {
+            xSemaphoreGive(s_io_lock);
             vTaskDelay(pdMS_TO_TICKS(SOUND_IDLE_DELAY_MS));
             continue;
         }
         const esp_err_t err = bsp_audio_write(output, sizeof(output));
         if (err == ESP_OK) {
             commit_mixed(mixed, count);
+            xSemaphoreGive(s_io_lock);
             continue;
         }
+        xSemaphoreGive(s_io_lock);
         const TickType_t now = xTaskGetTickCount();
         if ((now - last_error_log) >= pdMS_TO_TICKS(SOUND_ERROR_LOG_PERIOD_MS)) {
             last_error_log = now;
@@ -247,10 +258,18 @@ esp_err_t ai_passport_sound_player_start(int initial_volume, bool initial_muted)
     if (err != ESP_OK) return err;
     s_lock = xSemaphoreCreateMutex();
     if (s_lock == NULL) return ESP_ERR_NO_MEM;
+    s_io_lock = xSemaphoreCreateMutex();
+    if (s_io_lock == NULL) {
+        vSemaphoreDelete(s_lock);
+        s_lock = NULL;
+        return ESP_ERR_NO_MEM;
+    }
     err = bsp_audio_init();
     if (err != ESP_OK) {
         vSemaphoreDelete(s_lock);
+        vSemaphoreDelete(s_io_lock);
         s_lock = NULL;
+        s_io_lock = NULL;
         return err;
     }
     err = bsp_audio_set_format(AI_PASSPORT_SOUND_SAMPLE_RATE_HZ,
@@ -258,7 +277,9 @@ esp_err_t ai_passport_sound_player_start(int initial_volume, bool initial_muted)
                                AI_PASSPORT_SOUND_CHANNELS);
     if (err != ESP_OK) {
         vSemaphoreDelete(s_lock);
+        vSemaphoreDelete(s_io_lock);
         s_lock = NULL;
+        s_io_lock = NULL;
         return err;
     }
     ai_passport_sound_set_output(initial_volume, initial_muted);
@@ -267,12 +288,31 @@ esp_err_t ai_passport_sound_player_start(int initial_volume, bool initial_muted)
                     SOUND_TASK_PRIORITY, NULL) != pdPASS) {
         atomic_store(&s_started, false);
         vSemaphoreDelete(s_lock);
+        vSemaphoreDelete(s_io_lock);
         s_lock = NULL;
+        s_io_lock = NULL;
         return ESP_ERR_NO_MEM;
     }
     ESP_LOGI(TAG, "sound bank ready entries=%" PRIu32 " slots=%d bytes=%u",
              s_sound_count, SOUND_PLAYBACK_SLOTS, (unsigned)bank_size());
     return ESP_OK;
+}
+
+void ai_passport_sound_player_suspend(void) {
+    if (!atomic_load(&s_started)) return;
+    xSemaphoreTake(s_io_lock, portMAX_DELAY);
+    s_suspended = true;
+    xSemaphoreGive(s_io_lock);
+    ESP_LOGI(TAG, "playback task suspended for light sleep");
+}
+
+void ai_passport_sound_player_resume(void) {
+    if (!atomic_load(&s_started)) return;
+    xSemaphoreTake(s_io_lock, portMAX_DELAY);
+    s_applied_output = OUTPUT_UNAPPLIED;
+    s_suspended = false;
+    xSemaphoreGive(s_io_lock);
+    ESP_LOGI(TAG, "playback task resumed after light sleep");
 }
 
 void ai_passport_sound_set_output(int volume, bool muted) {

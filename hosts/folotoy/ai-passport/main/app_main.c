@@ -12,6 +12,7 @@
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "microphone_bridge.h"
+#include "power_bridge.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "sound_player.h"
@@ -115,6 +116,20 @@ void app_main(void) {
         const int64_t present_start_us = esp_timer_get_time();
         (void)ai_passport_mbt_app_present();
         const int64_t frame_end_us = esp_timer_get_time();
+
+        if (ai_passport_power_poll_and_sleep()) {
+            // The application sees the wake cause on its next update. Restart
+            // frame pacing and statistics after the suspended interval.
+            deadline_us = esp_timer_get_time();
+            window_start_us = deadline_us;
+            frames = 0;
+            missed_deadlines = 0;
+            total_update_us = 0;
+            total_draw_us = 0;
+            total_present_us = 0;
+            total_frame_us = 0;
+            continue;
+        }
 
         ++frames;
         total_update_us += draw_start_us - frame_start_us;

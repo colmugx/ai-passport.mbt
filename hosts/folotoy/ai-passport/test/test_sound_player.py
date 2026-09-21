@@ -97,7 +97,8 @@ __asm__(
 );
 
 struct fake_mutex { int held; };
-static struct fake_mutex mutex;
+static struct fake_mutex mutexes[2];
+static int mutex_count;
 TaskFunction_t shim_task;
 int16_t shim_first_chunk[240];
 int shim_write_calls;
@@ -121,19 +122,22 @@ esp_err_t bsp_audio_write(const void *bytes, size_t length) {
     }
     longjmp(task_exit, 1);
 }
-SemaphoreHandle_t xSemaphoreCreateMutex(void) { return &mutex; }
+SemaphoreHandle_t xSemaphoreCreateMutex(void) {
+    assert(mutex_count < 2);
+    return &mutexes[mutex_count++];
+}
 BaseType_t xSemaphoreTake(SemaphoreHandle_t lock, TickType_t ticks) {
     (void)ticks;
-    assert(lock == &mutex && !lock->held);
+    assert(lock >= mutexes && lock < mutexes + 2 && !lock->held);
     lock->held = 1;
     return pdTRUE;
 }
 BaseType_t xSemaphoreGive(SemaphoreHandle_t lock) {
-    assert(lock == &mutex && lock->held);
+    assert(lock >= mutexes && lock < mutexes + 2 && lock->held);
     lock->held = 0;
     return pdTRUE;
 }
-void vSemaphoreDelete(SemaphoreHandle_t lock) { assert(lock == &mutex); }
+void vSemaphoreDelete(SemaphoreHandle_t lock) { assert(lock >= mutexes && lock < mutexes + 2); }
 BaseType_t xTaskCreate(TaskFunction_t task, const char *name, unsigned stack,
                        void *arg, unsigned priority, void *handle) {
     (void)arg; (void)handle;

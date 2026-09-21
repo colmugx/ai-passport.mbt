@@ -13,6 +13,9 @@
 // single task that owns PCM writes and codec-volume changes. An empty bank is
 // valid. Idempotent after a successful start.
 esp_err_t ai_passport_sound_player_start(int initial_volume, bool initial_muted);
+// Quiesces PCM writes before BSP codec sleep, preserving playback positions.
+void ai_passport_sound_player_suspend(void);
+void ai_passport_sound_player_resume(void);
 
 // Publishes the application master-output state. The audio task applies the
 // latest coherent volume/mute pair; redundant states do not touch the codec.
