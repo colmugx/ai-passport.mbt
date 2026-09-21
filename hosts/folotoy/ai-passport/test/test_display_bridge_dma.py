@@ -57,6 +57,7 @@ typedef void *esp_lcd_panel_io_handle_t;
 esp_err_t bsp_display_init(void);
 esp_lcd_panel_handle_t bsp_display_panel(void);
 esp_lcd_panel_io_handle_t bsp_display_io(void);
+void bsp_display_backlight(uint8_t percent);
 """,
     "esp_lcd_panel_io.h": r"""
 #pragma once
@@ -87,7 +88,7 @@ esp_err_t esp_lcd_panel_draw_bitmap(
 """,
     "moonbit.h": r"""
 #pragma once
-#define Moonbit_array_length(array) (120)
+#define Moonbit_array_length(array) (240)
 """,
     "freertos/FreeRTOS.h": r"""
 #pragma once
@@ -122,8 +123,8 @@ SHIM_SOURCE = r"""
 #include "esp_timer.h"
 #include "freertos/semphr.h"
 
-#define STRIP_BYTES (240 * 40 * 2)
-#define MAX_TX 8
+#define STRIP_BYTES (240 * 20 * 2)
+#define MAX_TX 16
 
 struct fake_sem { unsigned max_count; unsigned count; };
 
@@ -164,6 +165,7 @@ int64_t esp_timer_get_time(void) { s_now_us += 100; return s_now_us; }
 esp_err_t bsp_display_init(void) { return ESP_OK; }
 esp_lcd_panel_handle_t bsp_display_panel(void) { return (void *)0x1; }
 esp_lcd_panel_io_handle_t bsp_display_io(void) { return (void *)0x2; }
+void bsp_display_backlight(uint8_t percent) { (void)percent; }
 
 esp_err_t esp_lcd_panel_io_register_event_callbacks(
     esp_lcd_panel_io_handle_t io,
@@ -190,7 +192,7 @@ esp_err_t esp_lcd_panel_draw_bitmap(
     assert(panel == (void *)0x1);
     assert(x_start == 0 && x_end == 240);
     assert(shim_tx_count < MAX_TX);
-    assert(y_end - y_start == 40);
+    assert(y_end - y_start == 20);
     tx_t *tx = &shim_tx[shim_tx_count++];
     tx->y0 = y_start;
     tx->y1 = y_end;
@@ -254,9 +256,9 @@ typedef struct {
     int y0;
     int y1;
     const uint8_t *buffer;
-    uint8_t snapshot[240 * 40 * 2];
+    uint8_t snapshot[240 * 20 * 2];
 } tx_t;
-extern tx_t shim_tx[8];
+extern tx_t shim_tx[16];
 extern int shim_tx_count;
 extern int shim_completion_head;
 extern int shim_outstanding;
@@ -274,14 +276,14 @@ static uint16_t swap16(uint16_t value) {
 }
 
 static void feed_frame(int stop_before_end) {
-    int32_t row[120];
+    int32_t row[240];
     ai_passport_display_begin();
-    for (int y = 0; y < 160; ++y) {
-        for (int x = 0; x < 120; ++x) {
+    for (int y = 0; y < 320; ++y) {
+        for (int x = 0; x < 240; ++x) {
             row[x] = (int32_t)(((y & 31) << 11) | ((x & 63) << 5) | (x & 31));
         }
         ai_passport_display_row(y, row);
-        if (stop_before_end && y == 158) return;
+        if (stop_before_end && y == 318) return;
     }
     ai_passport_display_end();
 }
@@ -290,28 +292,26 @@ static void verify_success(void) {
     assert(ai_passport_display_init() == 0);
     assert(shim_heap_allocs == 2);
     feed_frame(0);
-    assert(shim_tx_count == 8);
-    assert(shim_completion_head == 8);
+    assert(shim_tx_count == 16);
+    assert(shim_completion_head == 16);
     assert(shim_outstanding == 0);
     assert(shim_max_outstanding == 2);
     assert(shim_unique_buffer_count == 2);
-    for (int i = 0; i < 8; ++i) {
-        assert(shim_tx[i].y0 == i * 40);
-        assert(shim_tx[i].y1 == (i + 1) * 40);
+    for (int i = 0; i < 16; ++i) {
+        assert(shim_tx[i].y0 == i * 20);
+        assert(shim_tx[i].y1 == (i + 1) * 20);
     }
     // Double buffering alternates A/B and never aliases consecutive strips.
-    for (int i = 2; i < 8; ++i) {
+    for (int i = 2; i < 16; ++i) {
         assert(shim_tx[i].buffer == shim_tx[i - 2].buffer);
         assert(shim_tx[i].buffer != shim_tx[i - 1].buffer);
     }
-    // Logical pixel (0,0) is byte-swapped and duplicated 2x horizontally
-    // and 2x vertically. Pixel (1,0) begins at physical x=2.
+    // Logical pixels are byte-swapped and presented at native resolution.
     const uint16_t *first = (const uint16_t *)shim_tx[0].snapshot;
     assert(first[0] == swap16(0x0000));
-    assert(first[1] == swap16(0x0000));
-    assert(first[2] == swap16(0x0021));
-    assert(first[3] == swap16(0x0021));
-    assert(memcmp(first, first + 240, 240 * sizeof(uint16_t)) == 0);
+    assert(first[1] == swap16(0x0021));
+    assert(first[2] == swap16(0x0042));
+    assert(first[240] == swap16(0x0800));
     assert(ai_passport_display_last_present_us() > 0);
     puts("ok");
 }
@@ -323,7 +323,7 @@ int main(int argc, char **argv) {
         verify_success();
         return 0;
     }
-    int32_t row[120] = {0};
+    int32_t row[240] = {0};
     if (strcmp(argv[1], "bad-row") == 0) {
         ai_passport_display_begin();
         ai_passport_display_row(1, row);

@@ -1,0 +1,27 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "colmugx/ai-passport/graphics/internal"
+
+// Values
+pub fn backlight_level() -> Int
+
+pub fn height() -> Int
+
+pub fn install(DisplayRuntime) -> Unit
+
+pub fn monochrome() -> Bool
+
+pub fn set_backlight(Int) -> Unit
+
+pub fn width() -> Int
+
+// Errors
+
+// Types and methods
+pub struct DisplayRuntime {
+  // private fields
+}
+pub fn DisplayRuntime::new(width~ : Int, height~ : Int, monochrome~ : Bool, backlight_level~ : () -> Int, set_backlight~ : (Int) -> Unit) -> Self
+
+// Type aliases
+
+// Traits

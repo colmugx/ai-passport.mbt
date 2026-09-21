@@ -14,6 +14,8 @@ void ai_passport_display_row(int32_t y, int32_t *row) {
     abort();
 }
 void ai_passport_display_end(void) { abort(); }
+int32_t ai_passport_display_backlight_level(void) { return 60; }
+void ai_passport_display_set_backlight(int32_t level) { (void)level; }
 
 int32_t ai_passport_battery_soc(void) { return -1; }
 

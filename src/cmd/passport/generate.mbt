@@ -92,7 +92,7 @@ async fn generate_web_entry(project : @cli.Project) -> String {
     $|        "passport_frame_dirty",
     $|        "passport_frame_consume",
     $|      ],
-    $|      "heap-start-address": 65536,
+    $|      "heap-start-address": 262144,
     $|    },
     $|  },
     $|)

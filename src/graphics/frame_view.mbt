@@ -98,7 +98,7 @@ pub fn FrameView::copy_rgb565_row(
 /// test {
 ///   let canvas = @graphics.Canvas::logical()
 ///   let frame = canvas.frame_view()
-///   debug_inspect((frame.width(), frame.height()), content="(120, 160)")
+///   debug_inspect((frame.width(), frame.height()), content="(240, 320)")
 /// }
 /// ```
 pub fn Canvas::frame_view(self : Canvas) -> FrameView {

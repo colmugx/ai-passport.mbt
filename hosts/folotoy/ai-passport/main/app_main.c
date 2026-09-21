@@ -57,7 +57,7 @@ void app_main(void) {
     }
 
     ESP_ERROR_CHECK(ai_passport_display_init());
-    bsp_display_backlight(60);
+    ai_passport_display_set_backlight(60);
     // Bring up the sound Host muted before application initialization so
     // play() is valid even inside passport_main. The application publishes
     // its authoritative master output immediately after initialization,

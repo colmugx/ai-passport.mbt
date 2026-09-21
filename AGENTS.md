@@ -14,7 +14,7 @@ This repository and its published Mooncakes archive carry **no third-party produ
 2. A Host is one explicitly supported and validated execution environment. Do not turn the public contract into arbitrary GPIO or board configuration.
 3. Application code depends on semantic SDK capabilities; it must not import Host implementation details such as ESP-IDF, GPIO, ADC, SPI, I2S, I2C, display controllers, codecs, browser DOM, or WebAudio APIs.
 4. Web and physical Hosts execute the same compiled MoonBit application semantics. Host code supplies capabilities and transport; it does not reimplement application behavior.
-5. The v0.1 logical display contract is 120×160 RGB565. Host presentation details remain behind display contracts.
+5. Applications query Host display dimensions and optional backlight through `@graphics.display_info()`; the current Web and FoloToy Hosts expose a full 240×320 RGB565 drawing surface. Future monochrome Hosts quantize color at the Host presentation boundary. Panel, strip, and controller details remain behind display contracts.
 6. Buttons are semantic `Up`, `Down`, and `Ok` values.
 7. Graphics public APIs do not expose framebuffer, strip-rendering, or device-controller details.
 8. The core SDK does not provide audio composition, synthesis, sequencing, codecs, or resampling. Sound resources are headerless signed PCM16 little-endian, mono, 16000 Hz files prepared outside the SDK and compiled into the shared APSB sound bank format. Generated `Sound` resources and opaque `Playback` instances are distinct; loop behavior belongs to `play`, and capacity exhaustion fails explicitly without stealing another playback.

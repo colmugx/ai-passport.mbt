@@ -3,12 +3,19 @@ package "colmugx/ai-passport/graphics"
 
 import {
   "colmugx/ai-passport/core",
+  "moonbitlang/core/debug",
 }
 
 // Values
 pub const CHAR_ADVANCE : Int = 5
 
 pub const LINE_HEIGHT : Int = 6
+
+pub fn backlight_level() -> Int?
+
+pub fn display_info() -> DisplayInfo
+
+pub fn set_backlight(Int) -> Bool
 
 pub fn text_height(text~ : String) -> Int
 
@@ -22,6 +29,7 @@ pub struct Canvas {
 }
 pub fn Canvas::clear(Self, color~ : @core.Color) -> Unit
 pub fn Canvas::fill_rect(Self, x~ : Int, y~ : Int, w~ : Int, h~ : Int, color~ : @core.Color) -> Unit
+pub fn Canvas::for_display() -> Self
 pub fn Canvas::frame_view(Self) -> FrameView
 pub fn Canvas::height(Self) -> Int
 pub fn Canvas::line(Self, x0~ : Int, y0~ : Int, x1~ : Int, y1~ : Int, color~ : @core.Color) -> Unit
@@ -32,6 +40,13 @@ pub fn Canvas::rect(Self, x~ : Int, y~ : Int, w~ : Int, h~ : Int, color~ : @core
 pub fn Canvas::sprite(Self, sheet~ : SpriteSheet, frame~ : Int, x~ : Int, y~ : Int) -> Unit
 pub fn Canvas::text(Self, text~ : String, x~ : Int, y~ : Int, color~ : @core.Color) -> Unit
 pub fn Canvas::width(Self) -> Int
+
+pub(all) struct DisplayInfo {
+  width : Int
+  height : Int
+  monochrome : Bool
+  has_backlight : Bool
+} derive(Eq, @debug.Debug)
 
 pub struct FrameView {
   // private fields

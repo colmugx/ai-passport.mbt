@@ -26,7 +26,7 @@ pub impl @driver.DisplaySink for DeviceDisplaySink with fn present(
 ) -> Unit {
   if frame.width() != @core.LOGICAL_WIDTH ||
     frame.height() != @core.LOGICAL_HEIGHT {
-    abort("DeviceDisplaySink expects a 120 x 160 logical frame")
+    abort("DeviceDisplaySink expects a 240 x 320 logical frame")
   }
   display_begin()
   for y in 0..<@core.LOGICAL_HEIGHT {

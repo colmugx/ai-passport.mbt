@@ -1,9 +1,9 @@
 #include "display_bridge.h"
 
 #include <stdbool.h>
+#include <stdatomic.h>
 #include <stdint.h>
 #include <stdlib.h>
-#include <string.h>
 
 #include "bsp_display.h"
 #include "bsp_pins.h"
@@ -16,18 +16,16 @@
 #include "freertos/semphr.h"
 #include "moonbit.h"
 
-#define LOGICAL_W 120
-#define LOGICAL_H 160
-#define SCALE 2
+#define LOGICAL_W 240
+#define LOGICAL_H 320
 #define DMA_BUFFER_COUNT 2
-#define PHYSICAL_STRIP_ROWS 40
-#define LOGICAL_STRIP_ROWS (PHYSICAL_STRIP_ROWS / SCALE)
+#define PHYSICAL_STRIP_ROWS 20
+#define LOGICAL_STRIP_ROWS PHYSICAL_STRIP_ROWS
 #define STRIP_BYTES (BSP_LCD_W * PHYSICAL_STRIP_ROWS * sizeof(uint16_t))
 #define DMA_WAIT_TIMEOUT_MS 1000
 
-_Static_assert(BSP_LCD_W == LOGICAL_W * SCALE, "LCD width must be 2x logical width");
-_Static_assert(BSP_LCD_H == LOGICAL_H * SCALE, "LCD height must be 2x logical height");
-_Static_assert(PHYSICAL_STRIP_ROWS % SCALE == 0, "strip must contain complete logical rows");
+_Static_assert(BSP_LCD_W == LOGICAL_W, "LCD width must equal logical width");
+_Static_assert(BSP_LCD_H == LOGICAL_H, "LCD height must equal logical height");
 _Static_assert(BSP_LCD_H % PHYSICAL_STRIP_ROWS == 0, "strip rows must divide the physical frame height");
 
 static const char *TAG = "display_bridge";
@@ -45,6 +43,7 @@ static bool s_presenting;
 static int64_t s_present_start_us;
 static int64_t s_last_present_us;
 static bool s_initialized;
+static atomic_int s_backlight_level = ATOMIC_VAR_INIT(0);
 
 static bool color_transfer_done(
     esp_lcd_panel_io_handle_t io,
@@ -159,8 +158,8 @@ static void submit_strip(void) {
         ESP_LOGE(TAG, "LCD DMA submit attempted with no free slot");
         abort();
     }
-    const int y0 = (s_next_row - s_pending_rows) * SCALE;
-    const int y1 = y0 + s_pending_rows * SCALE;
+    const int y0 = s_next_row - s_pending_rows;
+    const int y1 = y0 + s_pending_rows;
     ESP_ERROR_CHECK(esp_lcd_panel_draw_bitmap(
         s_panel, 0, y0, BSP_LCD_W, y1, s_strips[buffer]));
     const int tail = (s_outstanding_head + s_outstanding_count) %
@@ -202,8 +201,7 @@ void ai_passport_display_row(int32_t y, int32_t *rgb565) {
     }
     ensure_buffer_available(s_fill_buffer);
     uint16_t *strip = s_strips[s_fill_buffer];
-    uint16_t *upper = &strip[s_pending_rows * SCALE * BSP_LCD_W];
-    uint16_t *lower = upper + BSP_LCD_W;
+    uint16_t *target = &strip[s_pending_rows * BSP_LCD_W];
     for (int x = 0; x < LOGICAL_W; ++x) {
         // FrameView exposes the canonical RGB565 integer (0xF800 for red).
         // The ST7789 SPI protocol is big-endian per pixel, while the C3 DMA
@@ -212,10 +210,8 @@ void ai_passport_display_row(int32_t y, int32_t *rgb565) {
         const uint16_t logical_pixel = (uint16_t)rgb565[x];
         const uint16_t pixel = (uint16_t)((logical_pixel << 8) |
                                           (logical_pixel >> 8));
-        upper[x * SCALE] = pixel;
-        upper[x * SCALE + 1] = pixel;
+        target[x] = pixel;
     }
-    memcpy(lower, upper, BSP_LCD_W * sizeof(uint16_t));
     ++s_next_row;
     ++s_pending_rows;
     if (s_pending_rows == LOGICAL_STRIP_ROWS) {
@@ -239,4 +235,23 @@ void ai_passport_display_end(void) {
 
 int64_t ai_passport_display_last_present_us(void) {
     return s_last_present_us;
+}
+
+int32_t ai_passport_display_backlight_level(void) {
+    if (!s_initialized) {
+        ESP_LOGE(TAG, "Backlight queried before display initialization");
+        abort();
+    }
+    return atomic_load(&s_backlight_level);
+}
+
+void ai_passport_display_set_backlight(int32_t level) {
+    if (!s_initialized || level < 0 || level > 100) {
+        ESP_LOGE(TAG, "Invalid backlight write level=%ld initialized=%d",
+                 (long)level, s_initialized);
+        abort();
+    }
+    bsp_display_backlight((uint8_t)level);
+    atomic_store(&s_backlight_level, level);
+    ESP_LOGI(TAG, "Backlight level=%ld", (long)level);
 }

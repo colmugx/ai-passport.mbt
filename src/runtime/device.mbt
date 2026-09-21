@@ -80,6 +80,31 @@ fn install_device_capture_runtime() -> Unit {
 }
 
 ///|
+fn install_device_display_runtime() -> Unit {
+  if device_display_runtime_slot.installed {
+    return
+  }
+  @display_host.install_display(
+    width=@core.LOGICAL_WIDTH,
+    height=@core.LOGICAL_HEIGHT,
+    monochrome=false,
+    backlight_level=@hostabi.device_backlight_level,
+    set_backlight=@hostabi.device_set_backlight,
+  )
+  device_display_runtime_slot.installed = true
+}
+
+///|
+priv struct DeviceDisplayRuntimeSlot {
+  mut installed : Bool
+}
+
+///|
+let device_display_runtime_slot : DeviceDisplayRuntimeSlot = {
+  installed: false,
+}
+
+///|
 priv struct DeviceCaptureRuntimeSlot {
   mut installed : Bool
 }
@@ -111,6 +136,7 @@ const PRESENTATION_LEAD_US : Int64 = 100_000L
 pub fn device_boot(create_app : () -> &@application.Application) -> Unit {
   install_device_sound_runtime()
   install_device_capture_runtime()
+  install_device_display_runtime()
   if device_slot.runtime is Some(_) {
     abort("passport device runtime initialized twice")
   }

@@ -1,12 +1,12 @@
 /**
  * passport-host.js — application-agnostic WebAssembly host backend for the
- * AI Passport SDK. Implements the internal Wasm Host ABI (120x160 RGB565 LE
+ * AI Passport SDK. Implements the internal Wasm Host ABI (240x320 RGB565 LE
  * framebuffer plus sound-bank playback handles).
  *
  * Host responsibilities (the frozen JS/app split):
  *   - instantiate app.wasm, provide the "passport" imports, call _start() once
  *   - per frame: flush queued input events, call passport_frame(now_us:BigInt),
- *     blit the 120x160 RGB565 LE framebuffer when dirty, then consume
+ *     blit the 240x320 RGB565 LE framebuffer when dirty, then consume
  *   - independent APSB sound playbacks mixed by an AudioWorklet (with a
  *     ScriptProcessorNode fallback), plus master volume/mute gain
  *   - permission-gated microphone capture as bounded PCM16 mono input
@@ -28,22 +28,22 @@
 /** Semantic buttons passed to passport_input(button, pressed). */
 export const BUTTON = Object.freeze({ Up: 0, Down: 1, Ok: 2 });
 
-export const FB_WIDTH = 120;
-export const FB_HEIGHT = 160;
+export const FB_WIDTH = 240;
+export const FB_HEIGHT = 320;
 /** Framebuffer byte offset in the app's exported linear memory. */
 export const FB_PTR = 0x1000; // 4096
-/** Framebuffer byte length: 120 * 160 RGB565 uint16 LE, row-major. */
-export const FB_LEN = FB_WIDTH * FB_HEIGHT * 2; // 38400
+/** Framebuffer byte length: 240 * 320 RGB565 uint16 LE, row-major. */
+export const FB_LEN = FB_WIDTH * FB_HEIGHT * 2; // 153600
 /** Normalized PCM stream format: PCM16 LE mono at this rate. */
 export const SAMPLE_RATE = 16000;
-const CAPTURE_PTR = 49152;
+const CAPTURE_PTR = 196608;
 const CAPTURE_SAMPLES = 1024;
 const CAPTURE_RING_SAMPLES = 8192;
 const CAPTURE_STATUS = Object.freeze({
   Unavailable: 0, Idle: 1, Requesting: 2, Recording: 3, Denied: 4, Failed: 5,
 });
-/** App heap start; [0, 65536) is ABI-reserved. */
-export const HEAP_START = 65536;
+/** App heap start; [0, 262144) is ABI-reserved. */
+export const HEAP_START = 262144;
 
 const SCRIPT_PROCESSOR_SAMPLES = 4096; // ScriptProcessor pull size (fallback transport)
 const MAX_SOUND_PLAYBACKS = 8;
@@ -427,7 +427,7 @@ function blitFramebuffer(state) {
   const dst = state.pixels;
   if (!dst) return;
   const src = state.fbView;
-  const n = src.length; // 19200 = 120*160
+  const n = src.length; // 76800 = 240*320
   for (let i = 0; i < n; i++) {
     const rgb = src[i];
     const r5 = (rgb >> 11) & 0x1f;
@@ -446,15 +446,24 @@ function setupCanvas(state, options, params) {
   const canvas = options.canvas;
   if (!canvas || typeof canvas.getContext !== "function") return;
   state.canvas = canvas;
-  canvas.width = FB_WIDTH; // backing store is exactly 120x160; CSS scales it
+  canvas.width = FB_WIDTH; // backing store is full resolution; CSS scales it
   canvas.height = FB_HEIGHT;
   state.ctx2d = canvas.getContext("2d", { alpha: false });
+  if (canvas.style) canvas.style.filter = `brightness(${state.backlight}%)`;
   const scale = resolveScale(options, params);
   if (state.ctx2d && typeof canvas.style !== "undefined") {
     canvas.style.width = `${FB_WIDTH * scale}px`; // integer CSS scale, default 3x
     canvas.style.height = `${FB_HEIGHT * scale}px`;
     canvas.style.imageRendering = "pixelated";
   }
+}
+
+function setBacklight(state, level) {
+  if (!Number.isInteger(level) || level < 0 || level > 100) {
+    throw new RangeError(`backlight level must be 0..100, got ${level}`);
+  }
+  state.backlight = level;
+  if (state.canvas?.style) state.canvas.style.filter = `brightness(${level}%)`;
 }
 
 // ---------------------------------------------------------------------------
@@ -941,6 +950,7 @@ export async function createHost(options = {}) {
     batteryPercent: resolveBatteryPercent(options, params),
     volume: clampVolume(options.volume),
     muted: !!options.muted,
+    backlight: 100,
     memory: null,
     exports: null,
     started: false,
@@ -1001,6 +1011,8 @@ export async function createHost(options = {}) {
   const imports = {
     passport: {
       host_battery_percent: () => state.batteryPercent,
+      host_backlight_level: () => state.backlight,
+      host_set_backlight: (level) => setBacklight(state, level),
       host_set_volume: (value) => setVolume(state, value),
       host_set_muted: (value) => setMuted(state, value),
       host_sound_play: (soundId, looping) => soundPlay(state, soundId, looping),
@@ -1128,6 +1140,9 @@ function buildHostApi(state, imports, appExports) {
     },
     get muted() {
       return state.muted;
+    },
+    get backlight() {
+      return state.backlight;
     },
     setVolume: (value) => setVolume(state, value),
     setMuted: (value) => setMuted(state, value),

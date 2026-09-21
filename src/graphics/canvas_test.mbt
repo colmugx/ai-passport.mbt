@@ -1,9 +1,9 @@
 // Blackbox tests: public API behavior only, no internal access.
 
 ///|
-test "Canvas::logical matches the 120x160 v0.1 logical display" {
+test "Canvas::logical matches the 240x320 default display" {
   let canvas = @graphics.Canvas::logical()
-  debug_inspect((canvas.width(), canvas.height()), content="(120, 160)")
+  debug_inspect((canvas.width(), canvas.height()), content="(240, 320)")
 }
 
 ///|

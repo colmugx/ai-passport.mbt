@@ -9,7 +9,7 @@ import {
 }
 
 // Values
-pub const ABI_HEAP_START : Int = 65536
+pub const ABI_HEAP_START : Int = 262144
 
 pub const BTN_DOWN : Int = 1
 
@@ -17,11 +17,11 @@ pub const BTN_OK : Int = 2
 
 pub const BTN_UP : Int = 0
 
-pub const CAPTURE_PTR : Int = 49152
+pub const CAPTURE_PTR : Int = 196608
 
 pub const CAPTURE_SAMPLES : Int = 1024
 
-pub const FRAMEBUFFER_LEN : Int = 38400
+pub const FRAMEBUFFER_LEN : Int = 153600
 
 pub const FRAMEBUFFER_PTR : Int = 4096
 
@@ -35,11 +35,15 @@ pub fn capture_status() -> Int
 
 pub fn capture_stop() -> Unit
 
+pub fn device_backlight_level() -> Int
+
 pub fn device_battery_percent() -> Int?
 
 pub fn device_button(Int) -> @input.Button?
 
 pub fn device_now_us() -> Int64
+
+pub fn device_set_backlight(Int) -> Unit
 
 pub fn sound_pause(Int) -> Unit
 

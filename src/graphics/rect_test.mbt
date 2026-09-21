@@ -20,7 +20,7 @@ test "rect never panics on wild arguments" {
 }
 
 ///|
-test "rect draws on the logical 120x160 canvas" {
+test "rect draws on the default logical canvas" {
   let canvas = @graphics.Canvas::logical()
   let white = @core.Color::rgb(r=255, g=255, b=255)
   // Full-canvas border plus an interior box.

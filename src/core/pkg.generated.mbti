@@ -6,9 +6,9 @@ import {
 }
 
 // Values
-pub const LOGICAL_HEIGHT : Int = 160
+pub const LOGICAL_HEIGHT : Int = 320
 
-pub const LOGICAL_WIDTH : Int = 120
+pub const LOGICAL_WIDTH : Int = 240
 
 // Errors
 

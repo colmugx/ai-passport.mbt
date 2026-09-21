@@ -13,6 +13,12 @@
 pub fn host_battery_percent() -> Int = "passport" "host_battery_percent"
 
 ///|
+pub fn host_backlight_level() -> Int = "passport" "host_backlight_level"
+
+///|
+pub fn host_set_backlight(level : Int) -> Unit = "passport" "host_set_backlight"
+
+///|
 /// Master output gain, `0..=100`. Called directly by app code (no bridge
 /// adapter owns volume in v0).
 pub fn host_set_volume(volume : Int) -> Unit = "passport" "host_set_volume"

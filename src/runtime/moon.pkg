@@ -2,8 +2,10 @@ import {
   "colmugx/ai-passport/application",
   "colmugx/ai-passport/audio/host" @sound_host,
   "colmugx/ai-passport/battery",
+  "colmugx/ai-passport/core",
   "colmugx/ai-passport/driver",
   "colmugx/ai-passport/graphics",
+  "colmugx/ai-passport/graphics/host" @display_host,
   "colmugx/ai-passport/hostabi",
   "colmugx/ai-passport/input",
 }
