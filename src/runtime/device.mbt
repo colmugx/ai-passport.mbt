@@ -65,6 +65,31 @@ fn install_device_sound_runtime() -> Unit {
 }
 
 ///|
+fn install_device_capture_runtime() -> Unit {
+  if device_capture_runtime_slot.installed {
+    return
+  }
+  @sound_host.install_capture(
+    start=@hostabi.capture_start,
+    status=@hostabi.capture_status,
+    stop=@hostabi.capture_stop,
+    read=fn(out) { @hostabi.capture_read(out, out.length()) },
+    dropped=@hostabi.capture_dropped,
+  )
+  device_capture_runtime_slot.installed = true
+}
+
+///|
+priv struct DeviceCaptureRuntimeSlot {
+  mut installed : Bool
+}
+
+///|
+let device_capture_runtime_slot : DeviceCaptureRuntimeSlot = {
+  installed: false,
+}
+
+///|
 /// The value C expects from `ai_passport_mbt_probe` to prove MoonBit code
 /// is linked and running.
 pub const DEVICE_PROBE : Int = 0xA17E
@@ -85,6 +110,7 @@ const PRESENTATION_LEAD_US : Int64 = 100_000L
 /// muted) without publishing an extra write.
 pub fn device_boot(create_app : () -> &@application.Application) -> Unit {
   install_device_sound_runtime()
+  install_device_capture_runtime()
   if device_slot.runtime is Some(_) {
     abort("passport device runtime initialized twice")
   }

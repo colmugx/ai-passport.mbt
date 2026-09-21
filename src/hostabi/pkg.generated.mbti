@@ -17,9 +17,23 @@ pub const BTN_OK : Int = 2
 
 pub const BTN_UP : Int = 0
 
+pub const CAPTURE_PTR : Int = 49152
+
+pub const CAPTURE_SAMPLES : Int = 1024
+
 pub const FRAMEBUFFER_LEN : Int = 38400
 
 pub const FRAMEBUFFER_PTR : Int = 4096
+
+pub fn capture_dropped() -> Int
+
+pub fn capture_read(FixedArray[Int], Int) -> Int
+
+pub fn capture_start() -> Int
+
+pub fn capture_status() -> Int
+
+pub fn capture_stop() -> Unit
 
 pub fn device_battery_percent() -> Int?
 

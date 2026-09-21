@@ -52,3 +52,19 @@ pub extern "c" fn sound_position_us(handle : Int) -> Int64 = "ai_passport_sound_
 ///|
 /// Monotonic device frame clock in microseconds from the C clock bridge.
 extern "c" fn raw_now_us() -> Int64 = "ai_passport_now_us"
+
+///|
+pub extern "c" fn capture_start() -> Int = "ai_passport_mic_start"
+
+///|
+pub extern "c" fn capture_status() -> Int = "ai_passport_mic_status"
+
+///|
+pub extern "c" fn capture_stop() -> Unit = "ai_passport_mic_stop"
+
+///|
+#borrow(out)
+pub extern "c" fn capture_read(out : FixedArray[Int], capacity : Int) -> Int = "ai_passport_mic_read"
+
+///|
+pub extern "c" fn capture_dropped() -> Int = "ai_passport_mic_dropped_samples"

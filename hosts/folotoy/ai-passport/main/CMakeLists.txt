@@ -50,6 +50,7 @@ idf_component_register(
         "button_bridge.c"
         "clock_bridge.c"
         "display_bridge.c"
+        "microphone_bridge.c"
         "sound_player.c"
         ${CAPTURED_SOURCES}
         "${MOON_RUNTIME}/runtime.c"

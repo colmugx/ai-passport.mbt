@@ -42,6 +42,23 @@ pub fn host_sound_stop(handle : Int) -> Unit = "passport" "host_sound_stop"
 pub fn host_sound_position_us(handle : Int) -> Int64 = "passport" "host_sound_position_us"
 
 ///|
+pub fn host_capture_start() -> Int = "passport" "host_capture_start"
+
+///|
+pub fn host_capture_status() -> Int = "passport" "host_capture_status"
+
+///|
+pub fn host_capture_stop() -> Unit = "passport" "host_capture_stop"
+
+///|
+/// Writes up to `max_samples` PCM16 samples at `CAPTURE_PTR` and returns the
+/// count. The caller validates the count before reading linear memory.
+pub fn host_capture_read(max_samples : Int) -> Int = "passport" "host_capture_read"
+
+///|
+pub fn host_capture_dropped() -> Int = "passport" "host_capture_dropped"
+
+///|
 /// Inline-WAT store of one 16-bit little-endian value at byte address `addr`.
 ///
 /// `i32.store16` writes the low 16 bits of `value` in little-endian byte

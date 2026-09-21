@@ -28,6 +28,14 @@ pub const FRAMEBUFFER_LEN : Int = 38400
 pub const ABI_HEAP_START : Int = 65536
 
 ///|
+/// Host-written capture scratch region below the wasm heap. The Web Host
+/// writes at most 1024 PCM16 samples here per `host_capture_read` call.
+pub const CAPTURE_PTR : Int = 49152
+
+///|
+pub const CAPTURE_SAMPLES : Int = 1024
+
+///|
 /// Wire code for the semantic `Up` button on the `passport_input` import
 /// (button codes are the frozen ABI v0 wire encoding of `@input.Button`).
 pub const BTN_UP : Int = 0

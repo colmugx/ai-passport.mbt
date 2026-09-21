@@ -64,3 +64,15 @@ void ai_passport_sound_stop(int32_t handle) { (void)handle; }
 int64_t ai_passport_sound_position_us(int32_t handle) {
     return handle > 0 ? (int64_t)handle * 1000LL : -1LL;
 }
+
+// Host-side native tests have no physical microphone. A capture attempt
+// remains explicitly unavailable and cannot silently return blank audio.
+int32_t ai_passport_mic_start(void) { return 0; }
+int32_t ai_passport_mic_status(void) { return 0; }
+void ai_passport_mic_stop(void) {}
+int32_t ai_passport_mic_read(int32_t *out, int32_t capacity) {
+    (void)out;
+    (void)capacity;
+    abort();
+}
+int32_t ai_passport_mic_dropped_samples(void) { return 0; }

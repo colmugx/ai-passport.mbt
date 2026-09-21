@@ -4,9 +4,9 @@
 
 | Phase | Scope | Owner | Status |
 | --- | --- | --- | --- |
-| 0 | Reconnaissance and baseline | Primary agent; read-only Luna worker | In progress |
-| 1 | Complete button events and conflict handling | Primary agent | Pending |
-| 2 | Microphone input and audio channel contract | Primary agent | Pending |
+| 0 | Reconnaissance and baseline | Primary agent; read-only Luna worker | Complete |
+| 1 | Complete button events and conflict handling | Primary agent | Complete (`333cea2`) |
+| 2 | Microphone input and audio channel contract | Primary agent | Complete, pending commit |
 | 3 | Display capability, backlight, and panel presentation | Primary agent | Pending |
 | 4 | Sleep and wake contract | Primary agent | Pending |
 | 5 | Documentation, full gates, commits, and one PR | Primary agent | Pending |
@@ -58,6 +58,8 @@ The primary agent owns all production code, tests, documentation, commits, and P
 - 2026-09-21: User directed that the primary agent personally implements all code; Luna worker may only perform read-only exploration.
 - 2026-09-21: User chose explicit application sleep requests with wake-cause reporting.
 - 2026-09-21: User chose queryable display dimensions and full-resolution 240×320 FoloToy rendering in this round.
+- 2026-09-21: Button events committed as `333cea2`; the shared ADC ladder cannot disambiguate physical button chords, while Web buttons are independent.
+- 2026-09-21: Added explicit PCM16 capture lifecycle on both Hosts, bounded queues with drop telemetry, and full-duplex Web tests. Native, JS, Wasm MoonBit suites and real-browser Web integration passed. Physical microphone behavior remains unverified without a device.
 
 ## Open Questions
 
