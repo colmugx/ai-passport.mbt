@@ -9,6 +9,12 @@ pub(all) struct DisplayInfo {
 } derive(Eq, Debug)
 
 ///|
+pub extend DisplayInfo with Eq::{not_equal, equal}
+
+///|
+pub extend DisplayInfo with @moonbitlang/core/debug.Debug::{to_repr}
+
+///|
 /// Queries the active Host's full drawable dimensions and capabilities.
 /// Call after Host boot, including from the application's `passport_main`.
 pub fn display_info() -> DisplayInfo {

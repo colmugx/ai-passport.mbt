@@ -7,6 +7,12 @@ pub(all) enum WakeReason {
 } derive(Eq, Debug)
 
 ///|
+pub extend WakeReason with Eq::{not_equal, equal}
+
+///|
+pub extend WakeReason with @moonbitlang/core/debug.Debug::{to_repr}
+
+///|
 fn request(wake_after_ms : Int) -> Bool {
   match @power_runtime.request(wake_after_ms) {
     0 => false

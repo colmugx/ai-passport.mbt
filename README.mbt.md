@@ -16,10 +16,11 @@ Platform details such as browser APIs, ESP-IDF, BSPs, GPIO, buses, codecs, and f
 
 | Package | Contents |
 | --- | --- |
-| `core` | `Point`, `Size`, `Rect`, `Color` (RGB565 conversion), `LOGICAL_WIDTH = 120`, `LOGICAL_HEIGHT = 160` |
-| `graphics` | `Canvas` drawing (`clear`, `pixel`, `line`, `rect`, `fill_rect`, `sprite`, bitmap text), `SpriteSheet`, text metrics, read-only `FrameView` |
+| `core` | `Point`, `Size`, `Rect`, `Color` (RGB565 conversion), `LOGICAL_WIDTH = 240`, `LOGICAL_HEIGHT = 320` |
+| `graphics` | Queryable `DisplayInfo`, full-size `Canvas` drawing, `SpriteSheet`, text metrics, read-only `FrameView`, optional backlight control |
 | `input` | Semantic `Button` (`Up` / `Down` / `Ok`), `ButtonEvent` (`Press` / `Click` / `DoubleClick` / `LongPress`), edge-detecting `InputState` |
-| `audio` | Typed `Sound` resources, opaque `Playback` instances and portable playback controls; Host mixing stays internal |
+| `audio` | Typed `Sound` resources, opaque `Playback` instances and portable playback controls; microphone PCM16 capture and drop telemetry |
+| `power` | Application-requested sleep and reported wake cause |
 | `battery` | `BatterySource` trait and caching `Battery`; readings are `Int?` so unavailable values are explicit |
 | `driver` | Backend-facing `Clock` and `DisplaySink` contracts, plus test fixtures (`ZeroClock`, `SinkProbe`) |
 | `hostabi` | Internal, experimental wasm host boundary: ABI v0 constants, the closure-injected `HostBridge` (`DisplaySink` / `BatterySource` / `Clock` adapters), wasm-gated `passport.*` externs, and inline-WAT `u16` store/load helpers |

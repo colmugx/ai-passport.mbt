@@ -1,3 +1,4 @@
 import {
   "colmugx/ai-passport/audio/internal" @sound_runtime,
+  "moonbitlang/core/debug",
 }

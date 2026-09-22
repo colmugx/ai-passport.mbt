@@ -8,6 +8,9 @@ bank. It contains no application behavior and no audio-authoring pipeline.
 The ABI described here is internal and co-versioned with the SDK. Application
 code uses `application`, `graphics`, `input`, `audio`, and `battery`; it never
 imports this ABI directly.
+The full-resolution framebuffer, microphone scratch memory, backlight, and
+power imports change the internal binary layout and imports. Rebuild the
+application and Host bundle together; an older bundle cannot run this ABI.
 
 ## Bundle
 

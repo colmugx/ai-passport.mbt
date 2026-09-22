@@ -5,11 +5,11 @@
 | Phase | Scope | Owner | Status |
 | --- | --- | --- | --- |
 | 0 | Reconnaissance and baseline | Primary agent; read-only Luna worker | Complete |
-| 1 | Complete button events and conflict handling | Primary agent | Complete (`333cea2`) |
-| 2 | Microphone input and audio channel contract | Primary agent | Complete |
-| 3 | Display capability, backlight, and panel presentation | Primary agent | Complete (`e2d1ace`) |
-| 4 | Sleep and wake contract | Primary agent | Complete, pending commit |
-| 5 | Documentation, full gates, commits, and one PR | Primary agent | Pending |
+| 1 | Complete button events and conflict handling | Primary agent | Complete (`3e560e9`) |
+| 2 | Microphone input and audio channel contract | Primary agent | Complete (`6169a98`) |
+| 3 | Display capability, backlight, and panel presentation | Primary agent | Complete (`7a09b8e`) |
+| 4 | Sleep and wake contract | Primary agent | Complete (`b6d50d5`) |
+| 5 | Documentation, full gates, commits, and one PR | Primary agent | In progress |
 
 ## Scope declaration
 
@@ -58,10 +58,12 @@ The primary agent owns all production code, tests, documentation, commits, and P
 - 2026-09-21: User directed that the primary agent personally implements all code; Luna worker may only perform read-only exploration.
 - 2026-09-21: User chose explicit application sleep requests with wake-cause reporting.
 - 2026-09-21: User chose queryable display dimensions and full-resolution 240×320 FoloToy rendering in this round.
-- 2026-09-21: Button events committed as `333cea2`; the shared ADC ladder cannot disambiguate physical button chords, while Web buttons are independent.
+- 2026-09-21: Button events committed; the shared ADC ladder cannot disambiguate physical button chords, while Web buttons are independent.
 - 2026-09-21: Added explicit PCM16 capture lifecycle on both Hosts, bounded queues with drop telemetry, and full-duplex Web tests. Native, JS, Wasm MoonBit suites and real-browser Web integration passed. Physical microphone behavior remains unverified without a device.
-- 2026-09-21: Audio input committed as `abf2d27`. Display now reports active Host size and optional light; Web and FoloToy use full 240×320. RGB565 drawing remains semantic for future monochrome Host quantization. Three-target MoonBit suites and real-browser Web integration passed. Physical RAM and LCD performance require device validation.
-- 2026-09-21: Display committed as `e2d1ace`. Implemented explicit application sleep, ADC-ladder button and timer wake, wake-cause reporting, audio and backlight suspend/resume. A temporary downstream application built successfully with ESP-IDF 5.5.3 and the pinned FoloToy BSP; Web real-browser integration passed. Physical wake and power measurements remain outstanding.
+- 2026-09-21: Audio input committed. Display now reports active Host size and optional light; Web and FoloToy use full 240×320. RGB565 drawing remains semantic for future monochrome Host quantization. Three-target MoonBit suites and real-browser Web integration passed. Physical RAM and LCD performance require device validation.
+- 2026-09-21: Display committed. Implemented explicit application sleep, ADC-ladder button and timer wake, wake-cause reporting, audio and backlight suspend/resume. A temporary downstream application built successfully with ESP-IDF 5.5.3 and the pinned FoloToy BSP; Web real-browser integration passed. Physical wake and power measurements remain outstanding.
+- 2026-09-22: Rebased the four feature commits onto main 0.1.3; current commit IDs are listed above. Completing final gates and PR publication.
+- 2026-09-22: Final MoonBit checks and tests passed for native (272), JS (257), and Wasm (268); Web Chromium integration, including fake microphone capture, and FoloToy Python tests (16) passed. A temporary downstream project compiled an ESP32-C3 firmware image (359,824 bytes) against the pinned BSP. `moon info` and `moon fmt` completed. Device flashing, physical wake behavior, microphone quality, LCD throughput, and live RAM margin remain unverified without hardware.
 
 ## Open Questions
 
