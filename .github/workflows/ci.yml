@@ -129,6 +129,7 @@ jobs:
             hosts/folotoy/ai-passport/test/test_display_bridge_dma.py \
             hosts/folotoy/ai-passport/test/test_device_button_contract.py \
             hosts/folotoy/ai-passport/test/test_moon_cc_capture.py \
+            hosts/folotoy/ai-passport/test/test_microphone_bridge.py \
             hosts/folotoy/ai-passport/test/fixtures/no-audio/moon.mod \
             src/fixture/main.mbt \
             src/sound_host_fixture/main.mbt; do
