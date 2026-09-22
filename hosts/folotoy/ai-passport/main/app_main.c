@@ -59,23 +59,35 @@ void app_main(void) {
 
     ESP_ERROR_CHECK(ai_passport_display_init());
     ai_passport_display_set_backlight(60);
-    // Bring up the sound Host muted before application initialization so
-    // play() is valid even inside passport_main. The application publishes
-    // its authoritative master output immediately after initialization,
-    // before the first audible chunk can leave the codec.
-    log_heap("before_audio_init");
-    const esp_err_t sound_err = ai_passport_sound_player_start(0, true);
-    if (sound_err != ESP_OK) {
-        ESP_LOGE(TAG, "Sound runtime unavailable (%s); running silent",
-                 esp_err_to_name(sound_err));
-    }
-    log_heap(sound_err == ESP_OK ? "after_audio_init" : "after_audio_init_failed");
 
+    // Validate the flash-resident sound bank and seed a muted output state
+    // without touching codec/I2S/task resources. Constructor-time play()
+    // remains valid: sound_player stages those requests in static slots.
+    const esp_err_t sound_prepare_err =
+        ai_passport_sound_player_prepare(0, true);
+    if (sound_prepare_err != ESP_OK) {
+        ESP_LOGE(TAG, "Sound bank unavailable (%s); running silent",
+                 esp_err_to_name(sound_prepare_err));
+    }
+
+    // Allocate the application's full-resolution Canvas before optional audio
+    // transport can fragment internal RAM on this no-PSRAM ESP32-C3.
     log_heap("before_app_init");
     (void)ai_passport_mbt_app_init();
     ai_passport_sound_set_output(
         ai_passport_mbt_audio_volume(), ai_passport_mbt_audio_muted() != 0);
     log_heap("after_app_init");
+
+    // Only constructor-time playback forces audio transport up here. Apps that
+    // never play audio keep codec, I2S, mutexes, and the playback task entirely
+    // unallocated; later play() calls start them on demand.
+    const esp_err_t sound_enable_err = ai_passport_sound_player_enable();
+    if (sound_enable_err != ESP_OK) {
+        ESP_LOGE(TAG, "Sound transport unavailable (%s); running silent",
+                 esp_err_to_name(sound_enable_err));
+    }
+    log_heap(sound_enable_err == ESP_OK ? "after_audio_enable"
+                                        : "after_audio_enable_failed");
 
     // Battery never blocks the frame loop: the bridge task does the
     // possibly-slow first CW2017 SOC computation and then polls at 1 Hz.
