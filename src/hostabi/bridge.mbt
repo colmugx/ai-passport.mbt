@@ -176,8 +176,8 @@ pub extend HostBridge with @colmugx/ai-passport/driver.Clock::{
 }
 
 ///|
-/// Sleep is not part of ABI v0: the host paces frames via `passport_frame`.
-/// This is a deliberate no-op rather than a busy wait.
+/// The Clock delay is a no-op because the Host paces `passport_frame`.
+/// Application-requested suspension uses the separate `@power` contract.
 pub impl @driver.Clock for HostBridge with fn sleep_ms(
   self : HostBridge,
   ms~ : Int,

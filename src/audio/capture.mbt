@@ -14,6 +14,12 @@ pub(all) enum CaptureStatus {
 } derive(Debug, Eq)
 
 ///|
+pub extend CaptureStatus with @moonbitlang/core/debug.Debug::{to_repr}
+
+///|
+pub extend CaptureStatus with Eq::{not_equal, equal}
+
+///|
 fn decode_capture_status(code : Int) -> CaptureStatus {
   match code {
     0 => Unavailable

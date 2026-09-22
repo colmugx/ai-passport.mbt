@@ -364,7 +364,14 @@ suite("browser: MoonBit Sound playbacks reach the real AudioWorklet", async () =
       ])),
     );
     server = await startStaticServer(bundle);
-    browser = await pw.chromium.launch({ headless: true, args: BROWSER_LAUNCH_FLAGS });
+    browser = await pw.chromium.launch({
+      headless: true,
+      args: [
+        ...BROWSER_LAUNCH_FLAGS,
+        "--use-fake-device-for-media-stream",
+        "--use-fake-ui-for-media-stream",
+      ],
+    });
     const page = await browser.newPage();
     const pageErrors = [];
     page.on("pageerror", (error) => pageErrors.push(String(error)));
@@ -395,6 +402,28 @@ suite("browser: MoonBit Sound playbacks reach the real AudioWorklet", async () =
     eq(facts.muted, false, "master mute reaches the Host");
     eq(facts.playbacks.length, 3, "three independent playbacks remain live");
     eq(new Set(facts.playbacks.map((p) => p.handle)).size, 3, "handles are distinct");
+    const capture = await page.evaluate(async () => {
+      const host = globalThis.__passportHost;
+      const api = host.imports.passport;
+      const initial = api.host_capture_start();
+      const deadline = performance.now() + 10_000;
+      while (api.host_capture_status() === 2 && performance.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      }
+      const status = api.host_capture_status();
+      let count = 0;
+      while (status === 3 && count === 0 && performance.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        count = api.host_capture_read(1024);
+      }
+      api.host_capture_stop();
+      return { initial, status, count, stopped: api.host_capture_status() };
+    });
+    eq(capture.initial, 2, "real browser starts microphone permission request");
+    eq(capture.status, 3, "real browser records fake microphone input");
+    ok(capture.count > 0, "real browser capture delivers PCM samples");
+    eq(capture.stopped, 1, "real browser releases microphone");
+    eq(pageErrors.length, 0, `browser page errors: ${pageErrors.join("; ")}`);
   } finally {
     if (browser) await browser.close().catch(() => {});
     if (server) server.close();
