@@ -100,7 +100,7 @@ struct fake_mutex { int held; };
 static struct fake_mutex mutexes[2];
 static int mutex_count;
 TaskFunction_t shim_task;
-int16_t shim_first_chunk[240];
+int16_t shim_first_chunk[512];
 int shim_write_calls;
 int shim_codec_volume = -1;
 int shim_audio_init_calls;
@@ -146,7 +146,7 @@ BaseType_t xTaskCreate(TaskFunction_t task, const char *name, unsigned stack,
                        void *arg, unsigned priority, void *handle) {
     (void)arg; (void)handle;
     assert(strcmp(name, "sound_player") == 0);
-    assert(stack == 4096 && priority == 2);
+    assert(stack == 4096 && priority == 4);
     shim_task = task;
     return pdPASS;
 }
@@ -179,7 +179,7 @@ HARNESS = r"""
 
 #include "sound_player.h"
 
-extern int16_t shim_first_chunk[240];
+extern int16_t shim_first_chunk[512];
 extern int shim_write_calls;
 extern int shim_codec_volume;
 extern int shim_audio_init_calls;
