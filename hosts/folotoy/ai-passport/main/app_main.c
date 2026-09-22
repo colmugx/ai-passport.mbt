@@ -81,8 +81,9 @@ void app_main(void) {
     log_heap("after_app_init");
 
     // The 240x320 RGB565 Canvas needs one 153,600-byte contiguous allocation.
-    // Initialize the physical LCD only after that succeeds so SPI/panel/DMA
-    // resources cannot fragment the largest internal-RAM block first.
+    // Initialize the physical LCD only after that succeeds. display_init also
+    // reserves both 9,600-byte DMA strips here, before first-frame application
+    // code can lazily start optional audio and consume the remaining RAM.
     ESP_ERROR_CHECK(ai_passport_display_init());
     log_heap("after_display_init");
 
