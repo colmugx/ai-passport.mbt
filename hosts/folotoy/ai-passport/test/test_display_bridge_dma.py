@@ -142,6 +142,9 @@ int shim_outstanding;
 int shim_max_outstanding;
 int shim_force_timeout;
 int shim_heap_allocs;
+int shim_display_init_calls;
+int shim_backlight_calls;
+int shim_last_backlight = -1;
 void *shim_unique_buffers[2];
 int shim_unique_buffer_count;
 
@@ -162,10 +165,16 @@ void heap_caps_free(void *ptr) { if (ptr != NULL) { shim_heap_allocs--; free(ptr
 
 int64_t esp_timer_get_time(void) { s_now_us += 100; return s_now_us; }
 
-esp_err_t bsp_display_init(void) { return ESP_OK; }
+esp_err_t bsp_display_init(void) {
+    ++shim_display_init_calls;
+    return ESP_OK;
+}
 esp_lcd_panel_handle_t bsp_display_panel(void) { return (void *)0x1; }
 esp_lcd_panel_io_handle_t bsp_display_io(void) { return (void *)0x2; }
-void bsp_display_backlight(uint8_t percent) { (void)percent; }
+void bsp_display_backlight(uint8_t percent) {
+    ++shim_backlight_calls;
+    shim_last_backlight = percent;
+}
 
 esp_err_t esp_lcd_panel_io_register_event_callbacks(
     esp_lcd_panel_io_handle_t io,
@@ -265,6 +274,9 @@ extern int shim_outstanding;
 extern int shim_max_outstanding;
 extern int shim_force_timeout;
 extern int shim_heap_allocs;
+extern int shim_display_init_calls;
+extern int shim_backlight_calls;
+extern int shim_last_backlight;
 extern int shim_unique_buffer_count;
 
 void ai_passport_display_begin(void);
@@ -289,9 +301,24 @@ static void feed_frame(int stop_before_end) {
 }
 
 static void verify_success(void) {
+    // Logical backlight state exists before the physical display is ready.
+    assert(ai_passport_display_backlight_level() == 60);
+    ai_passport_display_set_backlight(35);
+    assert(ai_passport_display_backlight_level() == 35);
+    assert(shim_display_init_calls == 0);
+    assert(shim_backlight_calls == 0);
+    assert(shim_heap_allocs == 0);
+
+    // Panel init applies the staged backlight but still allocates no strips.
     assert(ai_passport_display_init() == 0);
-    assert(shim_heap_allocs == 2);
+    assert(shim_display_init_calls == 1);
+    assert(shim_backlight_calls == 1);
+    assert(shim_last_backlight == 35);
+    assert(shim_heap_allocs == 0);
+
+    // First present lazily allocates the two DMA strips.
     feed_frame(0);
+    assert(shim_heap_allocs == 2);
     assert(shim_tx_count == 16);
     assert(shim_completion_head == 16);
     assert(shim_outstanding == 0);
@@ -317,12 +344,11 @@ static void verify_success(void) {
 }
 
 int main(int argc, char **argv) {
-    assert(ai_passport_display_init() == 0);
     if (argc == 1 || strcmp(argv[1], "ok") == 0) {
-        // init is idempotent, so verify_success may call it again.
         verify_success();
         return 0;
     }
+    assert(ai_passport_display_init() == 0);
     int32_t row[240] = {0};
     if (strcmp(argv[1], "bad-row") == 0) {
         ai_passport_display_begin();
