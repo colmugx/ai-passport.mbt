@@ -20,3 +20,6 @@ The SDK supplies a PCM input channel only. Encoding, speech recognition,
 network transport, and audio processing belong to applications or external
 services. The native test stubs report `Unavailable` because no microphone is
 attached. Physical microphone capture still requires on-device validation.
+
+
+On FoloToy, `capture_stop()` is non-blocking with respect to an in-flight physical RX read. The Host invalidates the current capture generation immediately so the application frame loop cannot deadlock on codec/I2S input. Power transitions use a separate bounded quiesce barrier before reconfiguring the shared audio transport.
