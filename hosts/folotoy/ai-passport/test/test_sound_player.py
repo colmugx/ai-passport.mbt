@@ -183,14 +183,14 @@ extern int16_t shim_first_chunk[240];
 extern int shim_write_calls;
 extern int shim_codec_volume;
 extern int shim_audio_init_calls;
-extern TaskFunction_t shim_task;
+extern void (*shim_task)(void *);
 void shim_run_one_committed_chunk(void);
 
 int main(void) {
     assert(ai_passport_sound_player_prepare(0, true) == ESP_OK);
     assert(ai_passport_sound_player_prepare(80, false) == ESP_OK);
     assert(shim_audio_init_calls == 0);
-    assert(shim_task == NULL);
+    assert(shim_task == 0);
     assert(ai_passport_sound_play(-1, 0) == -1);
     assert(ai_passport_sound_play(2, 0) == -1);
 
@@ -198,10 +198,10 @@ int main(void) {
     const int32_t loop_a = ai_passport_sound_play(0, 1);
     assert(loop_a > 0);
     assert(shim_audio_init_calls == 0);
-    assert(shim_task == NULL);
+    assert(shim_task == 0);
     assert(ai_passport_sound_player_enable() == ESP_OK);
     assert(shim_audio_init_calls == 1);
-    assert(shim_task != NULL);
+    assert(shim_task != 0);
     const int32_t loop_b = ai_passport_sound_play(0, 1);
     const int32_t one_shot = ai_passport_sound_play(1, 0);
     assert(loop_b > 0 && one_shot > 0);
