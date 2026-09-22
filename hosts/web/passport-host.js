@@ -8,7 +8,7 @@
  *   - per frame: flush queued input events, call passport_frame(now_us:BigInt),
  *     blit the 240x320 RGB565 LE framebuffer when dirty, then consume
  *   - independent APSB sound playbacks mixed by an AudioWorklet (with a
- *     ScriptProcessorNode fallback), plus master volume/mute gain
+ *     ScriptProcessorNode fallback), plus application volume/mute state
  *   - permission-gated microphone capture as bounded PCM16 mono input
  *   - keyboard -> semantic buttons (Up/Down/Ok), host-facts HUD
  *
@@ -365,7 +365,12 @@ function soundPlaybackDetail(state) {
 
 function applyGain(state) {
   const gain = state.audio.gain;
-  if (gain && gain.gain) gain.gain.value = state.muted ? 0 : state.volume / 100;
+  if (!gain || !gain.gain) return;
+  // The reference/dev page deliberately leaves browser playback at unity gain
+  // so the computer/browser owns final listening volume. Programmatic hosts
+  // retain the portable application-volume semantics unless they explicitly
+  // opt into systemVolume.
+  gain.gain.value = state.muted ? 0 : state.systemVolume ? 1 : state.volume / 100;
 }
 
 function setVolume(state, value) {
@@ -976,10 +981,12 @@ function setStatusText(state, text) {
  *   BigInt(Math.round(performance.now() * 1000)).
  * @param {number} [options.batteryPercent] - fixture override (URL ?battery=
  *   otherwise); default 82, -1 disables.
- * @param {number} [options.volume] - initial master volume 0..100 (default 100).
+ * @param {number} [options.volume] - initial application volume 0..100 (default 100).
  * @param {boolean} [options.muted] - initial mute (default false).
+ * @param {boolean} [options.systemVolume] - keep browser playback at unity gain
+ *   while still tracking application volume; default false.
  * @param {number} [options.scale] - CSS integer scale (URL ?scale= otherwise;
- *   default 1, the native 240×320 preview size).
+ *   default 1 for programmatic hosts).
  * @returns {Promise<PassportHost>} see buildHostApi for the surface.
  */
 export async function createHost(options = {}) {
@@ -996,6 +1003,7 @@ export async function createHost(options = {}) {
     batteryPercent: resolveBatteryPercent(options, params),
     volume: clampVolume(options.volume),
     muted: !!options.muted,
+    systemVolume: !!options.systemVolume,
     backlight: 100,
     sleepPending: false,
     sleeping: false,
@@ -1234,7 +1242,15 @@ async function autoBootFromDom() {
     return;
   }
   try {
-    const host = await createHost({ canvas });
+    const params = readUrlParams();
+    const host = await createHost({
+      canvas,
+      systemVolume: true,
+      // passport dev/reference pages are intentionally enlarged. An explicit
+      // ?scale=N still wins because leaving scale undefined lets createHost
+      // resolve the URL parameter normally.
+      scale: params.scale === undefined || params.scale === "" ? 3 : undefined,
+    });
     globalThis.__passportHost = host;
     // Write the status line through the DOM directly, like the catch handler
     // below: setStatusText expects the INTERNAL state object, but only the
