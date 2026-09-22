@@ -13,6 +13,7 @@ class PassportSoundProcessor extends AudioWorkletProcessor {
     super();
     this.soundEntries = [];
     this.playbacks = new Map();
+    this.pcmGain = 1;
     this.endedSinceReport = [];
     this.processCalls = 0;
 
@@ -23,6 +24,8 @@ class PassportSoundProcessor extends AudioWorkletProcessor {
         this.soundEntries = msg.entries.map((entry) =>
           new Int16Array(msg.bank, entry.offset, entry.sampleCount),
         );
+        this.pcmGain =
+          Number.isFinite(msg.pcmGain) && msg.pcmGain > 0 ? msg.pcmGain : 1;
       } else if (msg.type === "sound-play") {
         const samples = this.soundEntries[msg.soundId | 0];
         if (samples) {
@@ -52,7 +55,7 @@ class PassportSoundProcessor extends AudioWorkletProcessor {
       let mixed = 0;
       for (const playback of this.playbacks.values()) {
         if (playback.paused) continue;
-        mixed += playback.samples[playback.cursor++] / 32768;
+        mixed += playback.samples[playback.cursor++] / 32768 * this.pcmGain;
         if (playback.cursor >= playback.samples.length) {
           if (playback.looping) {
             playback.cursor = 0;
