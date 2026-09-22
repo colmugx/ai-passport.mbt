@@ -28,9 +28,9 @@ assets/...
 `sounds.bank` is always present. A project without sounds receives the valid
 16-byte empty APSB v1 bank. Sound selection never travels through URL query
 parameters; the normal entry URL is `/index.html`. The optional `battery` and
-`scale` query parameters are Host/debug facts only. The reference page keeps
-the canvas at its native 240×320 CSS size by default; pass `?scale=N` only when
-an enlarged debug preview is useful.
+`scale` query parameters are Host/debug facts only. The reference/dev page
+defaults to a 3× CSS presentation (720×960) centered in the browser; `?scale=N`
+overrides that presentation scale without changing the 240×320 framebuffer.
 
 ## Wasm ABI
 
@@ -87,7 +87,11 @@ independent handles. Slot exhaustion returns failure and never steals another
 playback. Pause, resume, stop, and position are per handle. The AudioWorklet
 sums active sources and clamps the result; a ScriptProcessor fallback keeps the
 same semantics where AudioWorklet is unavailable. Master volume and mute are
-applied after mixing and do not change playback positions.
+applied after mixing and do not change playback positions. The reference/dev
+page additionally measures the APSB bank peak once at load time, peak-normalizes
+PCM for browser listening, keeps the browser GainNode at unity when unmuted,
+and delegates final listening level to browser/OS output volume. Programmatic
+hosts retain unmodified PCM unless they explicitly request normalization.
 
 ## Frame and input flow
 
