@@ -20,9 +20,9 @@ extern const uint8_t sounds_bank_end[] __asm__("_binary_sounds_bank_end");
 #define APSB_HEADER_BYTES 16u
 #define APSB_ENTRY_BYTES 8u
 #define SOUND_PLAYBACK_SLOTS 4
-#define SOUND_CHUNK_SAMPLES 240
+#define SOUND_CHUNK_SAMPLES 512
 #define SOUND_TASK_STACK 4096
-#define SOUND_TASK_PRIORITY (tskIDLE_PRIORITY + 2)
+#define SOUND_TASK_PRIORITY (tskIDLE_PRIORITY + 4)
 #define SOUND_IDLE_DELAY_MS 10
 #define SOUND_RETRY_DELAY_MS 20
 #define SOUND_ERROR_LOG_PERIOD_MS 1000
@@ -50,6 +50,7 @@ typedef struct {
     int32_t handle;
     uint32_t cursor;
     uint32_t next_cursor;
+    bool looping;
     bool ended;
 } mixed_playback_t;
 
@@ -164,40 +165,56 @@ static int16_t clamp_i16(int32_t sample) {
 
 static int collect_and_mix(int16_t output[SOUND_CHUNK_SAMPLES],
                            mixed_playback_t mixed[SOUND_PLAYBACK_SLOTS]) {
-    int32_t accumulator[SOUND_CHUNK_SAMPLES] = {0};
+    const uint8_t *pcm[SOUND_PLAYBACK_SLOTS];
+    uint32_t sample_counts[SOUND_PLAYBACK_SLOTS];
     int mixed_count = 0;
+
+    // Snapshot live playbacks coherently, then mix with one scalar accumulator
+    // per output frame. Avoiding an int32 accumulator[SOUND_CHUNK_SAMPLES]
+    // keeps the task stack bounded even though the hardware feed quantum is
+    // widened from 240 to 512 samples.
     xSemaphoreTake(s_lock, portMAX_DELAY);
     for (int slot_index = 0; slot_index < SOUND_PLAYBACK_SLOTS; ++slot_index) {
         const playback_slot_t slot = s_slots[slot_index];
         if (slot.state != SLOT_PLAYING) continue;
-        const uint8_t *pcm;
-        uint32_t sample_count;
-        sound_entry(slot.sound_id, &pcm, &sample_count);
-        uint32_t cursor = slot.cursor;
-        bool ended = false;
-        for (int frame = 0; frame < SOUND_CHUNK_SAMPLES; ++frame) {
-            if (cursor >= sample_count) {
-                if (!slot.looping) {
-                    ended = true;
-                    break;
-                }
-                cursor = 0;
-            }
-            accumulator[frame] += read_i16_le(pcm + cursor * 2u);
-            ++cursor;
-        }
-        if (slot.looping && cursor >= sample_count) cursor = 0;
-        mixed[mixed_count++] = (mixed_playback_t){
+        sound_entry(slot.sound_id, &pcm[mixed_count], &sample_counts[mixed_count]);
+        mixed[mixed_count] = (mixed_playback_t){
             .slot_index = slot_index,
             .handle = slot.handle,
             .cursor = slot.cursor,
-            .next_cursor = cursor,
-            .ended = ended || (!slot.looping && cursor >= sample_count),
+            .next_cursor = slot.cursor,
+            .looping = slot.looping,
+            .ended = false,
         };
+        ++mixed_count;
     }
     xSemaphoreGive(s_lock);
+
     for (int frame = 0; frame < SOUND_CHUNK_SAMPLES; ++frame) {
-        output[frame] = clamp_i16(accumulator[frame]);
+        int32_t accumulator = 0;
+        for (int i = 0; i < mixed_count; ++i) {
+            mixed_playback_t *item = &mixed[i];
+            if (item->ended) continue;
+
+            uint32_t cursor = item->next_cursor;
+            if (cursor >= sample_counts[i]) {
+                if (!item->looping) {
+                    item->ended = true;
+                    continue;
+                }
+                cursor = 0;
+            }
+
+            accumulator += read_i16_le(pcm[i] + cursor * 2u);
+            ++cursor;
+            if (item->looping && cursor >= sample_counts[i]) {
+                cursor = 0;
+            } else if (!item->looping && cursor >= sample_counts[i]) {
+                item->ended = true;
+            }
+            item->next_cursor = cursor;
+        }
+        output[frame] = clamp_i16(accumulator);
     }
     return mixed_count;
 }
