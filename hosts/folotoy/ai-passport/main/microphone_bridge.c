@@ -20,7 +20,6 @@ enum { MIC_IDLE = 1, MIC_RECORDING = 3, MIC_FAILED = 5 };
 
 static const char *TAG = "microphone_bridge";
 static SemaphoreHandle_t s_lock;
-static SemaphoreHandle_t s_io_lock;
 static TaskHandle_t s_task;
 static int16_t s_ring[MIC_RING_SAMPLES];
 static uint32_t s_head;
@@ -28,6 +27,7 @@ static uint32_t s_count;
 static atomic_int s_status = ATOMIC_VAR_INIT(MIC_IDLE);
 static atomic_uint s_dropped;
 static atomic_uint s_generation;
+static atomic_bool s_read_active;
 
 static void capture_task(void *arg) {
     (void)arg;
@@ -38,16 +38,17 @@ static void capture_task(void *arg) {
             continue;
         }
         const unsigned generation = atomic_load(&s_generation);
-        xSemaphoreTake(s_io_lock, portMAX_DELAY);
+        atomic_store(&s_read_active, true);
         if (atomic_load(&s_status) != MIC_RECORDING ||
             generation != atomic_load(&s_generation)) {
-            xSemaphoreGive(s_io_lock);
+            atomic_store(&s_read_active, false);
             continue;
         }
-        // The BSP owns I2S RX and returns only after a complete chunk. The
-        // output task independently owns I2S TX; neither task changes format.
+        // esp_codec_dev_read() may block inside the BSP. Never make the frame
+        // task wait for that call when capture_stop() is requested: stop only
+        // invalidates this generation, and a returning read is discarded.
         const esp_err_t err = bsp_audio_read(chunk, sizeof(chunk));
-        xSemaphoreGive(s_io_lock);
+        atomic_store(&s_read_active, false);
         if (err != ESP_OK) {
             if (generation == atomic_load(&s_generation) &&
                 atomic_load(&s_status) == MIC_RECORDING) {
@@ -78,14 +79,6 @@ int32_t ai_passport_mic_start(void) {
         s_lock = xSemaphoreCreateMutex();
         if (s_lock == NULL) {
             ESP_LOGE(TAG, "microphone mutex allocation failed");
-            atomic_store(&s_status, MIC_FAILED);
-            return MIC_FAILED;
-        }
-    }
-    if (s_io_lock == NULL) {
-        s_io_lock = xSemaphoreCreateMutex();
-        if (s_io_lock == NULL) {
-            ESP_LOGE(TAG, "microphone IO mutex allocation failed");
             atomic_store(&s_status, MIC_FAILED);
             return MIC_FAILED;
         }
@@ -124,16 +117,33 @@ int32_t ai_passport_mic_status(void) {
 }
 
 void ai_passport_mic_stop(void) {
-    if (s_lock == NULL) return;
-    xSemaphoreTake(s_io_lock, portMAX_DELAY);
-    xSemaphoreTake(s_lock, portMAX_DELAY);
+    // Cancel the current capture generation before touching the queue. Do not
+    // wait for an in-flight bsp_audio_read(): codec-dev/I2S reads can block,
+    // and capture_stop() runs on the application frame task.
     atomic_store(&s_status, MIC_IDLE);
     atomic_fetch_add(&s_generation, 1);
-    s_head = 0;
-    s_count = 0;
-    xSemaphoreGive(s_lock);
-    xSemaphoreGive(s_io_lock);
-    ESP_LOGI(TAG, "microphone recording stopped");
+    if (s_lock != NULL) {
+        xSemaphoreTake(s_lock, portMAX_DELAY);
+        s_head = 0;
+        s_count = 0;
+        xSemaphoreGive(s_lock);
+    }
+    ESP_LOGI(TAG, "microphone recording stop requested");
+}
+
+bool ai_passport_mic_wait_idle(uint32_t timeout_ms) {
+    TickType_t remaining = pdMS_TO_TICKS(timeout_ms);
+    if (timeout_ms > 0 && remaining == 0) remaining = 1;
+    while (atomic_load(&s_read_active)) {
+        if (remaining == 0) {
+            ESP_LOGE(TAG, "microphone read did not quiesce within %lu ms",
+                     (unsigned long)timeout_ms);
+            return false;
+        }
+        vTaskDelay(1);
+        --remaining;
+    }
+    return true;
 }
 
 int32_t ai_passport_mic_read(int32_t *out, int32_t capacity) {
