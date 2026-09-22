@@ -14,7 +14,7 @@ Serve that directory over HTTP and open `/index.html`. Sound configuration is
 part of `sounds.bank`, not the URL. Supported query parameters are:
 
 - `battery=0..100` or `battery=none`
-- `scale=<positive integer>` (default `1`, native 240×320; use this only for an explicit enlarged debug preview)
+- `scale=<positive integer>` (the reference/dev page defaults to `3`; pass another value to override)
 
 ## Programmatic use
 
@@ -30,7 +30,7 @@ const host = await createHost({
 
 Important options are `wasmBytes`/`wasmUrl`,
 `soundBankBytes`/`soundBankUrl`, `canvas`, `audioContextFactory`, `workletUrl`,
-`batteryPercent`, `volume`, `muted`, `scale`, and internal import overrides.
+`batteryPercent`, `volume`, `muted`, `normalizeAudio`, `scale`, and internal import overrides.
 Supplying Wasm bytes without a bank is an audio-less test convenience and uses
 a valid empty bank; normal bundles always fetch `sounds.bank`.
 
@@ -52,6 +52,12 @@ the browser mixer is an implementation detail.
 
 The Host deliberately provides no codecs, media decoding, resampling,
 synthesis, sequencer, exposed mixer graph, bus, effect, or plugin API.
+
+The bundled reference/dev page is a listening aid rather than a mastering surface:
+it peak-normalizes the loaded APSB bank once, keeps browser playback at unity gain,
+and leaves final listening level to the browser/operating-system device volume.
+Programmatic `createHost()` calls do not normalize PCM unless `normalizeAudio: true`
+is requested, so embedding behavior stays explicit.
 
 ## Tests
 
