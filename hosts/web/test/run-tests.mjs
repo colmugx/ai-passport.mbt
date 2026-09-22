@@ -111,6 +111,8 @@ suite("host: lifecycle, framebuffer, input, and master output", async () => {
   ok(first && first.presented, "one tick presents the framebuffer");
   eq(canvas.width, 240, "canvas width");
   eq(canvas.height, 320, "canvas height");
+  eq(canvas.style.width, "240px", "default CSS canvas width stays native");
+  eq(canvas.style.height, "320px", "default CSS canvas height stays native");
   host.imports.passport.host_set_backlight(35);
   eq(host.imports.passport.host_backlight_level(), 35, "display light level is queryable");
   eq(canvas.style.filter, "brightness(35%)", "Web presentation applies light level");

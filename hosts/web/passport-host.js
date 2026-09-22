@@ -50,7 +50,7 @@ const MAX_SOUND_PLAYBACKS = 8;
 const SOUND_BANK_HEADER_SIZE = 16;
 const SOUND_BANK_ENTRY_SIZE = 8;
 const HUD_INTERVAL_MS = 250; // HUD refresh ~4x per second
-const DEFAULT_SCALE = 3; // CSS integer scale
+const DEFAULT_SCALE = 1; // Keep the reference preview at the native 240x320 size.
 const DEFAULT_BATTERY_PERCENT = 82;
 
 const REQUIRED_EXPORTS = [
@@ -113,7 +113,7 @@ function resolveBatteryPercent(options, params) {
   return normalizeBattery(Number(raw));
 }
 
-/** CSS integer scale: options.scale ?? ?scale=NN, default 3. */
+/** CSS integer scale: options.scale ?? ?scale=NN, default 1 (native size). */
 function resolveScale(options, params) {
   const raw = options.scale !== undefined ? options.scale : params.scale;
   if (raw === undefined || raw === "") return DEFAULT_SCALE;
@@ -452,7 +452,7 @@ function setupCanvas(state, options, params) {
   if (canvas.style) canvas.style.filter = `brightness(${state.backlight}%)`;
   const scale = resolveScale(options, params);
   if (state.ctx2d && typeof canvas.style !== "undefined") {
-    canvas.style.width = `${FB_WIDTH * scale}px`; // integer CSS scale, default 3x
+    canvas.style.width = `${FB_WIDTH * scale}px`; // integer CSS scale, default 1x
     canvas.style.height = `${FB_HEIGHT * scale}px`;
     canvas.style.imageRendering = "pixelated";
   }
@@ -979,7 +979,7 @@ function setStatusText(state, text) {
  * @param {number} [options.volume] - initial master volume 0..100 (default 100).
  * @param {boolean} [options.muted] - initial mute (default false).
  * @param {number} [options.scale] - CSS integer scale (URL ?scale= otherwise;
- *   default 3).
+ *   default 1, the native 240×320 preview size).
  * @returns {Promise<PassportHost>} see buildHostApi for the surface.
  */
 export async function createHost(options = {}) {
