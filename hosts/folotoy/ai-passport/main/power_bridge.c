@@ -75,7 +75,13 @@ int ai_passport_power_poll_and_sleep(void) {
     }
 
     // Both I2S directions must be idle before the BSP suspends the codec.
+    // capture_stop itself must never block the application frame task; only
+    // this power transition waits, and even here the wait is bounded.
     ai_passport_mic_stop();
+    if (!ai_passport_mic_wait_idle(250)) {
+        ESP_LOGE(TAG, "microphone RX remained active; sleep request canceled");
+        return 0;
+    }
     ai_passport_sound_player_suspend();
     const int32_t light_level = ai_passport_display_backlight_level();
     ai_passport_display_set_backlight(0);
