@@ -57,7 +57,9 @@ void app_main(void) {
         abort();
     }
 
-    ESP_ERROR_CHECK(ai_passport_display_init());
+    // Publish the default backlight as a logical Host fact before App
+    // construction. The display bridge stages this value until the physical
+    // panel is initialized after the App's large contiguous allocations.
     ai_passport_display_set_backlight(60);
 
     // Validate the flash-resident sound bank and seed a muted output state
@@ -77,6 +79,12 @@ void app_main(void) {
     ai_passport_sound_set_output(
         ai_passport_mbt_audio_volume(), ai_passport_mbt_audio_muted() != 0);
     log_heap("after_app_init");
+
+    // The 240x320 RGB565 Canvas needs one 153,600-byte contiguous allocation.
+    // Initialize the physical LCD only after that succeeds so SPI/panel/DMA
+    // resources cannot fragment the largest internal-RAM block first.
+    ESP_ERROR_CHECK(ai_passport_display_init());
+    log_heap("after_display_init");
 
     // Only constructor-time playback forces audio transport up here. Apps that
     // never play audio keep codec, I2S, mutexes, and the playback task entirely
