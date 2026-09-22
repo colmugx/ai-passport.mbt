@@ -14,7 +14,7 @@ Serve that directory over HTTP and open `/index.html`. Sound configuration is
 part of `sounds.bank`, not the URL. Supported query parameters are:
 
 - `battery=0..100` or `battery=none`
-- `scale=<positive integer>`
+- `scale=<positive integer>` (default `1`, native 240×320; use this only for an explicit enlarged debug preview)
 
 ## Programmatic use
 

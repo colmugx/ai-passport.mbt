@@ -28,7 +28,9 @@ assets/...
 `sounds.bank` is always present. A project without sounds receives the valid
 16-byte empty APSB v1 bank. Sound selection never travels through URL query
 parameters; the normal entry URL is `/index.html`. The optional `battery` and
-`scale` query parameters are Host/debug facts only.
+`scale` query parameters are Host/debug facts only. The reference page keeps
+the canvas at its native 240×320 CSS size by default; pass `?scale=N` only when
+an enlarged debug preview is useful.
 
 ## Wasm ABI
 
