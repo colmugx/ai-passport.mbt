@@ -309,14 +309,16 @@ static void verify_success(void) {
     assert(shim_backlight_calls == 0);
     assert(shim_heap_allocs == 0);
 
-    // Panel init applies the staged backlight but still allocates no strips.
+    // App construction precedes physical display init. Once panel init starts,
+    // both DMA strips are essential display resources and must be reserved
+    // immediately, before optional first-frame transports such as audio.
     assert(ai_passport_display_init() == 0);
     assert(shim_display_init_calls == 1);
     assert(shim_backlight_calls == 1);
     assert(shim_last_backlight == 35);
-    assert(shim_heap_allocs == 0);
+    assert(shim_heap_allocs == 2);
 
-    // First present lazily allocates the two DMA strips.
+    // First present performs no heap allocation.
     feed_frame(0);
     assert(shim_heap_allocs == 2);
     assert(shim_tx_count == 16);
