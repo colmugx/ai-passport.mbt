@@ -139,11 +139,22 @@ esp_err_t ai_passport_display_init(void) {
         return ESP_ERR_INVALID_STATE;
     }
 
+    // App construction has already completed before this Host init runs, so
+    // the full-resolution Canvas owns its large contiguous block first. From
+    // this point the LCD DMA workspace is essential: reserve it before any
+    // optional transport (notably first-frame audio playback) can consume the
+    // remaining internal RAM.
+    s_initialized = true;
+    const esp_err_t transfer_err = ensure_transfer_resources();
+    if (transfer_err != ESP_OK) {
+        s_initialized = false;
+        return transfer_err;
+    }
+
     // Backlight state is available to the portable display runtime before
     // physical panel initialization. Apply the latest staged value only now.
     bsp_display_backlight((uint8_t)atomic_load(&s_backlight_level));
-    s_initialized = true;
-    ESP_LOGI(TAG, "LCD panel ready; DMA strips deferred until first present");
+    ESP_LOGI(TAG, "LCD panel and DMA workspace ready");
     return ESP_OK;
 }
 
@@ -200,11 +211,10 @@ static void submit_strip(void) {
 }
 
 void ai_passport_display_begin(void) {
-    if (ensure_transfer_resources() != ESP_OK ||
-        !s_initialized || s_panel == NULL || s_transfer_done == NULL ||
+    if (!s_initialized || s_panel == NULL || s_transfer_done == NULL ||
         s_strips[0] == NULL || s_strips[1] == NULL || s_presenting ||
         s_outstanding_count != 0) {
-        ESP_LOGE(TAG, "Display begin called before init, during a present, with DMA outstanding, or without transfer memory");
+        ESP_LOGE(TAG, "Display begin called before init, during a present, with DMA outstanding, or without reserved transfer memory");
         abort();
     }
     s_next_row = 0;
