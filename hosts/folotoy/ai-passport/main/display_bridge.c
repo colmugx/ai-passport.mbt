@@ -43,7 +43,7 @@ static bool s_presenting;
 static int64_t s_present_start_us;
 static int64_t s_last_present_us;
 static bool s_initialized;
-static atomic_int s_backlight_level = ATOMIC_VAR_INIT(0);
+static atomic_int s_backlight_level = ATOMIC_VAR_INIT(60);
 
 static bool color_transfer_done(
     esp_lcd_panel_io_handle_t io,
@@ -74,21 +74,16 @@ static void release_display_resources(void) {
     s_outstanding_count = 0;
 }
 
-esp_err_t ai_passport_display_init(void) {
-    if (s_initialized) {
+static esp_err_t ensure_transfer_resources(void) {
+    if (s_transfer_done != NULL && s_strips[0] != NULL && s_strips[1] != NULL) {
         return ESP_OK;
     }
-    esp_err_t err = bsp_display_init();
-    if (err != ESP_OK) {
-        return err;
-    }
-    s_panel = bsp_display_panel();
-    esp_lcd_panel_io_handle_t io = bsp_display_io();
-    if (s_panel == NULL || io == NULL) {
-        ESP_LOGE(TAG, "BSP returned a null panel or IO handle");
+    if (!s_initialized || s_panel == NULL) {
         return ESP_ERR_INVALID_STATE;
     }
+
     for (int i = 0; i < DMA_BUFFER_COUNT; ++i) {
+        if (s_strips[i] != NULL) continue;
         s_strips[i] = heap_caps_malloc(
             STRIP_BYTES, MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL);
         if (s_strips[i] == NULL) {
@@ -104,21 +99,51 @@ esp_err_t ai_passport_display_init(void) {
         release_display_resources();
         return ESP_ERR_NO_MEM;
     }
+
+    esp_lcd_panel_io_handle_t io = bsp_display_io();
+    if (io == NULL) {
+        ESP_LOGE(TAG, "BSP returned a null panel IO handle");
+        release_display_resources();
+        return ESP_ERR_INVALID_STATE;
+    }
     esp_lcd_panel_io_callbacks_t callbacks = {
         .on_color_trans_done = color_transfer_done,
     };
-    err = esp_lcd_panel_io_register_event_callbacks(io, &callbacks, NULL);
+    const esp_err_t err =
+        esp_lcd_panel_io_register_event_callbacks(io, &callbacks, NULL);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "Cannot register LCD DMA completion callback: %s",
                  esp_err_to_name(err));
         release_display_resources();
         return err;
     }
+
     ESP_LOGI(TAG,
-             "LCD DMA strips: %d x %dx%d RGB565, %u bytes each",
+             "LCD DMA strips ready: %d x %dx%d RGB565, %u bytes each",
              DMA_BUFFER_COUNT, BSP_LCD_W, PHYSICAL_STRIP_ROWS,
              (unsigned)STRIP_BYTES);
+    return ESP_OK;
+}
+
+esp_err_t ai_passport_display_init(void) {
+    if (s_initialized) {
+        return ESP_OK;
+    }
+    const esp_err_t err = bsp_display_init();
+    if (err != ESP_OK) {
+        return err;
+    }
+    s_panel = bsp_display_panel();
+    if (s_panel == NULL || bsp_display_io() == NULL) {
+        ESP_LOGE(TAG, "BSP returned a null panel or IO handle");
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    // Backlight state is available to the portable display runtime before
+    // physical panel initialization. Apply the latest staged value only now.
+    bsp_display_backlight((uint8_t)atomic_load(&s_backlight_level));
     s_initialized = true;
+    ESP_LOGI(TAG, "LCD panel ready; DMA strips deferred until first present");
     return ESP_OK;
 }
 
@@ -175,10 +200,11 @@ static void submit_strip(void) {
 }
 
 void ai_passport_display_begin(void) {
-    if (!s_initialized || s_panel == NULL || s_transfer_done == NULL ||
+    if (ensure_transfer_resources() != ESP_OK ||
+        !s_initialized || s_panel == NULL || s_transfer_done == NULL ||
         s_strips[0] == NULL || s_strips[1] == NULL || s_presenting ||
         s_outstanding_count != 0) {
-        ESP_LOGE(TAG, "Display begin called before init, during a present, or with DMA outstanding");
+        ESP_LOGE(TAG, "Display begin called before init, during a present, with DMA outstanding, or without transfer memory");
         abort();
     }
     s_next_row = 0;
@@ -238,20 +264,19 @@ int64_t ai_passport_display_last_present_us(void) {
 }
 
 int32_t ai_passport_display_backlight_level(void) {
-    if (!s_initialized) {
-        ESP_LOGE(TAG, "Backlight queried before display initialization");
-        abort();
-    }
     return atomic_load(&s_backlight_level);
 }
 
 void ai_passport_display_set_backlight(int32_t level) {
-    if (!s_initialized || level < 0 || level > 100) {
-        ESP_LOGE(TAG, "Invalid backlight write level=%ld initialized=%d",
-                 (long)level, s_initialized);
+    if (level < 0 || level > 100) {
+        ESP_LOGE(TAG, "Invalid backlight write level=%ld", (long)level);
         abort();
     }
-    bsp_display_backlight((uint8_t)level);
     atomic_store(&s_backlight_level, level);
-    ESP_LOGI(TAG, "Backlight level=%ld", (long)level);
+    if (s_initialized) {
+        bsp_display_backlight((uint8_t)level);
+        ESP_LOGI(TAG, "Backlight level=%ld", (long)level);
+    } else {
+        ESP_LOGI(TAG, "Backlight level staged=%ld", (long)level);
+    }
 }
