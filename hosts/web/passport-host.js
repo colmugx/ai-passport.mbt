@@ -235,7 +235,21 @@ function parseSoundBank(buffer) {
   if (expectedOffset !== buffer.byteLength) {
     throw new Error("passport-host: sounds.bank contains trailing payload bytes");
   }
-  return { bytes: buffer, entries };
+
+  // APSB deliberately stores authoring PCM verbatim. The reference/dev page
+  // may normalize that bank for listening, so measure its absolute peak once
+  // at load time instead of touching samples on every frame.
+  let peak = 0;
+  for (const entry of entries) {
+    const samples = new Int16Array(buffer, entry.offset, entry.sampleCount);
+    for (let i = 0; i < samples.length; i++) {
+      const sample = samples[i];
+      const magnitude = sample === -32768 ? 32768 : Math.abs(sample);
+      if (magnitude > peak) peak = magnitude;
+    }
+  }
+  const normalizationGain = peak > 0 ? 32767 / peak : 1;
+  return { bytes: buffer, entries, peak, normalizationGain };
 }
 
 /** Exact-copy a TypedArray input into its own ArrayBuffer (done once, at
@@ -336,7 +350,7 @@ function mixScriptSounds(state, out) {
           continue;
         }
       }
-      mixed += playback.samples[playback.cursor] / 32768;
+      mixed += playback.samples[playback.cursor] / 32768 * state.pcmGain;
       playback.cursor += 1;
       if (playback.cursor >= playback.samples.length) {
         if (playback.looping) playback.cursor = 0;
@@ -735,7 +749,12 @@ async function setupAudio(state, options) {
       audio.kind = "worklet";
       const bankCopy = state.soundBank.bytes.slice(0);
       node.port.postMessage(
-        { type: "sound-bank", bank: bankCopy, entries: state.soundBank.entries },
+        {
+          type: "sound-bank",
+          bank: bankCopy,
+          entries: state.soundBank.entries,
+          pcmGain: state.pcmGain,
+        },
         [bankCopy],
       );
       return;
@@ -985,6 +1004,8 @@ function setStatusText(state, text) {
  * @param {boolean} [options.muted] - initial mute (default false).
  * @param {boolean} [options.systemVolume] - keep browser playback at unity gain
  *   while still tracking application volume; default false.
+ * @param {boolean} [options.normalizeAudio] - peak-normalize APSB PCM before
+ *   browser output; intended for the reference/dev page, default false.
  * @param {number} [options.scale] - CSS integer scale (URL ?scale= otherwise;
  *   default 1 for programmatic hosts).
  * @returns {Promise<PassportHost>} see buildHostApi for the surface.
@@ -1004,6 +1025,7 @@ export async function createHost(options = {}) {
     volume: clampVolume(options.volume),
     muted: !!options.muted,
     systemVolume: !!options.systemVolume,
+    pcmGain: options.normalizeAudio ? soundBank.normalizationGain : 1,
     backlight: 100,
     sleepPending: false,
     sleeping: false,
@@ -1165,7 +1187,7 @@ export async function createHost(options = {}) {
  * @property {object} exports - the app's wasm exports.
  * @property {WebAssembly.Memory} memory
  * @property {object} audio - { enabled, kind, ctx, gain, node,
- *   workletError, reason }.
+ *   workletError, reason } plus `pcmGain` on the returned Host.
  */
 function buildHostApi(state, imports, appExports) {
   return {
@@ -1201,6 +1223,9 @@ function buildHostApi(state, imports, appExports) {
     },
     get muted() {
       return state.muted;
+    },
+    get pcmGain() {
+      return state.pcmGain;
     },
     get backlight() {
       return state.backlight;
@@ -1246,6 +1271,7 @@ async function autoBootFromDom() {
     const host = await createHost({
       canvas,
       systemVolume: true,
+      normalizeAudio: true,
       // passport dev/reference pages are intentionally enlarged. An explicit
       // ?scale=N still wins because leaving scale undefined lets createHost
       // resolve the URL parameter normally.
