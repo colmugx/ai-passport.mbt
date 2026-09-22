@@ -103,10 +103,14 @@ TaskFunction_t shim_task;
 int16_t shim_first_chunk[240];
 int shim_write_calls;
 int shim_codec_volume = -1;
+int shim_audio_init_calls;
 static jmp_buf task_exit;
 
 const char *esp_err_to_name(esp_err_t err) { (void)err; return "shim"; }
-esp_err_t bsp_audio_init(void) { return ESP_OK; }
+esp_err_t bsp_audio_init(void) {
+    ++shim_audio_init_calls;
+    return ESP_OK;
+}
 esp_err_t bsp_audio_set_format(int rate, int bits, int channels) {
     assert(rate == 16000 && bits == 16 && channels == 1);
     return ESP_OK;
@@ -178,18 +182,29 @@ HARNESS = r"""
 extern int16_t shim_first_chunk[240];
 extern int shim_write_calls;
 extern int shim_codec_volume;
+extern int shim_audio_init_calls;
+extern TaskFunction_t shim_task;
 void shim_run_one_committed_chunk(void);
 
 int main(void) {
-    assert(ai_passport_sound_player_start(0, true) == ESP_OK);
-    assert(ai_passport_sound_player_start(80, false) == ESP_OK);
+    assert(ai_passport_sound_player_prepare(0, true) == ESP_OK);
+    assert(ai_passport_sound_player_prepare(80, false) == ESP_OK);
+    assert(shim_audio_init_calls == 0);
+    assert(shim_task == NULL);
     assert(ai_passport_sound_play(-1, 0) == -1);
     assert(ai_passport_sound_play(2, 0) == -1);
 
+    // Constructor-time playback is staged without allocating audio transport.
     const int32_t loop_a = ai_passport_sound_play(0, 1);
+    assert(loop_a > 0);
+    assert(shim_audio_init_calls == 0);
+    assert(shim_task == NULL);
+    assert(ai_passport_sound_player_enable() == ESP_OK);
+    assert(shim_audio_init_calls == 1);
+    assert(shim_task != NULL);
     const int32_t loop_b = ai_passport_sound_play(0, 1);
     const int32_t one_shot = ai_passport_sound_play(1, 0);
-    assert(loop_a > 0 && loop_b > 0 && one_shot > 0);
+    assert(loop_b > 0 && one_shot > 0);
     assert(loop_a != loop_b && loop_a != one_shot && loop_b != one_shot);
     const int32_t fourth = ai_passport_sound_play(0, 1);
     assert(fourth > 0);
@@ -231,7 +246,8 @@ EMPTY_HARNESS = r"""
 #include "sound_player.h"
 
 int main(void) {
-    assert(ai_passport_sound_player_start(0, true) == ESP_OK);
+    assert(ai_passport_sound_player_prepare(0, true) == ESP_OK);
+    assert(ai_passport_sound_player_enable() == ESP_OK);
     assert(ai_passport_sound_play(0, 0) == -1);
     puts("empty-sound-bank-ok");
     return 0;
@@ -244,7 +260,7 @@ INVALID_HARNESS = r"""
 #include "sound_player.h"
 
 int main(void) {
-    assert(ai_passport_sound_player_start(0, true) == ESP_ERR_INVALID_SIZE);
+    assert(ai_passport_sound_player_prepare(0, true) == ESP_ERR_INVALID_SIZE);
     assert(ai_passport_sound_play(0, 0) == -1);
     puts("invalid-sound-bank-rejected");
     return 0;
