@@ -60,6 +60,8 @@ static bool s_suspended;
 static playback_slot_t s_slots[SOUND_PLAYBACK_SLOTS];
 static uint32_t s_sound_count;
 static uint32_t s_next_handle = 1;
+static atomic_bool s_prepared;
+static atomic_bool s_enabled;
 static atomic_bool s_started;
 static atomic_uint s_desired_output;
 static unsigned s_applied_output = OUTPUT_UNAPPLIED;
@@ -252,10 +254,20 @@ static void sound_task(void *arg) {
     }
 }
 
-esp_err_t ai_passport_sound_player_start(int initial_volume, bool initial_muted) {
+static bool has_live_playback_unlocked(void) {
+    for (int i = 0; i < SOUND_PLAYBACK_SLOTS; ++i) {
+        if (s_slots[i].state != SLOT_FREE) return true;
+    }
+    return false;
+}
+
+static esp_err_t start_transport(void) {
     if (atomic_load(&s_started)) return ESP_OK;
-    esp_err_t err = validate_bank();
-    if (err != ESP_OK) return err;
+    if (!atomic_load(&s_prepared)) {
+        const esp_err_t prepare_err = ai_passport_sound_player_prepare(0, true);
+        if (prepare_err != ESP_OK) return prepare_err;
+    }
+
     s_lock = xSemaphoreCreateMutex();
     if (s_lock == NULL) return ESP_ERR_NO_MEM;
     s_io_lock = xSemaphoreCreateMutex();
@@ -264,7 +276,8 @@ esp_err_t ai_passport_sound_player_start(int initial_volume, bool initial_muted)
         s_lock = NULL;
         return ESP_ERR_NO_MEM;
     }
-    err = bsp_audio_init();
+
+    esp_err_t err = bsp_audio_init();
     if (err != ESP_OK) {
         vSemaphoreDelete(s_lock);
         vSemaphoreDelete(s_io_lock);
@@ -282,7 +295,8 @@ esp_err_t ai_passport_sound_player_start(int initial_volume, bool initial_muted)
         s_io_lock = NULL;
         return err;
     }
-    ai_passport_sound_set_output(initial_volume, initial_muted);
+
+    s_applied_output = OUTPUT_UNAPPLIED;
     atomic_store(&s_started, true);
     if (xTaskCreate(sound_task, "sound_player", SOUND_TASK_STACK, NULL,
                     SOUND_TASK_PRIORITY, NULL) != pdPASS) {
@@ -293,9 +307,30 @@ esp_err_t ai_passport_sound_player_start(int initial_volume, bool initial_muted)
         s_io_lock = NULL;
         return ESP_ERR_NO_MEM;
     }
-    ESP_LOGI(TAG, "sound bank ready entries=%" PRIu32 " slots=%d bytes=%u",
-             s_sound_count, SOUND_PLAYBACK_SLOTS, (unsigned)bank_size());
+    ESP_LOGI(TAG, "sound transport started entries=%" PRIu32 " slots=%d",
+             s_sound_count, SOUND_PLAYBACK_SLOTS);
     return ESP_OK;
+}
+
+esp_err_t ai_passport_sound_player_prepare(int initial_volume, bool initial_muted) {
+    if (atomic_load(&s_prepared)) return ESP_OK;
+    const esp_err_t err = validate_bank();
+    if (err != ESP_OK) return err;
+    ai_passport_sound_set_output(initial_volume, initial_muted);
+    atomic_store(&s_prepared, true);
+    ESP_LOGI(TAG, "sound bank prepared entries=%" PRIu32 " bytes=%u",
+             s_sound_count, (unsigned)bank_size());
+    return ESP_OK;
+}
+
+esp_err_t ai_passport_sound_player_enable(void) {
+    if (!atomic_load(&s_prepared)) {
+        const esp_err_t err = ai_passport_sound_player_prepare(0, true);
+        if (err != ESP_OK) return err;
+    }
+    atomic_store(&s_enabled, true);
+    if (atomic_load(&s_started) || !has_live_playback_unlocked()) return ESP_OK;
+    return start_transport();
 }
 
 void ai_passport_sound_player_suspend(void) {
@@ -324,11 +359,21 @@ void ai_passport_sound_set_output(int volume, bool muted) {
 }
 
 int32_t ai_passport_sound_play(int32_t sound_id, int32_t looping) {
-    if (!atomic_load(&s_started) || sound_id < 0 || (uint32_t)sound_id >= s_sound_count) {
-        return -1;
+    if (sound_id < 0) return -1;
+    if (!atomic_load(&s_prepared)) {
+        if (ai_passport_sound_player_prepare(0, true) != ESP_OK) return -1;
     }
-    int32_t handle = -1;
-    xSemaphoreTake(s_lock, portMAX_DELAY);
+    if ((uint32_t)sound_id >= s_sound_count) return -1;
+
+    // Before app initialization completes there is deliberately no codec,
+    // task, or mutex: constructor-time playback is staged in static slots.
+    // Once enabled, the first play request lazily starts the transport.
+    if (atomic_load(&s_enabled) && !atomic_load(&s_started)) {
+        if (start_transport() != ESP_OK) return -1;
+    }
+
+    const bool locked = atomic_load(&s_started);
+    if (locked) xSemaphoreTake(s_lock, portMAX_DELAY);
     int free_slot = -1;
     for (int i = 0; i < SOUND_PLAYBACK_SLOTS; ++i) {
         if (s_slots[i].state == SLOT_FREE) {
@@ -337,9 +382,11 @@ int32_t ai_passport_sound_play(int32_t sound_id, int32_t looping) {
         }
     }
     if (free_slot < 0) {
-        xSemaphoreGive(s_lock);
+        if (locked) xSemaphoreGive(s_lock);
         return -1;
     }
+
+    int32_t handle = -1;
     for (int attempt = 0; attempt <= SOUND_PLAYBACK_SLOTS; ++attempt) {
         const int32_t candidate = (int32_t)s_next_handle++;
         if (s_next_handle > INT32_MAX) s_next_handle = 1;
@@ -356,7 +403,7 @@ int32_t ai_passport_sound_play(int32_t sound_id, int32_t looping) {
         }
     }
     if (handle < 0) {
-        xSemaphoreGive(s_lock);
+        if (locked) xSemaphoreGive(s_lock);
         return -1;
     }
     s_slots[free_slot] = (playback_slot_t){
@@ -366,20 +413,21 @@ int32_t ai_passport_sound_play(int32_t sound_id, int32_t looping) {
         .looping = looping != 0,
         .state = SLOT_PLAYING,
     };
-    xSemaphoreGive(s_lock);
+    if (locked) xSemaphoreGive(s_lock);
     return handle;
 }
 
 static void set_slot_state(int32_t handle, slot_state_t expected, slot_state_t next) {
-    if (!atomic_load(&s_started) || handle <= 0) return;
-    xSemaphoreTake(s_lock, portMAX_DELAY);
+    if (handle <= 0) return;
+    const bool locked = atomic_load(&s_started);
+    if (locked) xSemaphoreTake(s_lock, portMAX_DELAY);
     for (int i = 0; i < SOUND_PLAYBACK_SLOTS; ++i) {
         if (s_slots[i].handle == handle && s_slots[i].state == expected) {
             s_slots[i].state = next;
             break;
         }
     }
-    xSemaphoreGive(s_lock);
+    if (locked) xSemaphoreGive(s_lock);
 }
 
 void ai_passport_sound_pause(int32_t handle) {
@@ -391,21 +439,23 @@ void ai_passport_sound_resume(int32_t handle) {
 }
 
 void ai_passport_sound_stop(int32_t handle) {
-    if (!atomic_load(&s_started) || handle <= 0) return;
-    xSemaphoreTake(s_lock, portMAX_DELAY);
+    if (handle <= 0) return;
+    const bool locked = atomic_load(&s_started);
+    if (locked) xSemaphoreTake(s_lock, portMAX_DELAY);
     for (int i = 0; i < SOUND_PLAYBACK_SLOTS; ++i) {
         if (s_slots[i].handle == handle && s_slots[i].state != SLOT_FREE) {
             s_slots[i].state = SLOT_FREE;
             break;
         }
     }
-    xSemaphoreGive(s_lock);
+    if (locked) xSemaphoreGive(s_lock);
 }
 
 int64_t ai_passport_sound_position_us(int32_t handle) {
-    if (!atomic_load(&s_started) || handle <= 0) return -1;
+    if (handle <= 0) return -1;
     int64_t position = -1;
-    xSemaphoreTake(s_lock, portMAX_DELAY);
+    const bool locked = atomic_load(&s_started);
+    if (locked) xSemaphoreTake(s_lock, portMAX_DELAY);
     for (int i = 0; i < SOUND_PLAYBACK_SLOTS; ++i) {
         if (s_slots[i].handle == handle && s_slots[i].state != SLOT_FREE) {
             position = (int64_t)s_slots[i].cursor * 1000000LL /
@@ -413,6 +463,6 @@ int64_t ai_passport_sound_position_us(int32_t handle) {
             break;
         }
     }
-    xSemaphoreGive(s_lock);
+    if (locked) xSemaphoreGive(s_lock);
     return position;
 }
