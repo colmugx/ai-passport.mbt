@@ -143,6 +143,41 @@ suite("host: APSB validation fails fast", async () => {
   ok(error && String(error.message).includes("trailing"), "trailing bank bytes must fail observably");
 });
 
+suite("host: optional PCM normalization preserves default programmatic semantics", async () => {
+  let processor = null;
+  const ctx = {
+    currentTime: 0,
+    destination: {},
+    createGain: () => ({ gain: { value: 0 }, connect() {} }),
+    createScriptProcessor: (size) => {
+      processor = { bufferSize: size, onaudioprocess: null, connect() {} };
+      return processor;
+    },
+  };
+  const quiet = new Int16Array([1000, -2000, 1500, -500]);
+  const plain = await hostModule.createHost({
+    wasmBytes: buildMinimalPassportWasm(),
+    soundBankBytes: soundBank([quiet]),
+    audioContextFactory: () => ctx,
+  });
+  eq(plain.pcmGain, 1, "programmatic Host does not normalize PCM by default");
+  plain.dispose();
+
+  const normalized = await hostModule.createHost({
+    wasmBytes: buildMinimalPassportWasm(),
+    soundBankBytes: soundBank([quiet]),
+    audioContextFactory: () => ctx,
+    normalizeAudio: true,
+  });
+  ok(Math.abs(normalized.pcmGain - 32767 / 2000) < 1e-9, "normalization uses bank peak");
+  const handle = normalized.imports.passport.host_sound_play(0, 0);
+  ok(handle > 0, "normalized sound starts");
+  const out = new Float32Array(processor.bufferSize);
+  processor.onaudioprocess({ outputBuffer: { getChannelData: () => out } });
+  ok(Math.abs(out[0] - (1000 / 2000) * (32767 / 32768)) < 1e-6, "normalized PCM reaches expected level");
+  normalized.dispose();
+});
+
 suite("host: same Sound creates independent Playback handles", async () => {
   let processor = null;
   const ctx = {
@@ -394,6 +429,7 @@ suite("browser: MoonBit Sound playbacks reach the real AudioWorklet", async () =
       canvasCssWidth: document.getElementById("passport-canvas").style.width,
       canvasCssHeight: document.getElementById("passport-canvas").style.height,
       gain: globalThis.__passportHost.audio.gain?.gain?.value,
+      pcmGain: globalThis.__passportHost.pcmGain,
       playbacks: globalThis.__passportHost.soundPlaybacks.map((p) => ({
         handle: p.handle,
         soundId: p.soundId,
@@ -408,6 +444,7 @@ suite("browser: MoonBit Sound playbacks reach the real AudioWorklet", async () =
     eq(facts.canvasCssWidth, "720px", "reference page defaults to 3x width");
     eq(facts.canvasCssHeight, "960px", "reference page defaults to 3x height");
     eq(facts.gain, 1, "reference page leaves browser playback at unity gain");
+    ok(facts.pcmGain > 1, "reference page peak-normalizes quiet PCM");
     eq(facts.playbacks.length, 3, "three independent playbacks remain live");
     eq(new Set(facts.playbacks.map((p) => p.handle)).size, 3, "handles are distinct");
     const capture = await page.evaluate(async () => {
