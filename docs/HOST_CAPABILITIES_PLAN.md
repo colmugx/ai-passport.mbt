@@ -13,7 +13,7 @@
 
 ## Scope declaration
 
-This round implements portable application-facing capabilities across the Web and FoloToy Hosts. Hardware-specific pins, buses, codecs, and wake mechanisms remain inside Hosts. LVGL is evaluated against the existing SDK drawing path; it is not automatically included in firmware. Physical-device behavior must be reported separately from software build and test evidence.
+This round implements portable application-facing capabilities across the Web and FoloToy Hosts. Hardware-specific pins, buses, codecs, and wake mechanisms remain inside Hosts. Physical-device behavior must be reported separately from software build and test evidence.
 
 ## File ownership
 
