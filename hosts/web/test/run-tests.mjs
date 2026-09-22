@@ -106,7 +106,7 @@ suite("host: lifecycle, framebuffer, input, and master output", async () => {
   eq(host.frameCount, 0, "frame count starts at zero");
   eq(host.volume, 70, "fixture startup mirrors its master volume");
   eq(host.muted, false, "fixture startup mirrors its mute state");
-  eq(gain.gain.value, 0.7, "GainNode follows master volume");
+  eq(gain.gain.value, 0.7, "programmatic Host GainNode follows application volume");
   const first = host.tick(0n);
   ok(first && first.presented, "one tick presents the framebuffer");
   eq(canvas.width, 240, "canvas width");
@@ -391,6 +391,9 @@ suite("browser: MoonBit Sound playbacks reach the real AudioWorklet", async () =
       kind: globalThis.__passportHost.audio.kind,
       volume: globalThis.__passportHost.volume,
       muted: globalThis.__passportHost.muted,
+      canvasCssWidth: document.getElementById("passport-canvas").style.width,
+      canvasCssHeight: document.getElementById("passport-canvas").style.height,
+      gain: globalThis.__passportHost.audio.gain?.gain?.value,
       playbacks: globalThis.__passportHost.soundPlaybacks.map((p) => ({
         handle: p.handle,
         soundId: p.soundId,
@@ -400,8 +403,11 @@ suite("browser: MoonBit Sound playbacks reach the real AudioWorklet", async () =
     eq(pageErrors.length, 0, `browser page errors: ${pageErrors.join("; ")}`);
     ok(facts.status.startsWith("running"), "auto-boot status is running");
     eq(facts.kind, "worklet", "real browser uses AudioWorklet");
-    eq(facts.volume, 80, "master volume reaches the Host");
+    eq(facts.volume, 80, "application volume remains observable in the Host");
     eq(facts.muted, false, "master mute reaches the Host");
+    eq(facts.canvasCssWidth, "720px", "reference page defaults to 3x width");
+    eq(facts.canvasCssHeight, "960px", "reference page defaults to 3x height");
+    eq(facts.gain, 1, "reference page leaves browser playback at unity gain");
     eq(facts.playbacks.length, 3, "three independent playbacks remain live");
     eq(new Set(facts.playbacks.map((p) => p.handle)).size, 3, "handles are distinct");
     const capture = await page.evaluate(async () => {
